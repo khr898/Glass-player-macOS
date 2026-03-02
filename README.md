@@ -39,7 +39,9 @@ Designed for Apple Silicon with zero-copy rendering, Anime4K shaders, and Dolby 
 
 ## Screenshots
 
-> *Coming soon — add your own screenshots to a `screenshots/` folder and reference them here.*
+![Player](screenshots/ss-1.png)
+![Screenshot 2](screenshots/ss-2.png)
+![Screenshot 3](screenshots/ss-3.png)
 
 ---
 
