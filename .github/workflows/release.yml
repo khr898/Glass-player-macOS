@@ -1,0 +1,102 @@
+# ═══════════════════════════════════════════════════════════════════════
+# Glass Player — Release Build
+#
+# Triggers on version tags (v1.0.0, v2.3.1, etc.)
+# Builds the app, creates a DMG, and uploads it to GitHub Releases.
+#
+# Usage:
+#   git tag v1.0.0
+#   git push origin v1.0.0
+# ═══════════════════════════════════════════════════════════════════════
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+  # Allow manual trigger from Actions tab
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build & Release
+    runs-on: macos-14          # Apple Silicon (M1) runner
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          brew install mpv
+
+      - name: Build Glass Player
+        run: |
+          cd GlassPlayer
+          chmod +x build.sh
+          # CI build: skip local install, skip signing (no cert in CI),
+          # but still create the DMG
+          NO_INSTALL=1 SKIP_SIGN=1 CREATE_DMG=1 BUILD_PROFILE=optimized ./build.sh
+
+      - name: Verify build
+        run: |
+          APP="GlassPlayer/build/optimized/Glass Player.app"
+          echo "=== Binary info ==="
+          file "$APP/Contents/MacOS/Glass Player"
+          echo "=== Size ==="
+          du -sh "$APP"
+          echo "=== Frameworks ==="
+          ls "$APP/Contents/Frameworks/" | wc -l | xargs echo "Bundled libraries:"
+
+      - name: Get version from tag
+        id: version
+        run: |
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            VERSION="${{ github.ref_name }}"
+          else
+            VERSION="dev-$(date +%Y%m%d-%H%M%S)"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Rename DMG with version
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          mv "GlassPlayer/build/optimized/GlassPlayer.dmg" \
+             "GlassPlayer/build/optimized/GlassPlayer-${VERSION}.dmg"
+
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: GlassPlayer-${{ steps.version.outputs.version }}
+          path: GlassPlayer/build/optimized/GlassPlayer-${{ steps.version.outputs.version }}.dmg
+
+      - name: Create GitHub Release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Glass Player ${{ steps.version.outputs.version }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: |
+            GlassPlayer/build/optimized/GlassPlayer-${{ steps.version.outputs.version }}.dmg
+          body: |
+            ## Glass Player ${{ steps.version.outputs.version }}
+
+            ### Installation
+            1. Download `GlassPlayer-${{ steps.version.outputs.version }}.dmg`
+            2. Open the DMG
+            3. **Option A**: Double-click "Install Glass Player" (recommended)
+            4. **Option B**: Drag to Applications, then run in Terminal:
+               ```
+               xattr -cr "/Applications/Glass Player.app"
+               ```
+
+            ### Requirements
+            - macOS 14.0 (Sonoma) or later
+            - Apple Silicon (M1/M2/M3/M4/M5)

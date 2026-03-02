@@ -1,0 +1,29 @@
+// ═══════════════════════════════════════════════════════════════════════════
+// UniversalSilicon.xcconfig – Phase 2: Global Compiler Tuning
+//
+// Universal Apple Silicon optimization for M1 through M5 series.
+// These settings produce an optimized ARM64 binary with Thin LTO,
+// aggressive optimization, and dead code stripping.
+// ═══════════════════════════════════════════════════════════════════════════
+
+ARCHS = arm64
+VALID_ARCHS = arm64
+
+// ── Swift Optimization ───────────────────────────────────────────────────
+SWIFT_OPTIMIZATION_LEVEL = -O
+OTHER_SWIFT_FLAGS = $(inherited) -whole-module-optimization -lto=llvm-thin
+
+// ── C/ObjC Optimization ─────────────────────────────────────────────────
+// -O3:           Aggressive optimization (loop unrolling, vectorization)
+// -flto=thin:    Thin Link-Time Optimization (cross-TU inlining)
+// -fno-math-errno: Skip errno-setting for math funcs → enables vectorization
+// -ffast-math:   NEON/AMX-friendly FP math (safe for media processing)
+OTHER_CFLAGS = $(inherited) -arch arm64 -O3 -flto=thin -fno-math-errno -ffast-math
+
+// ── Linker Flags ─────────────────────────────────────────────────────────
+// -dead_strip:   Remove unused symbols for lean binary (faster load on SSD)
+OTHER_LDFLAGS = $(inherited) -dead_strip
+
+// ── Frameworks ───────────────────────────────────────────────────────────
+// Accelerate framework is linked for vDSP/vImage SIMD abstraction
+FRAMEWORK_SEARCH_PATHS = $(inherited) $(PLATFORM_DIR)/Developer/Library/Frameworks

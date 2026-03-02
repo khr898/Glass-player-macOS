@@ -1,0 +1,24 @@
+# macOS
+.DS_Store
+._*
+
+# Build output
+GlassPlayer/build/
+
+# Logs
+*.log
+
+# Xcode (if opened)
+*.xcodeproj
+*.xcworkspace
+xcuserdata/
+DerivedData/
+
+# IDE
+.vscode/
+.idea/
+
+# Compiled binaries
+*.o
+*.d
+*.dSYM/
