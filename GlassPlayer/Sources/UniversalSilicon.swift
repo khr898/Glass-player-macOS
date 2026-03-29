@@ -219,8 +219,8 @@ final class UMAMemoryPressureMonitor {
 // ═══════════════════════════════════════════════════════════════════════════
 
 enum UniversalGPUPerformanceTier: String {
-    case high       // M1 Pro/Max/Ultra, M2 Pro+, M3+, M4+, M5+
-    case balanced   // M1, M2 base
+    case high       // M1 Max/Ultra, M2 Max/Ultra, M3 Max/Ultra, M4 Max/Ultra
+    case balanced   // M1/M2/M3/M4 base and Pro models
     case efficient  // Older Apple GPU families (fallback)
     case unknown
 }
@@ -231,15 +231,15 @@ struct UniversalMetalRuntime {
         guard let device = MTLCreateSystemDefaultDevice() else { return .unknown }
 
         if #available(macOS 14.0, *) {
-            // apple9 = M3+, apple8 = M2 family
-            if device.supportsFamily(.apple9) || device.supportsFamily(.apple8) {
-                // Distinguish Pro/Max from base by GPU core count (recommendedMaxWorkingSetSize)
+            // apple9 = M3+, apple8 = M2 family, apple7 = M1 family
+            if device.supportsFamily(.apple9) || device.supportsFamily(.apple8) || device.supportsFamily(.apple7) {
                 let vram = device.recommendedMaxWorkingSetSize
-                // Pro/Max/Ultra typically report > 12 GB working set
-                return vram > 12 * 1024 * 1024 * 1024 ? .high : .balanced
-            }
-            // apple7 = M1 family
-            if device.supportsFamily(.apple7) || device.supportsFamily(.apple6) {
+                // Max/Ultra chips expose > 32 GB working set (e.g. M3 Max = 48 GB+)
+                // Pro chips sit in 18–24 GB range; base chips at 8–16 GB.
+                // Using 32 GB threshold correctly excludes M3 Pro (18 GB) from "high".
+                if vram > 32 * 1024 * 1024 * 1024 {
+                    return .high
+                }
                 return .balanced
             }
             if device.supportsFamily(.apple5) || device.supportsFamily(.apple4) {
@@ -272,6 +272,7 @@ struct UniversalMetalRuntime {
 
     /// Choose the best Anime4K shader preset for the current hardware.
     /// Memory-floor devices always get "Fast" presets to avoid OOM.
+    /// Only Max/Ultra GPUs (.high tier) default to HQ; Pro/base get Fast.
     static func recommendedAnime4KPreset(physicalMemory: UInt64 = ProcessInfo.processInfo.physicalMemory) -> String {
         let isMemoryFloorDevice = physicalMemory <= (8 * 1024 * 1024 * 1024)
         if isMemoryFloorDevice {
@@ -281,9 +282,7 @@ struct UniversalMetalRuntime {
         switch gpuTier() {
         case .high:
             return "Mode A (HQ)"
-        case .balanced:
-            return "Mode A (HQ)"
-        case .efficient, .unknown:
+        case .balanced, .efficient, .unknown:
             return "Mode A (Fast)"
         }
     }

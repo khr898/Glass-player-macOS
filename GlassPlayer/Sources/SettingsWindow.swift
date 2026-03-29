@@ -477,10 +477,16 @@ class SettingsWindow: NSWindowController, NSTableViewDelegate, NSTableViewDataSo
             options: ["25", "50", "75", "100", "125", "150"],
             defaultValue: "100"
         ))
+        views.append(makePopUpRow(
+            title: "Audio Delay (seconds)",
+            key: "audioDelay",
+            options: ["-2.0", "-1.0", "-0.5", "-0.2", "-0.1", "0.0", "0.1", "0.2", "0.5", "1.0", "2.0"],
+            defaultValue: "0.0"
+        ))
 
         views.append(makeRestoreDefaultsButton(keys: [
             "volumeMax", "audioOutput", "audioChannels", "audioPassthrough",
-            "audioLang", "defaultVolume"
+            "audioLang", "defaultVolume", "audioDelay"
         ]))
 
         addViewsToContainer(container, views: views)
@@ -868,12 +874,24 @@ class SettingsWindow: NSWindowController, NSTableViewDelegate, NSTableViewDataSo
     }
 
     @objc private func clearRcloneCaches() {
-        let home = NSHomeDirectory()
-        let rcloneCacheDir = home + "/.cache/rclone"
-        if FileManager.default.fileExists(atPath: rcloneCacheDir) {
-            try? FileManager.default.removeItem(atPath: rcloneCacheDir)
+        // Bug 9: macOS stores rclone VFS cache in ~/Library/Caches/rclone,
+        // NOT in ~/.cache/rclone (the Linux XDG path).
+        var cleared = false
+        // Primary macOS path
+        if let macOSCache = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?
+            .appendingPathComponent("rclone") {
+            if FileManager.default.fileExists(atPath: macOSCache.path) {
+                try? FileManager.default.removeItem(at: macOSCache)
+                cleared = true
+            }
         }
-        showCleanupAlert("rclone caches cleared.")
+        // Also clear the XDG path in case user ran rclone from terminal on this Mac
+        let xdgPath = NSHomeDirectory() + "/.cache/rclone"
+        if FileManager.default.fileExists(atPath: xdgPath) {
+            try? FileManager.default.removeItem(atPath: xdgPath)
+            cleared = true
+        }
+        showCleanupAlert(cleared ? "rclone caches cleared (~/Library/Caches/rclone)." : "No rclone caches found.")
     }
 
     private func showCleanupAlert(_ message: String) {

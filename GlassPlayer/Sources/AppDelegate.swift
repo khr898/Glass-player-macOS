@@ -250,7 +250,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                          action: #selector(addExternalAudioAction),
                          keyEquivalent: "")
         fileMenu.addItem(.separator())
-        fileMenu.addItem(withTitle: "rclone Browser...",
+        fileMenu.addItem(withTitle: "Remote Browser...",
                          action: #selector(openRcloneBrowser),
                          keyEquivalent: "r")
         fileMenu.addItem(.separator())
@@ -616,21 +616,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // ── New menu actions ──
 
     @objc func openURLAction() {
-        // Focus URL field in active player (or create new player + show URL input)
+        // Bug 12: directly call toggleUrlInput on the active player window
+        // (avoids fragile synthetic NSEvent that wasn't reaching the handler)
         if let pw = activePlayer, let win = pw.window, win.isVisible {
-            let event = NSEvent.keyEvent(with: .keyDown,
-                                         location: .zero,
-                                         modifierFlags: [.command],
-                                         timestamp: ProcessInfo.processInfo.systemUptime,
-                                         windowNumber: win.windowNumber,
-                                         context: nil,
-                                         characters: "u",
-                                         charactersIgnoringModifiers: "u",
-                                         isARepeat: false,
-                                         keyCode: 32)
-            if let event = event {
-                win.sendEvent(event)
-            }
+            win.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            pw.toggleUrlInput()
         } else {
             // No player open — show welcome with URL focus
             showWelcome()

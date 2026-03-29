@@ -1,4 +1,5 @@
 import Cocoa
+import IOKit.ps
 
 // ---------------------------------------------------------------------------
 // Track information parsed from mpv's track-list
@@ -212,6 +213,10 @@ class MPVController {
     var shadersAvailable: Bool = false
     // Shader directory path
     var shaderDir: String?
+    // Power source state: true = AC, false = battery
+    private var isOnAC: Bool = true
+    // Power source notification run loop source
+    private var powerSourceRunLoopSource: CFRunLoopSource?
 
     // MARK: - Initialization
 
@@ -292,9 +297,13 @@ class MPVController {
         observeProperty("mute", format: MPV_FORMAT_FLAG)
         observeProperty("brightness", format: MPV_FORMAT_DOUBLE)
         observeProperty("track-list/count", format: MPV_FORMAT_INT64)
+        observeProperty("audio-device", format: MPV_FORMAT_STRING)
 
         // 5. Start event loop
         startEventLoop()
+
+        // 6. Start power source monitoring (Bug 10: adapt quality to battery)
+        setupPowerSourceMonitoring()
 
         NSLog("[MPV] Initialized successfully")
     }
@@ -322,6 +331,67 @@ class MPVController {
             }
         }
         NSLog("[MPV] No Anime4K shaders found")
+    }
+
+    // MARK: - Power Source Monitoring (Bug 10: battery-aware quality)
+
+    private func setupPowerSourceMonitoring() {
+        // Read initial power source
+        updatePowerSourceState()
+
+        // Register for power source change notifications
+        let selfPtr = Unmanaged.passRetained(self).toOpaque()
+        let src = IOPSNotificationCreateRunLoopSource({ ctx in
+            guard let ctx = ctx else { return }
+            let controller = Unmanaged<MPVController>.fromOpaque(ctx).takeUnretainedValue()
+            controller.updatePowerSourceState()
+        }, selfPtr)
+        if let src = src {
+            powerSourceRunLoopSource = src
+            CFRunLoopAddSource(CFRunLoopGetMain(), src, .defaultMode)
+        }
+    }
+
+    private func updatePowerSourceState() {
+        let psInfo = IOPSCopyPowerSourcesInfo()?.takeRetainedValue()
+        let psList = IOPSCopyPowerSourcesList(psInfo)?.takeRetainedValue() as? [CFTypeRef] ?? []
+        var onAC = true
+        for ps in psList {
+            if let dict = IOPSGetPowerSourceDescription(psInfo, ps)?.takeUnretainedValue() as? [String: Any] {
+                let src = dict[kIOPSPowerSourceStateKey as String] as? String ?? ""
+                if src == kIOPSBatteryPowerValue as String {
+                    onAC = false
+                    break
+                }
+            }
+        }
+        let changed = onAC != isOnAC
+        isOnAC = onAC
+        if changed {
+            DispatchQueue.main.async { [weak self] in
+                self?.applyPowerProfile()
+            }
+        }
+    }
+
+    /// Apply quality profile based on current power source.
+    /// On battery: switch to default profile (less CPU/GPU load).
+    /// On AC: restore high-quality profile.
+    func applyPowerProfile() {
+        guard mpvHandle != nil else { return }
+        if isOnAC {
+            mpv_command_string(mpvHandle, "set profile high-quality")
+            NSLog("[MPV] Power: AC — high-quality profile active")
+        } else {
+            mpv_command_string(mpvHandle, "set profile default")
+            // Also clear active shaders on battery to reduce GPU load
+            if currentShaderPreset != nil {
+                mpv_command_string(mpvHandle, "change-list glsl-shaders clr \"\"")
+                NSLog("[MPV] Power: Battery — cleared shaders, default profile active")
+            } else {
+                NSLog("[MPV] Power: Battery — default profile active")
+            }
+        }
     }
 
     // MARK: - Rendering
@@ -362,7 +432,7 @@ class MPVController {
     }
 
     func seek(by seconds: Double) {
-        mpv_command_string(mpvHandle, "seek \(seconds) relative")
+        mpv_command_string(mpvHandle, "seek \(seconds) relative+exact")
     }
 
     func seek(to position: Double) {
@@ -400,14 +470,19 @@ class MPVController {
     }
 
     func setSpeed(_ speed: Double) {
-        var s = speed
-        mpv_set_property(mpvHandle, "speed", MPV_FORMAT_DOUBLE, &s)
+        mpv_command_string(mpvHandle, "set speed \(speed)")
     }
 
     func getSpeed() -> Double {
         var s: Double = 1.0
         mpv_get_property(mpvHandle, "speed", MPV_FORMAT_DOUBLE, &s)
         return s
+    }
+
+    func getAudioDelay() -> Double {
+        var d: Double = 0.0
+        mpv_get_property(mpvHandle, "audio-delay", MPV_FORMAT_DOUBLE, &d)
+        return d
     }
 
     // MARK: - Track Selection
@@ -749,6 +824,14 @@ class MPVController {
                     if strcmp(cName, "track-list/count") == 0 {
                         self.refreshTrackList()
                     }
+                    // Bug 8: Re-negotiate audio-channels after audio device switch
+                    // so spatial audio / head tracking is re-established properly.
+                    if strcmp(cName, "audio-device") == 0 {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+                            guard let self = self else { return }
+                            mpv_command_string(self.mpvHandle, "set audio-channels auto")
+                        }
+                    }
 
                     switch prop.format {
                     case MPV_FORMAT_DOUBLE:
@@ -797,6 +880,12 @@ class MPVController {
     private let eventLoopExited = DispatchSemaphore(value: 0)
 
     func shutdown() {
+        // 0. Remove power source notification
+        if let src = powerSourceRunLoopSource {
+            CFRunLoopRemoveSource(CFRunLoopGetMain(), src, .defaultMode)
+            powerSourceRunLoopSource = nil
+        }
+
         // 1. Signal event loop to exit
         eventLoopRunning = false
         if let handle = mpvHandle {
@@ -959,6 +1048,7 @@ class MPVController {
             ("targetPeak",          "target-peak",          false, false),
             ("gamutMapping",        "gamut-mapping-mode",   false, false),
             ("iccProfile",          "icc-profile",          false, false),
+            ("audioDelay",          "audio-delay",          false, false),
         ]
 
         for s in settings {

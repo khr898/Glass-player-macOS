@@ -44,8 +44,8 @@ class RcloneBrowser: NSWindowController, NSTableViewDelegate, NSTableViewDataSou
     private let pathLabel = NSTextField(labelWithString: "/")
     private let tableView = NSTableView()
     private let scrollView = NSScrollView()
-    private let statusLabel = NSTextField(labelWithString: "Enter an rclone serve URL and press Connect")
-    private let placeholderLabel = NSTextField(labelWithString: "Connect to an rclone HTTP server to browse files")
+    private let statusLabel = NSTextField(labelWithString: "Enter a server URL and press Connect")
+    private let placeholderLabel = NSTextField(labelWithString: "Connect to an HTTP or FTP server to browse files")
 
     weak var playerWindow: PlayerWindow?
     var onFileSelected: ((String) -> Void)?
@@ -77,12 +77,13 @@ class RcloneBrowser: NSWindowController, NSTableViewDelegate, NSTableViewDataSou
             backing: .buffered,
             defer: false
         )
-        window.title = "rclone Browser"
+        window.title = "Remote Browser"
         window.minSize = NSSize(width: 400, height: 300)
         window.backgroundColor = .windowBackgroundColor
         window.isReleasedWhenClosed = false
         window.titlebarAppearsTransparent = true
-        window.collectionBehavior = .moveToActiveSpace
+        // Bug 3: .managed ensures the window appears on the correct Space (including fullscreen)
+        window.collectionBehavior = [.moveToActiveSpace, .managed]
         // Follow system theme — do NOT force darkAqua
 
         super.init(window: window)
@@ -125,7 +126,7 @@ class RcloneBrowser: NSWindowController, NSTableViewDelegate, NSTableViewDataSou
         connectionBar.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(connectionBar)
 
-        urlField.placeholderString = "http://localhost:8080"
+        urlField.placeholderString = "http://localhost:8080 or ftp://server"
         urlField.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
         urlField.translatesAutoresizingMaskIntoConstraints = false
         urlField.target = self
@@ -344,8 +345,8 @@ class RcloneBrowser: NSWindowController, NSTableViewDelegate, NSTableViewDataSou
         var url = urlField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         if url.isEmpty { return }
 
-        // Add http:// if missing
-        if !url.hasPrefix("http://") && !url.hasPrefix("https://") {
+        // Add http:// if no scheme present
+        if !url.hasPrefix("http://") && !url.hasPrefix("https://") && !url.hasPrefix("ftp://") && !url.hasPrefix("ftps://") {
             url = "http://" + url
         }
         // Remove trailing slash
@@ -409,6 +410,15 @@ class RcloneBrowser: NSWindowController, NSTableViewDelegate, NSTableViewDataSou
     // MARK: - Fetch Directory Listing
 
     private func fetchDirectory() {
+        // Route FTP and HTTP to separate handlers (Bug 4: FTP support)
+        if baseUrl.hasPrefix("ftp://") || baseUrl.hasPrefix("ftps://") {
+            fetchFTPDirectory()
+        } else {
+            fetchHTTPDirectory()
+        }
+    }
+
+    private func fetchHTTPDirectory() {
         let urlString = baseUrl + currentPath
         guard let url = URL(string: urlString) else {
             statusLabel.stringValue = "Invalid URL"
@@ -475,6 +485,76 @@ class RcloneBrowser: NSWindowController, NSTableViewDelegate, NSTableViewDataSou
         }
         currentTask = task
         task.resume()
+    }
+
+    /// Fetch FTP directory listing using URLSession's built-in FTP support (Bug 4)
+    private func fetchFTPDirectory() {
+        let urlString = baseUrl + currentPath
+        guard let url = URL(string: urlString) else {
+            statusLabel.stringValue = "Invalid FTP URL"
+            return
+        }
+
+        currentTask?.cancel()
+        statusLabel.stringValue = "Loading FTP..."
+        pathLabel.stringValue = currentPath
+        backButton.isEnabled = !pathHistory.isEmpty
+        upButton.isEnabled = currentPath != "/"
+        placeholderLabel.isHidden = true
+
+        let task = URLSession.shared.dataTask(with: url) { [weak self] data, _, error in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                if let error = error {
+                    if (error as NSError).code == NSURLErrorCancelled { return }
+                    self.statusLabel.stringValue = "FTP Error: \(error.localizedDescription)"
+                    self.placeholderLabel.stringValue = "FTP connection failed"
+                    self.placeholderLabel.isHidden = false
+                    return
+                }
+                guard let data = data, let listing = String(data: data, encoding: .utf8) else {
+                    self.statusLabel.stringValue = "FTP: Invalid response"
+                    return
+                }
+                UniversalSiliconQoS.maintenance.async { [weak self] in
+                    guard let self = self else { return }
+                    let parsed = self.parseFTPListing(listing)
+                    DispatchQueue.main.async {
+                        self.entries = parsed
+                        self.tableView.reloadData()
+                        self.statusLabel.stringValue = "\(self.entries.count) items"
+                        if self.entries.isEmpty {
+                            self.placeholderLabel.stringValue = "Empty directory"
+                            self.placeholderLabel.isHidden = false
+                        }
+                    }
+                }
+            }
+        }
+        currentTask = task
+        task.resume()
+    }
+
+    /// Parse FTP LIST-style directory response (Bug 4)
+    /// Handles UNIX-style: "-rw-r--r-- 1 user group 1234 Jan 1 file.mkv"
+    ///            and   "drwxr-xr-x 2 user group 4096 Jan 1 dirname"
+    private func parseFTPListing(_ text: String) -> [FileEntry] {
+        var result: [FileEntry] = []
+        for line in text.components(separatedBy: "\n") {
+            let parts = line.split(separator: " ", omittingEmptySubsequences: true)
+            guard parts.count >= 9 else { continue }
+            let permissions = String(parts[0])
+            let isDir = permissions.hasPrefix("d")
+            // Name is everything after the 8th column
+            let nameStart = parts.prefix(8).joined(separator: " ").count + 1
+            if nameStart >= line.count { continue }
+            let name = String(line.dropFirst(nameStart)).trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !name.isEmpty, name != ".", name != ".." else { continue }
+            let href = isDir ? name + "/" : name
+            let size = isDir ? "—" : "\(parts[4]) B"
+            result.append(FileEntry(name: name, href: href, isDirectory: isDir, sizeInfo: size))
+        }
+        return result
     }
 
     // MARK: - HTML Parsing
@@ -672,6 +752,8 @@ class RcloneBrowser: NSWindowController, NSTableViewDelegate, NSTableViewDataSou
 
     func showBrowser() {
         window?.makeKeyAndOrderFront(nil)
+        // Bug 3: force window above all others (handles fullscreen space & z-order edge cases)
+        window?.orderFrontRegardless()
         NSApp.activate(ignoringOtherApps: true)
 
         // Position next to main player window if possible

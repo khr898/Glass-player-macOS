@@ -258,6 +258,10 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
         NSApp.activate(ignoringOtherApps: true)
         mpv.loadUrl(url)
         titleLabel.stringValue = url
+        // Bug 4: set up thumbnail generator for streaming URLs
+        setupThumbnailGeneratorForUrl(url)
+        // Bug 5: ensure player window gets keyboard focus after URL load
+        window?.makeFirstResponder(videoView)
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -363,7 +367,7 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
         ])
     }
 
-    @objc private func toggleUrlInput() {
+    @objc func toggleUrlInput() {
         urlInputVisible.toggle()
         urlTextField.isHidden = !urlInputVisible
         titleLabel.isHidden = urlInputVisible
@@ -886,8 +890,8 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
 
         // HQ presets
         let hqHeaderTitle = recommendedPreset.contains("(HQ)")
-            ? "── HQ (Recommended on this Mac) ──"
-            : "── HQ (Pro/Max GPU) ──"
+            ? "── HQ Presets (Recommended on this Mac) ──"
+            : "── HQ Presets ──"
         let hqHeader = NSMenuItem(title: hqHeaderTitle, action: nil, keyEquivalent: "")
         hqHeader.isEnabled = false
         menu.addItem(hqHeader)
@@ -905,8 +909,8 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
 
         // Fast presets
         let fastHeaderTitle = recommendedPreset.contains("(Fast)")
-            ? "── Fast (Recommended on this Mac) ──"
-            : "── Fast (M1/M2/Intel) ──"
+            ? "── Fast Presets (Recommended on this Mac) ──"
+            : "── Fast Presets ──"
         let fastHeader = NSMenuItem(title: fastHeaderTitle, action: nil, keyEquivalent: "")
         fastHeader.isEnabled = false
         menu.addItem(fastHeader)
@@ -1072,6 +1076,44 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
         scaleAnim.duration = 0.6
         scaleAnim.timingFunction = CAMediaTimingFunction(name: .easeOut)
         indicator.layer?.add(scaleAnim, forKey: "scale")
+    }
+
+    /// Brief OSD text overlay — reuses the pause indicator fade pattern (Bug 14).
+    private var osdView: NSView?
+    private func showOSD(_ text: String) {
+        guard let contentView = window?.contentView else { return }
+        osdView?.removeFromSuperview()
+
+        let label = NSTextField(labelWithString: text)
+        label.font = .systemFont(ofSize: 14, weight: .semibold)
+        label.textColor = .white
+        label.alignment = .center
+        label.sizeToFit()
+
+        let padding: CGFloat = 16
+        let w = label.frame.width + padding * 2
+        let h: CGFloat = 36
+        let container = NSView(frame: NSRect(
+            x: (contentView.bounds.width - w) / 2,
+            y: contentView.bounds.height * 0.15,
+            width: w, height: h
+        ))
+        container.wantsLayer = true
+        container.layer?.cornerRadius = h / 2
+        container.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.6).cgColor
+        label.frame = NSRect(x: padding, y: (h - label.frame.height) / 2,
+                             width: label.frame.width, height: label.frame.height)
+        container.addSubview(label)
+        contentView.addSubview(container)
+        osdView = container
+
+        NSAnimationContext.runAnimationGroup({ ctx in
+            ctx.duration = 1.2
+            ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            container.animator().alphaValue = 0.0
+        }) { [weak container] in
+            container?.removeFromSuperview()
+        }
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -1546,6 +1588,11 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
                 openFileAction()
                 return true
             }
+            // Bug 12: Cmd+U toggles URL input
+            if event.keyCode == 32 { // U
+                toggleUrlInput()
+                return true
+            }
             return false
         }
 
@@ -1602,6 +1649,14 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
             mpv.setSpeed(newSpeed)
             currentSpeed = newSpeed
             updateSpeedButton()
+        case 41:  // ; — audio delay -0.1s (Bug 14)
+            mpv_command_string(mpv.mpvHandle, "add audio-delay -0.1")
+            let delay = (mpv.getAudioDelay() * 10).rounded() / 10
+            showOSD(String(format: "Audio delay: %+.1fs", delay))
+        case 39:  // ' — audio delay +0.1s (Bug 14)
+            mpv_command_string(mpv.mpvHandle, "add audio-delay 0.1")
+            let delay2 = (mpv.getAudioDelay() * 10).rounded() / 10
+            showOSD(String(format: "Audio delay: %+.1fs", delay2))
         default:
             return false
         }
@@ -1865,6 +1920,11 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
     func mpvFileLoaded() {
         print("[PlayerWindow] File loaded")
         isFirstPause = true  // reset for new file
+        // Bug 15: reset seek state so time-pos updates flow through immediately
+        isSeeking = false
+        lastDisplayedSecond = -1
+        // Bug 5: ensure keyboard focus is on the video view after any file/URL load
+        window?.makeFirstResponder(videoView)
 
         let shouldAutoApply = UserDefaults.standard.bool(forKey: "autoApplyShaders")
         if shouldAutoApply && mpv.shadersAvailable {
@@ -2051,13 +2111,27 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
         // Clear aspect ratio lock — fullscreen should fill the entire screen
         // (mpv handles letterboxing internally)
         window?.resizeIncrements = NSSize(width: 1, height: 1)
+        // Bug 6: end the live-resize guard now that the FS animation is complete
+        videoView.videoLayer.liveResizeEnded()
         // topBar is managed via Auto Layout constraints pinned to contentView.topAnchor,
         // so it automatically adjusts — no manual frame manipulation needed.
+    }
+
+    func windowWillEnterFullScreen(_ notification: Notification) {
+        // Bug 6: suppress IOSurface teardown during the fullscreen animation
+        videoView.videoLayer.isInLiveResize = true
+    }
+
+    func windowWillExitFullScreen(_ notification: Notification) {
+        // Bug 6: suppress IOSurface teardown during the exit animation
+        videoView.videoLayer.isInLiveResize = true
     }
 
     func windowDidExitFullScreen(_ notification: Notification) {
         fullscreenButton.image = cachedFSEnter
         window?.titlebarAppearsTransparent = true
+        // Bug 6: end the live-resize guard after exit animation completes
+        videoView.videoLayer.liveResizeEnded()
         // Restore correct aspect ratio constraint after leaving fullscreen
         resizeWindowToVideo()
     }
@@ -2243,6 +2317,19 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
             }
             thumbnailMPV?.loadFile(path)
         }
+    }
+
+    /// Initialize thumbnail state for a streaming URL (Bug 4)
+    private func setupThumbnailGeneratorForUrl(_ url: String) {
+        thumbnailCache.removeAll()
+        lastThumbnailTime = -1
+        isGeneratingThumbnail = false
+        pendingThumbnailTime = -1
+
+        if thumbnailMPV == nil {
+            thumbnailMPV = ThumbnailMPV()
+        }
+        thumbnailMPV?.loadUrl(url)
     }
 
     /// Lazily create the preview popup view
@@ -2761,16 +2848,33 @@ private class ThumbnailMPV {
         }
     }
 
+    /// Load a streaming URL for thumbnail generation (Bug 4)
+    func loadUrl(_ url: String) {
+        guard let handle = handle else { return }
+        guard url != currentFile else { return }
+        currentFile = url
+
+        mpv_command_string(handle, "set pause yes")
+        let escaped = url.replacingOccurrences(of: "'", with: "'\\''")
+        mpv_command_string(handle, "loadfile '\(escaped)' replace")
+
+        // Wait for file load (longer timeout for network streams)
+        for _ in 0..<60 {
+            guard let event = mpv_wait_event(handle, 0.05) else { continue }
+            if event.pointee.event_id == MPV_EVENT_FILE_LOADED { break }
+        }
+    }
+
     /// Seek to time and take screenshot. Thread-safe. Returns resized NSImage or nil.
     func generateThumbnail(at time: Double) -> NSImage? {
         guard let handle = handle else { return nil }
 
         return queue.sync {
-            // Seek to the requested time (keyframe for speed)
-            mpv_command_string(handle, "seek \(time) absolute+keyframes")
+            // Bug 11: use absolute+exact so preview matches the clicked seek position
+            mpv_command_string(handle, "seek \(time) absolute+exact")
 
-            // Wait for seek to complete
-            for _ in 0..<15 {
+            // Wait for seek to complete (more iterations for exact seek)
+            for _ in 0..<20 {
                 guard let event = mpv_wait_event(handle, 0.03) else { continue }
                 let eid = event.pointee.event_id
                 if eid == MPV_EVENT_PLAYBACK_RESTART { break }
