@@ -29,7 +29,7 @@ float get_luma(float2 mtlPos, sampler textureSampler, texture2d<float, access::s
 	return dot(float4(0.299, 0.587, 0.114, 0.0), rgba);
 }
 
-float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> MAIN) {
+static float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> MAIN) {
     return float4(get_luma(mtlPos, textureSampler, HOOKED, MAIN, HOOKED_tex(HOOKED_pos)), 0.0, 0.0, 0.0);
 }
 
@@ -73,7 +73,7 @@ using mat4 = float4x4;
 #define MAIN_tex(pos) MAIN.sample(textureSampler, pos)
 #define MAIN_texOff(off) MAIN_tex(MAIN_pos + MAIN_pt * float2(off))
 
-float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LINELUMA, texture2d<float, access::sample> MAIN) {
+static float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LINELUMA, texture2d<float, access::sample> MAIN) {
 	float2 d = HOOKED_pt;
 
 	//[tl  t tr]
@@ -171,7 +171,7 @@ float power_function(float2 mtlPos, sampler textureSampler, texture2d<float, acc
 	return P5*x5 + P4*x4 + P3*x3 + P2*x2 + P1*x + P0;
 }
 
-float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LUMAD, texture2d<float, access::sample> MAIN) {
+static float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LUMAD, texture2d<float, access::sample> MAIN) {
 	float2 d = HOOKED_pt;
 
 	//[tl  t tr]
@@ -248,7 +248,7 @@ using mat4 = float4x4;
 #define MAIN_tex(pos) MAIN.sample(textureSampler, pos)
 #define MAIN_texOff(off) MAIN_tex(MAIN_pos + MAIN_pt * float2(off))
 
-float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LUMAD, texture2d<float, access::sample> MAIN) {
+static float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LUMAD, texture2d<float, access::sample> MAIN) {
 	float2 d = HOOKED_pt;
 
 	if (LUMAD_tex(HOOKED_pos).y < 0.1) {
@@ -325,7 +325,7 @@ using mat4 = float4x4;
 #define MAIN_tex(pos) MAIN.sample(textureSampler, pos)
 #define MAIN_texOff(off) MAIN_tex(MAIN_pos + MAIN_pt * float2(off))
 
-float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LUMAD, texture2d<float, access::sample> LUMAMM, texture2d<float, access::sample> MAIN) {
+static float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LUMAD, texture2d<float, access::sample> LUMAMM, texture2d<float, access::sample> MAIN) {
 	float2 d = HOOKED_pt;
 
 	if (LUMAD_tex(HOOKED_pos).y < 0.1) {
@@ -413,7 +413,7 @@ using mat4 = float4x4;
 #define MAIN_tex(pos) MAIN.sample(textureSampler, pos)
 #define MAIN_texOff(off) MAIN_tex(MAIN_pos + MAIN_pt * float2(off))
 
-float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LUMAD, texture2d<float, access::sample> LUMAMM, texture2d<float, access::sample> MAIN) {
+static float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LUMAD, texture2d<float, access::sample> LUMAMM, texture2d<float, access::sample> MAIN) {
 	float2 d = HOOKED_pt;
 
 	float dval = LUMAD_tex(HOOKED_pos).y;
@@ -482,7 +482,7 @@ using mat4 = float4x4;
 #define MAIN_tex(pos) MAIN.sample(textureSampler, pos)
 #define MAIN_texOff(off) MAIN_tex(MAIN_pos + MAIN_pt * float2(off))
 
-float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> RESAMPLED, texture2d<float, access::sample> MAIN) {
+static float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> RESAMPLED, texture2d<float, access::sample> MAIN) {
 	return RESAMPLED_tex(HOOKED_pos);
 }
 

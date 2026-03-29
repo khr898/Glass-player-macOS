@@ -46,7 +46,7 @@ float gaussian(float2 mtlPos, sampler textureSampler, texture2d<float, access::s
 	return exp(-0.5 * scaled * scaled);
 }
 
-float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> MAIN) {
+static float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> MAIN) {
 	float4 sum = float4(0.0);
 	float4 n = float4(0.0);
 

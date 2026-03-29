@@ -29,7 +29,7 @@ float get_luma(float2 mtlPos, sampler textureSampler, texture2d<float, access::s
 	return dot(float4(0.299, 0.587, 0.114, 0.0), rgba);
 }
 
-float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> MAIN) {
+static float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> MAIN) {
     return float4(get_luma(mtlPos, textureSampler, HOOKED, MAIN, HOOKED_tex(HOOKED_pos)), 0.0, 0.0, 0.0);
 }
 
@@ -109,7 +109,7 @@ float4 getMedian(float2 mtlPos, sampler textureSampler, texture2d<float, access:
 	}
 }
 
-float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LINELUMA, texture2d<float, access::sample> MAIN) {
+static float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LINELUMA, texture2d<float, access::sample> MAIN) {
 	float4 histogram_v[KERNELLEN];
 	float histogram_l[KERNELLEN];
 	float histogram_w[KERNELLEN];

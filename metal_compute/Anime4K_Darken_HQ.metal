@@ -29,7 +29,7 @@ float get_luma(float2 mtlPos, sampler textureSampler, texture2d<float, access::s
 	return dot(float4(0.299, 0.587, 0.114, 0.0), rgba);
 }
 
-float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> MAIN) {
+static float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> MAIN) {
     return float4(get_luma(mtlPos, textureSampler, HOOKED, MAIN, HOOKED_tex(HOOKED_pos)), 0.0, 0.0, 0.0);
 }
 
@@ -101,7 +101,7 @@ float comp_gaussian_x(float2 mtlPos, sampler textureSampler, texture2d<float, ac
 	return g / gn;
 }
 
-float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LINELUMA, texture2d<float, access::sample> MAIN) {
+static float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LINELUMA, texture2d<float, access::sample> MAIN) {
     return float4(comp_gaussian_x(mtlPos, textureSampler, HOOKED, LINELUMA, MAIN), 0.0, 0.0, 0.0);
 }
 
@@ -184,7 +184,7 @@ float comp_gaussian_y(float2 mtlPos, sampler textureSampler, texture2d<float, ac
 	return g / gn;
 }
 
-float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LINELUMA, texture2d<float, access::sample> LINEKERNEL, texture2d<float, access::sample> MAIN) {
+static float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LINELUMA, texture2d<float, access::sample> LINEKERNEL, texture2d<float, access::sample> MAIN) {
     return float4(min(LINELUMA_tex(HOOKED_pos).x - comp_gaussian_y(mtlPos, textureSampler, HOOKED, LINELUMA, LINEKERNEL, MAIN), 0.0), 0.0, 0.0, 0.0);
 }
 
@@ -262,7 +262,7 @@ float comp_gaussian_x(float2 mtlPos, sampler textureSampler, texture2d<float, ac
 	return g / gn;
 }
 
-float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LINEKERNEL, texture2d<float, access::sample> MAIN) {
+static float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LINEKERNEL, texture2d<float, access::sample> MAIN) {
     return float4(comp_gaussian_x(mtlPos, textureSampler, HOOKED, LINEKERNEL, MAIN), 0.0, 0.0, 0.0);
 }
 
@@ -343,7 +343,7 @@ float comp_gaussian_y(float2 mtlPos, sampler textureSampler, texture2d<float, ac
 
 #define STRENGTH 1.5 //Line darken proportional strength, higher is darker.
 
-float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LINEKERNEL, texture2d<float, access::sample> MAIN) {
+static float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LINEKERNEL, texture2d<float, access::sample> MAIN) {
 	//This trick is only possible if the inverse Y->RGB matrix has 1 for every row... (which is the case for BT.709)
 	//Otherwise we would need to convert RGB to YUV, modify Y then convert back to RGB.
     return HOOKED_tex(HOOKED_pos) + (comp_gaussian_y(mtlPos, textureSampler, HOOKED, LINEKERNEL, MAIN) * STRENGTH);

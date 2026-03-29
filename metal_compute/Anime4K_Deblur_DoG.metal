@@ -29,7 +29,7 @@ float get_luma(float2 mtlPos, sampler textureSampler, texture2d<float, access::s
 	return dot(float4(0.299, 0.587, 0.114, 0.0), rgba);
 }
 
-float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> MAIN) {
+static float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> MAIN) {
     return float4(get_luma(mtlPos, textureSampler, HOOKED, MAIN, HOOKED_tex(HOOKED_pos)), 0.0, 0.0, 0.0);
 }
 
@@ -99,7 +99,7 @@ float lumGaussian7(float2 mtlPos, sampler textureSampler, texture2d<float, acces
 }
 
 
-float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LINELUMA, texture2d<float, access::sample> MAIN) {
+static float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LINELUMA, texture2d<float, access::sample> MAIN) {
     return float4(lumGaussian7(mtlPos, textureSampler, HOOKED, LINELUMA, MAIN, HOOKED_pos, float2(HOOKED_pt.x, 0.0)), minmax3(mtlPos, textureSampler, HOOKED, LINELUMA, MAIN, HOOKED_pos, float2(HOOKED_pt.x, 0.0)), 0.0);
 }
 
@@ -174,7 +174,7 @@ float lumGaussian7(float2 mtlPos, sampler textureSampler, texture2d<float, acces
 }
 
 
-float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> MMKERNEL, texture2d<float, access::sample> MAIN) {
+static float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> MMKERNEL, texture2d<float, access::sample> MAIN) {
     return float4(lumGaussian7(mtlPos, textureSampler, HOOKED, MMKERNEL, MAIN, HOOKED_pos, float2(0.0, HOOKED_pt.y)), minmax3(mtlPos, textureSampler, HOOKED, MMKERNEL, MAIN, HOOKED_pos, float2(0.0, HOOKED_pt.y)), 0.0);
 }
 
@@ -232,7 +232,7 @@ using mat4 = float4x4;
 
 #define L_tex LINELUMA_tex
 
-float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LINELUMA, texture2d<float, access::sample> MMKERNEL, texture2d<float, access::sample> MAIN) {
+static float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LINELUMA, texture2d<float, access::sample> MMKERNEL, texture2d<float, access::sample> MAIN) {
 	float c = (L_tex(HOOKED_pos).x - MMKERNEL_tex(HOOKED_pos).x) * STRENGTH;
 
 	float t_range = BLUR_THRESHOLD - NOISE_THRESHOLD;
