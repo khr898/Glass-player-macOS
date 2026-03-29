@@ -617,7 +617,7 @@ float gaussian(float2 mtlPos, sampler textureSampler, texture2d<float, access::s
 	return (1.0 / (s * sqrt(2.0 * 3.14159))) * exp(-0.5 * pow(abs(x - m) / s, 2.0));
 }
 
-float lumGaussian(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LUMAD, texture2d<float, access::sample> MAIN, float2 pos, float2 d) {
+float lumGaussian(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LUMAD, texture2d<float, access::sample> MAIN, float2 pos, float2 d, int KERNELSIZE, int KERNELHALFSIZE) {
 	float g = (L_tex(pos).x) * gaussian(mtlPos, textureSampler, HOOKED, LUMAD, MAIN, 0.0, SIGMA, 0.0);
 	g = g + (L_tex(pos - d).x + L_tex(pos + d).x) * gaussian(mtlPos, textureSampler, HOOKED, LUMAD, MAIN, 1.0, SIGMA, 0.0);
 	for (int i=2; float(i)<KERNELSIZE; i++) {
@@ -688,7 +688,7 @@ float gaussian(float2 mtlPos, sampler textureSampler, texture2d<float, access::s
 	return (1.0 / (s * sqrt(2.0 * 3.14159))) * exp(-0.5 * pow(abs(x - m) / s, 2.0));
 }
 
-float lumGaussian(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LUMAD, texture2d<float, access::sample> LUMADG, texture2d<float, access::sample> MAIN, float2 pos, float2 d) {
+float lumGaussian(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LUMAD, texture2d<float, access::sample> LUMADG, texture2d<float, access::sample> MAIN, float2 pos, float2 d, int KERNELSIZE, int KERNELHALFSIZE) {
 	float g = (L_tex(pos).x) * gaussian(mtlPos, textureSampler, HOOKED, LUMAD, LUMADG, MAIN, 0.0, SIGMA, 0.0);
 	g = g + (L_tex(pos - d).x + L_tex(pos + d).x) * gaussian(mtlPos, textureSampler, HOOKED, LUMAD, LUMADG, MAIN, 1.0, SIGMA, 0.0);
 	for (int i=2; float(i)<KERNELSIZE; i++) {

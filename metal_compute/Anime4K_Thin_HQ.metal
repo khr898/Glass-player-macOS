@@ -181,7 +181,7 @@ using mat4 = float4x4;
 #define MAIN_tex(pos) MAIN.sample(textureSampler, pos)
 #define MAIN_texOff(off) MAIN_tex(MAIN_pos + MAIN_pt * float2(off))
 
-    // SPATIAL_SIGMA = 2.0 * float(HOOKED.get_height()) / 1080.0  (computed in kernel below)
+// // SPATIAL_SIGMA = 2.0 * float(HOOKED.get_height()) / 1080.0  (computed in kernel below)
 
     // #define KERNELSIZE (max(int(ceil(SPATIAL_SIGMA * 2.0)), 1) * 2 + 1) //Kernel size, must be an positive odd integer.  (computed dynamically below)
     // #define KERNELHALFSIZE (int(KERNELSIZE/2)) //Half of the kernel size without remainder. Must be equal to trunc(KERNELSIZE/2).  (computed dynamically below)
@@ -192,7 +192,7 @@ float gaussian(float2 mtlPos, sampler textureSampler, texture2d<float, access::s
 	return exp(-0.5 * scaled * scaled);
 }
 
-float comp_gaussian_x(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LINESOBEL, texture2d<float, access::sample> MAIN) {
+float comp_gaussian_x(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LINESOBEL, texture2d<float, access::sample> MAIN, int KERNELSIZE, int KERNELHALFSIZE) {
 
 	float g = 0.0;
 	float gn = 0.0;
@@ -221,10 +221,6 @@ kernel void Anime4K_Thin_HQ_pass3_Anime4K_v3_2_Thin_HQ_Gaussian_X(
     uint2 gid [[thread_position_in_grid]],
     sampler textureSampler [[sampler(0)]]) {
     float2 mtlPos = float2(gid) / (float2(output.get_width(), output.get_height()) - float2(1, 1));
-    const float SPATIAL_SIGMA = 2.0 * float(HOOKED.get_height()) / 1080.0;
-    const int KERNELSIZE = max(int(ceil(SPATIAL_SIGMA * 2.0)), 1) * 2 + 1;
-    const int KERNELHALFSIZE = int(KERNELSIZE / 2);
-    const int KERNELLEN = KERNELSIZE * KERNELSIZE;
     output.write(hook_pass3(mtlPos, textureSampler, HOOKED, LINESOBEL, MAIN), gid);
 }
 
@@ -258,7 +254,7 @@ using mat4 = float4x4;
 #define MAIN_tex(pos) MAIN.sample(textureSampler, pos)
 #define MAIN_texOff(off) MAIN_tex(MAIN_pos + MAIN_pt * float2(off))
 
-    // SPATIAL_SIGMA = 2.0 * float(HOOKED.get_height()) / 1080.0  (computed in kernel below)
+// // SPATIAL_SIGMA = 2.0 * float(HOOKED.get_height()) / 1080.0  (computed in kernel below)
 
     // #define KERNELSIZE (max(int(ceil(SPATIAL_SIGMA * 2.0)), 1) * 2 + 1) //Kernel size, must be an positive odd integer.  (computed dynamically below)
     // #define KERNELHALFSIZE (int(KERNELSIZE/2)) //Half of the kernel size without remainder. Must be equal to trunc(KERNELSIZE/2).  (computed dynamically below)
@@ -269,7 +265,7 @@ float gaussian(float2 mtlPos, sampler textureSampler, texture2d<float, access::s
 	return exp(-0.5 * scaled * scaled);
 }
 
-float comp_gaussian_y(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LINESOBEL, texture2d<float, access::sample> MAIN) {
+float comp_gaussian_y(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LINESOBEL, texture2d<float, access::sample> MAIN, int KERNELSIZE, int KERNELHALFSIZE) {
 
 	float g = 0.0;
 	float gn = 0.0;
@@ -298,10 +294,6 @@ kernel void Anime4K_Thin_HQ_pass4_Anime4K_v3_2_Thin_HQ_Gaussian_Y(
     uint2 gid [[thread_position_in_grid]],
     sampler textureSampler [[sampler(0)]]) {
     float2 mtlPos = float2(gid) / (float2(output.get_width(), output.get_height()) - float2(1, 1));
-    const float SPATIAL_SIGMA = 2.0 * float(HOOKED.get_height()) / 1080.0;
-    const int KERNELSIZE = max(int(ceil(SPATIAL_SIGMA * 2.0)), 1) * 2 + 1;
-    const int KERNELHALFSIZE = int(KERNELSIZE / 2);
-    const int KERNELLEN = KERNELSIZE * KERNELSIZE;
     output.write(hook_pass4(mtlPos, textureSampler, HOOKED, LINESOBEL, MAIN), gid);
 }
 
