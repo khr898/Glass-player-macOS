@@ -786,26 +786,15 @@ class SettingsWindow: NSWindowController, NSTableViewDelegate, NSTableViewDataSo
         let container = scroll.documentView!
 
         var views: [NSView] = []
-        views.append(makeSectionHeader("Anime4K Shaders"))
+        views.append(makeSectionHeader("Anime4K Enhancement"))
 
         views.append(makeDescriptionLabel(
-            "Anime4K shaders enhance anime visuals using real-time GPU processing. " +
+            "Anime4K enhances anime visuals using native Metal compute shaders on Apple Silicon GPU. " +
             "HQ presets require M1 Pro/Max or better. Fast presets work on all Apple Silicon."
         ))
 
         views.append(makePopUpRow(
-            title: "Shader Backend",
-            key: "anime4KBackend",
-            options: ["Native Metal (Recommended)", "GLSL (mpv)"],
-            defaultValue: "Native Metal (Recommended)"
-        ))
-        views.append(makeDescriptionLabel(
-            "Native Metal uses Apple Silicon GPU compute shaders for better performance. " +
-            "GLSL uses mpv's software shader path (compatible with all systems)."
-        ))
-
-        views.append(makePopUpRow(
-            title: "Default Preset",
+            title: "Preset",
             key: "defaultShaderPreset",
             options: ["Off", "Auto (Recommended)", "Mode A (HQ)", "Mode B (HQ)", "Mode C (HQ)",
                       "Mode A+A (HQ)", "Mode B+B (HQ)", "Mode C+A (HQ)",
@@ -820,7 +809,7 @@ class SettingsWindow: NSWindowController, NSTableViewDelegate, NSTableViewDataSo
         ))
 
         views.append(makeRestoreDefaultsButton(keys: [
-            "anime4KBackend", "defaultShaderPreset", "autoApplyShaders"
+            "defaultShaderPreset", "autoApplyShaders"
         ]))
 
         addViewsToContainer(container, views: views)
@@ -1083,16 +1072,6 @@ class SettingsWindow: NSWindowController, NSTableViewDelegate, NSTableViewDataSo
 
     /// Apply a settings change to all open player windows' mpv instances.
     private func applySettingToMPV(key: String, value: String) {
-        // Special handling for Anime4K backend setting
-        if key == "anime4KBackend" {
-            let useMetal = value == "Native Metal (Recommended)"
-            guard let appDelegate = NSApp.delegate as? AppDelegate else { return }
-            for pw in appDelegate.playerWindows {
-                pw.mpv.setShaderBackend(useMetal)
-            }
-            return
-        }
-
         // Special handling for shader preset setting
         if key == "defaultShaderPreset" {
             guard let appDelegate = NSApp.delegate as? AppDelegate else { return }

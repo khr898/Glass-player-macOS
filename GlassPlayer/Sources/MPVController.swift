@@ -80,111 +80,6 @@ protocol MPVControllerDelegate: AnyObject {
     func mpvTracksChanged(_ tracks: [TrackInfo])
 }
 
-// ---------------------------------------------------------------------------
-// Anime4K shader presets (matches the Electron version exactly)
-// ---------------------------------------------------------------------------
-let kShaderPresets: [String: [String]] = [
-    // ── HQ Presets (higher-end GPU: M1 Pro/Max, M2 Pro/Max, M3/M4) ──
-    "Mode A (HQ)": [
-        "Anime4K_Clamp_Highlights.glsl",
-        "Anime4K_Restore_CNN_VL.glsl",
-        "Anime4K_Upscale_CNN_x2_VL.glsl",
-        "Anime4K_AutoDownscalePre_x2.glsl",
-        "Anime4K_AutoDownscalePre_x4.glsl",
-        "Anime4K_Upscale_CNN_x2_M.glsl",
-    ],
-    "Mode B (HQ)": [
-        "Anime4K_Clamp_Highlights.glsl",
-        "Anime4K_Restore_CNN_Soft_VL.glsl",
-        "Anime4K_Upscale_CNN_x2_VL.glsl",
-        "Anime4K_AutoDownscalePre_x2.glsl",
-        "Anime4K_AutoDownscalePre_x4.glsl",
-        "Anime4K_Upscale_CNN_x2_M.glsl",
-    ],
-    "Mode C (HQ)": [
-        "Anime4K_Clamp_Highlights.glsl",
-        "Anime4K_Upscale_Denoise_CNN_x2_VL.glsl",
-        "Anime4K_AutoDownscalePre_x2.glsl",
-        "Anime4K_AutoDownscalePre_x4.glsl",
-        "Anime4K_Upscale_CNN_x2_M.glsl",
-    ],
-    "Mode A+A (HQ)": [
-        "Anime4K_Clamp_Highlights.glsl",
-        "Anime4K_Restore_CNN_VL.glsl",
-        "Anime4K_Upscale_CNN_x2_VL.glsl",
-        "Anime4K_Restore_CNN_M.glsl",
-        "Anime4K_AutoDownscalePre_x2.glsl",
-        "Anime4K_AutoDownscalePre_x4.glsl",
-        "Anime4K_Upscale_CNN_x2_M.glsl",
-    ],
-    "Mode B+B (HQ)": [
-        "Anime4K_Clamp_Highlights.glsl",
-        "Anime4K_Restore_CNN_Soft_VL.glsl",
-        "Anime4K_Upscale_CNN_x2_VL.glsl",
-        "Anime4K_Restore_CNN_Soft_M.glsl",
-        "Anime4K_AutoDownscalePre_x2.glsl",
-        "Anime4K_AutoDownscalePre_x4.glsl",
-        "Anime4K_Upscale_CNN_x2_M.glsl",
-    ],
-    "Mode C+A (HQ)": [
-        "Anime4K_Clamp_Highlights.glsl",
-        "Anime4K_Upscale_Denoise_CNN_x2_VL.glsl",
-        "Anime4K_AutoDownscalePre_x2.glsl",
-        "Anime4K_AutoDownscalePre_x4.glsl",
-        "Anime4K_Restore_CNN_M.glsl",
-        "Anime4K_Upscale_CNN_x2_M.glsl",
-    ],
-    // ── Fast Presets (lower-end GPU: M1, M2, Intel) ──
-    "Mode A (Fast)": [
-        "Anime4K_Clamp_Highlights.glsl",
-        "Anime4K_Restore_CNN_M.glsl",
-        "Anime4K_Upscale_CNN_x2_M.glsl",
-        "Anime4K_AutoDownscalePre_x2.glsl",
-        "Anime4K_AutoDownscalePre_x4.glsl",
-        "Anime4K_Upscale_CNN_x2_S.glsl",
-    ],
-    "Mode B (Fast)": [
-        "Anime4K_Clamp_Highlights.glsl",
-        "Anime4K_Restore_CNN_Soft_M.glsl",
-        "Anime4K_Upscale_CNN_x2_M.glsl",
-        "Anime4K_AutoDownscalePre_x2.glsl",
-        "Anime4K_AutoDownscalePre_x4.glsl",
-        "Anime4K_Upscale_CNN_x2_S.glsl",
-    ],
-    "Mode C (Fast)": [
-        "Anime4K_Clamp_Highlights.glsl",
-        "Anime4K_Upscale_Denoise_CNN_x2_M.glsl",
-        "Anime4K_AutoDownscalePre_x2.glsl",
-        "Anime4K_AutoDownscalePre_x4.glsl",
-        "Anime4K_Upscale_CNN_x2_S.glsl",
-    ],
-    "Mode A+A (Fast)": [
-        "Anime4K_Clamp_Highlights.glsl",
-        "Anime4K_Restore_CNN_M.glsl",
-        "Anime4K_Upscale_CNN_x2_M.glsl",
-        "Anime4K_Restore_CNN_S.glsl",
-        "Anime4K_AutoDownscalePre_x2.glsl",
-        "Anime4K_AutoDownscalePre_x4.glsl",
-        "Anime4K_Upscale_CNN_x2_S.glsl",
-    ],
-    "Mode B+B (Fast)": [
-        "Anime4K_Clamp_Highlights.glsl",
-        "Anime4K_Restore_CNN_Soft_M.glsl",
-        "Anime4K_Upscale_CNN_x2_M.glsl",
-        "Anime4K_AutoDownscalePre_x2.glsl",
-        "Anime4K_AutoDownscalePre_x4.glsl",
-        "Anime4K_Restore_CNN_Soft_S.glsl",
-        "Anime4K_Upscale_CNN_x2_S.glsl",
-    ],
-    "Mode C+A (Fast)": [
-        "Anime4K_Clamp_Highlights.glsl",
-        "Anime4K_Upscale_Denoise_CNN_x2_M.glsl",
-        "Anime4K_AutoDownscalePre_x2.glsl",
-        "Anime4K_AutoDownscalePre_x4.glsl",
-        "Anime4K_Restore_CNN_S.glsl",
-        "Anime4K_Upscale_CNN_x2_S.glsl",
-    ],
-]
 
 // ---------------------------------------------------------------------------
 // MPVController – manages mpv handle, render context, event loop & properties
@@ -207,12 +102,8 @@ class MPVController {
 
     // Parsed track list
     var tracks: [TrackInfo] = []
-    // Current shader preset name (nil = none)
+    // Current Anime4K Metal preset name (nil = disabled)
     var currentShaderPreset: String?
-    // Whether shaders are available
-    var shadersAvailable: Bool = false
-    // Shader directory path
-    var shaderDir: String?
     // Power source state: true = AC, false = battery
     private var isOnAC: Bool = true
     // Power source notification run loop source
@@ -269,9 +160,6 @@ class MPVController {
             NSLog("[MPV] Loading config from: %@", configDir)
         }
 
-        // Find shaders
-        findShaders(contentsDir: contentsDir)
-
         // 3. Initialize mpv
         let err = mpv_initialize(mpvHandle!)
         if err < 0 {
@@ -306,31 +194,6 @@ class MPVController {
         setupPowerSourceMonitoring()
 
         NSLog("[MPV] Initialized successfully")
-    }
-
-    // MARK: - Shader Discovery
-
-    private func findShaders(contentsDir: String) {
-        let bundleShaders = contentsDir + "/Resources/shaders"
-        let home = NSHomeDirectory()
-        let candidates = [
-            bundleShaders,
-            home + "/.config/mpv/shaders",
-            home + "/Library/Application Support/mpv/shaders",
-            home + "/.mpv/shaders",
-        ]
-        for dir in candidates {
-            if FileManager.default.fileExists(atPath: dir) {
-                let files = (try? FileManager.default.contentsOfDirectory(atPath: dir)) ?? []
-                if files.contains(where: { $0.contains("Anime4K") }) {
-                    shaderDir = dir
-                    shadersAvailable = true
-                    NSLog("[MPV] Found Anime4K shaders in: %@", dir)
-                    return
-                }
-            }
-        }
-        NSLog("[MPV] No Anime4K shaders found")
     }
 
     // MARK: - Power Source Monitoring (Bug 10: battery-aware quality)
@@ -384,10 +247,10 @@ class MPVController {
             NSLog("[MPV] Power: AC — high-quality profile active")
         } else {
             mpv_command_string(mpvHandle, "set profile default")
-            // Also clear active shaders on battery to reduce GPU load
+            // Also disable Anime4K Metal pipeline on battery to reduce GPU load
             if currentShaderPreset != nil {
-                mpv_command_string(mpvHandle, "change-list glsl-shaders clr \"\"")
-                NSLog("[MPV] Power: Battery — cleared shaders, default profile active")
+                clearShaders()
+                NSLog("[MPV] Power: Battery — cleared Anime4K Metal pipeline")
             } else {
                 NSLog("[MPV] Power: Battery — default profile active")
             }
@@ -758,90 +621,44 @@ class MPVController {
         return badges
     }
 
-    // MARK: - Anime4K Shader Presets
+    // MARK: - Anime4K Metal Pipeline
 
     /// Weak reference to the ViewLayer for Metal pipeline control
     weak var viewLayer: ViewLayer?
 
-    /// Whether to use native Metal pipeline for Anime4K (true) or GLSL shaders via mpv (false)
-    var useMetalPipeline: Bool = false
-
-    /// Apply an Anime4K shader preset.
-    /// If useMetalPipeline is true and the preset is available, uses the native Metal compute pipeline.
-    /// Otherwise, falls back to GLSL shaders via mpv's glsl-shaders property.
+    /// Apply an Anime4K shader preset using the native Metal compute pipeline.
+    /// All Anime4K processing is done via Metal compute shaders - no GLSL involved.
     func applyShaderPreset(_ preset: String) -> Bool {
-        // Try Metal pipeline first if enabled
-        if useMetalPipeline, let layer = viewLayer {
-            if layer.enableAnime4K(preset: preset) {
-                currentShaderPreset = preset
-                // Clear any GLSL shaders to prevent double-processing
-                clearGLSLShaders()
-                NSLog("[MPV] Applied Metal Anime4K preset: %@", preset)
-                return true
-            }
-            // Metal pipeline failed, fall back to GLSL
-            NSLog("[MPV] Metal pipeline failed for preset %@, falling back to GLSL", preset)
-        }
-
-        // Fall back to GLSL shaders via mpv
-        guard let dir = shaderDir else {
-            NSLog("[MPV] No shader directory available")
-            return false
-        }
-        guard let shaderNames = kShaderPresets[preset] else {
-            NSLog("[MPV] Unknown preset: %@", preset)
+        guard let layer = viewLayer else {
+            NSLog("[MPV] No ViewLayer reference for Metal pipeline")
             return false
         }
 
-        let paths = shaderNames
-            .map { "\(dir)/\($0)" }
-            .filter { FileManager.default.fileExists(atPath: $0) }
+        if layer.enableAnime4K(preset: preset) {
+            currentShaderPreset = preset
+            NSLog("[MPV] Applied Metal Anime4K preset: %@", preset)
+            return true
+        }
 
-        guard !paths.isEmpty else { return false }
-
-        let joined = paths.joined(separator: ":")
-        mpv_command_string(mpvHandle, "change-list glsl-shaders set \"\(joined)\"")
-        currentShaderPreset = preset
-        NSLog("[MPV] Applied GLSL shader preset: %@ (%d shaders)", preset, paths.count)
-        return true
+        NSLog("[MPV] Failed to apply Metal Anime4K preset: %@", preset)
+        return false
     }
 
-    /// Clear all Anime4K shaders (both Metal and GLSL)
+    /// Clear Anime4K Metal pipeline
     func clearShaders() {
-        // Disable Metal pipeline
-        if useMetalPipeline, let layer = viewLayer {
-            layer.disableAnime4K()
-        }
-        // Clear GLSL shaders
-        clearGLSLShaders()
+        viewLayer?.disableAnime4K()
         currentShaderPreset = nil
-        NSLog("[MPV] Shaders cleared")
+        NSLog("[MPV] Cleared Anime4K Metal pipeline")
     }
 
-    /// Clear only GLSL shaders (used when switching to Metal pipeline)
-    private func clearGLSLShaders() {
-        mpv_command_string(mpvHandle, "change-list glsl-shaders clr \"\"")
-    }
-
-    /// Switch between Metal and GLSL shader backend
-    func setShaderBackend(_ useMetal: Bool) {
-        useMetalPipeline = useMetal
-        if useMetal {
-            // Clear any active GLSL shaders
-            clearGLSLShaders()
-            // Re-apply current preset with Metal pipeline if one was active
-            if let preset = currentShaderPreset {
-                _ = applyShaderPreset(preset)
-            }
+    /// Set Anime4K preset directly (alias for applyShaderPreset)
+    func setShaderPreset(_ preset: String) {
+        if preset.isEmpty || preset == "Off" {
+            clearShaders()
         } else {
-            // Disable Metal pipeline
-            viewLayer?.disableAnime4K()
-            // Re-apply current preset with GLSL if one was active
-            if let preset = currentShaderPreset {
-                _ = applyShaderPreset(preset)
-            }
+            _ = applyShaderPreset(preset)
         }
-        NSLog("[MPV] Shader backend: %@", useMetal ? "Metal" : "GLSL")
+    }
     }
 
     // MARK: - Property observation
