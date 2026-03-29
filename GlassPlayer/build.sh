@@ -118,19 +118,22 @@ if [ -d "$METAL_COMPUTE_DIR" ] && xcrun --find metal >/dev/null 2>&1; then
     echo "  Compiling Anime4K compute shaders..."
     mkdir -p "$BUILD_DIR/anime4k_metallib"
 
-    # Compile each .metal file to .air
+    # Compile each .metal file to .air with error capture
     COMPILE_OK=true
     for metal_file in "$METAL_COMPUTE_DIR"/*.metal; do
         if [ -f "$metal_file" ]; then
             basename=$(basename "$metal_file" .metal)
             air_file="$BUILD_DIR/anime4k_metallib/${basename}.air"
+            err_file="$BUILD_DIR/anime4k_metallib/${basename}.err"
             if xcrun metal -c "$metal_file" \
                 -o "$air_file" \
                 -std=metal3.0 \
-                -target air64-apple-macos14.0 2>/dev/null; then
+                -target air64-apple-macos14.0 \
+                2>"$err_file"; then
                 echo "    ✓ $basename"
             else
                 echo "    ✗ $basename (compilation failed)"
+                echo "    Error: $(head -1 "$err_file")"
                 COMPILE_OK=false
             fi
         fi
@@ -145,9 +148,11 @@ if [ -d "$METAL_COMPUTE_DIR" ] && xcrun --find metal >/dev/null 2>&1; then
         else
             echo "  ✗ Failed to link Anime4K.metallib"
         fi
+    else
+        echo "  Note: Some shaders failed. Check errors above."
     fi
 
-    rm -rf "$BUILD_DIR/anime4k_metallib"
+    rm -rf "$BUILD_DIR/anime4k_metallib"/*.err
     rm -f "$BUILD_DIR/Shaders.air"
 elif [ -d "$METAL_COMPUTE_DIR" ]; then
     echo "  Metal toolchain not found – Anime4K shaders will compile at runtime"
