@@ -372,8 +372,8 @@ class Anime4KMetalPipeline {
 
                 encoder.dispatchThreads(threadGroups, threadsPerThreadgroup: threadGroupSize)
 
-                // Add barrier to ensure write completes before next pass reads
-                encoder.memoryBarrier(scope: .texture)
+                // Note: Metal automatically handles resource barriers for texture read/write
+                // Explicit barriers not needed for simple pass chaining
 
                 // Next pass reads from this pass's output
                 currentInput = outputTexture
