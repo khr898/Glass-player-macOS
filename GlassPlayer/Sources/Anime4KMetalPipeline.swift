@@ -340,9 +340,6 @@ class Anime4KMetalPipeline {
 
                 encoder.setComputePipelineState(pipeline)
 
-                // Bind input texture at index 0
-                encoder.setTexture(currentInput, index: 0)
-
                 // Determine output texture
                 let outputTexture: MTLTexture
                 if index == preset.passes.count - 1 && kernelName == kernelNames.last! {
@@ -354,8 +351,10 @@ class Anime4KMetalPipeline {
                     outputTexture = intermediateTextures[index].texture
                 }
 
-                // Bind output texture at index 1
-                encoder.setTexture(outputTexture, index: 1)
+                // Bind textures: index 0 = HOOKED (current input), index 1 = MAIN (same as HOOKED for most passes), index 2 = output
+                encoder.setTexture(currentInput, index: 0)
+                encoder.setTexture(currentInput, index: 1)  // MAIN = HOOKED for most passes
+                encoder.setTexture(outputTexture, index: 2)
 
                 // Bind sampler at index 0
                 encoder.setSamplerState(samplerState, index: 0)
