@@ -200,14 +200,14 @@ class Anime4KMetalPipeline {
 
         if FileManager.default.fileExists(atPath: metallibPath) {
             let url = URL(fileURLWithPath: metallibPath)
-            self.library = device.makeLibrary(url: url)
+            self.library = device.makeLibrary(URL: url)
             NSLog("[Anime4K] Loaded pre-compiled metallib from: %@", metallibPath)
         } else {
             // Fallback: try default.metallib (combined library)
             let defaultLibPath = contentsDir + "/Resources/default.metallib"
             if FileManager.default.fileExists(atPath: defaultLibPath) {
                 let url = URL(fileURLWithPath: defaultLibPath)
-                self.library = device.makeLibrary(url: url)
+                self.library = device.makeLibrary(URL: url)
                 NSLog("[Anime4K] Loaded combined metallib from: %@", defaultLibPath)
             } else {
                 NSLog("[Anime4K] No pre-compiled metallib found – runtime compilation required")

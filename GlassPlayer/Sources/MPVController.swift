@@ -659,7 +659,6 @@ class MPVController {
             _ = applyShaderPreset(preset)
         }
     }
-    }
 
     // MARK: - Property observation
 
