@@ -871,6 +871,7 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
     }
 
     @objc private func showShaderMenu(_ sender: NSButton) {
+        NSLog("[PlayerWindow] showShaderMenu called!")
         let menu = NSMenu()
         let recommendedPreset = UniversalMetalRuntime.recommendedAnime4KPreset()
 
