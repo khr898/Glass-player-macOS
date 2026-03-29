@@ -1100,7 +1100,7 @@ class SettingsWindow: NSWindowController, NSTableViewDelegate, NSTableViewDataSo
                 if value == "Off" {
                     pw.mpv.clearShaders()
                 } else {
-                    pw.mpv.applyShaderPreset(value)
+                    _ = pw.mpv.applyShaderPreset(value)
                 }
             }
             return

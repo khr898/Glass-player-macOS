@@ -831,14 +831,14 @@ class MPVController {
             clearGLSLShaders()
             // Re-apply current preset with Metal pipeline if one was active
             if let preset = currentShaderPreset {
-                applyShaderPreset(preset)
+                _ = applyShaderPreset(preset)
             }
         } else {
             // Disable Metal pipeline
             viewLayer?.disableAnime4K()
             // Re-apply current preset with GLSL if one was active
             if let preset = currentShaderPreset {
-                applyShaderPreset(preset)
+                _ = applyShaderPreset(preset)
             }
         }
         NSLog("[MPV] Shader backend: %@", useMetal ? "Metal" : "GLSL")

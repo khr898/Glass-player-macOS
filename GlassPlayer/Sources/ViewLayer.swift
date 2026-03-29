@@ -275,7 +275,7 @@ class ViewLayer: CAMetalLayer {
             if anime4KPreset != preset {
                 anime4KPipeline?.deactivate()
                 if let pipeline = Anime4KMetalPipeline(device: mtlDevice) {
-                    let dims = getDisplayDimensions()
+                    let dims = getLayerDimensions()
                     if pipeline.activatePreset(preset,
                                                inputWidth: Int(dims.width),
                                                inputHeight: Int(dims.height)) {
@@ -295,7 +295,7 @@ class ViewLayer: CAMetalLayer {
             return false
         }
 
-        let dims = getDisplayDimensions()
+        let dims = getLayerDimensions()
         if pipeline.activatePreset(preset,
                                    inputWidth: Int(dims.width),
                                    inputHeight: Int(dims.height)) {
@@ -323,6 +323,14 @@ class ViewLayer: CAMetalLayer {
     /// Get list of available Anime4K presets
     static var availableAnime4KPresets: [String] {
         return Array(Anime4KMetalPipeline.presetDefinitions.keys).sorted()
+    }
+
+    /// Get current layer dimensions for Anime4K processing
+    private func getLayerDimensions() -> (width: Int, height: Int) {
+        let scale = contentsScale
+        let w = max(1, Int(bounds.width * scale))
+        let h = max(1, Int(bounds.height * scale))
+        return (w, h)
     }
 
     // ═══════════════════════════════════════════════════════════════════

@@ -200,9 +200,7 @@ class Anime4KMetalPipeline {
 
         if FileManager.default.fileExists(atPath: metallibPath) {
             do {
-                let url = URL(fileURLWithPath: metallibPath)
-                let data = try Data(contentsOf: url)
-                self.library = try device.makeLibrary(data: data, options: nil)
+                self.library = try device.makeLibrary(filepath: metallibPath, options: nil)
                 NSLog("[Anime4K] Loaded pre-compiled metallib from: %@", metallibPath)
             } catch {
                 NSLog("[Anime4K] Failed to load metallib: \(error), falling back to runtime compilation")
@@ -215,9 +213,7 @@ class Anime4KMetalPipeline {
             let defaultLibPath = contentsDir + "/Resources/default.metallib"
             if FileManager.default.fileExists(atPath: defaultLibPath) {
                 do {
-                    let url = URL(fileURLWithPath: defaultLibPath)
-                    let data = try Data(contentsOf: url)
-                    self.library = try device.makeLibrary(data: data, options: nil)
+                    self.library = try device.makeLibrary(filepath: defaultLibPath, options: nil)
                     NSLog("[Anime4K] Loaded combined metallib from: %@", defaultLibPath)
                 } catch {
                     NSLog("[Anime4K] Failed to load default.metallib: \(error)")
@@ -233,7 +229,7 @@ class Anime4KMetalPipeline {
         let samplerDesc = MTLSamplerDescriptor()
         samplerDesc.minFilter = .linear
         samplerDesc.magFilter = .linear
-        samplerDesc.mipFilter = .none
+        samplerDesc.mipFilter = .notMipmapped
         samplerDesc.sAddressMode = .clampToEdge
         samplerDesc.tAddressMode = .clampToEdge
         samplerDesc.normalizedCoordinates = true
@@ -291,11 +287,6 @@ class Anime4KMetalPipeline {
         allocateIntermediateTextures(shaderFiles: shaderFiles,
                                      inputWidth: inputWidth,
                                      inputHeight: inputHeight)
-
-        // Create preset configuration
-        let passes = shaderFiles.map { filename in
-            ComputePass(kernelName: "", shaderFile: filename, passIndex: 0)
-        }
         currentPreset = Anime4KPreset(name: presetName, passes: shaderFiles)
 
         isActive = true
@@ -578,16 +569,9 @@ class Anime4KMetalPipeline {
             }
         }
 
-        // Fallback: try to find any kernel containing the shader name
-        let allFunctions = library.functions
-        let shaderPrefix = shaderFile.replacingOccurrences(of: ".metal", with: "")
-        let matchingNames = allFunctions.filter { $0.contains(shaderPrefix) }
-
-        if matchingNames.isEmpty {
-            NSLog("[Anime4K] No kernel functions found for shader: %@", shaderFile)
-        }
-
-        return matchingNames
+        // Fallback: return empty array - kernels must be found via explicit mapping
+        NSLog("[Anime4K] No kernel functions found for shader: %@", shaderFile)
+        return []
     }
 
     /// Allocate intermediate textures for pass chaining
@@ -600,7 +584,7 @@ class Anime4KMetalPipeline {
         var currentWidth = inputWidth
         var currentHeight = inputHeight
 
-        for (index, shaderFile) in shaderFiles.enumerated() {
+        for (_, shaderFile) in shaderFiles.enumerated() {
             // Check if this shader upscales
             let isUpscale = shaderFile.contains("Upscale") &&
                            !shaderFile.contains("AutoDownscale")
