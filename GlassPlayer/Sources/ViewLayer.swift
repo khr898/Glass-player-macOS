@@ -643,6 +643,9 @@ class ViewLayer: CAMetalLayer {
                     commandBuffer: cmdBuf) {
                 finalTexture = processedTexture
                 anime4KOutputTexture = processedTexture
+                // Add a blit encoder to create implicit barrier between compute and render
+                let blitEncoder = cmdBuf.makeBlitCommandEncoder()
+                blitEncoder?.endEncoding()
             }
         }
 

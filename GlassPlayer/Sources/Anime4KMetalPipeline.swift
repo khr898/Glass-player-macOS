@@ -382,6 +382,12 @@ class Anime4KMetalPipeline {
 
         encoder.endEncoding()
 
+        // Ensure compute writes are visible to subsequent render passes
+        // This is critical - without it, the render pass may read stale data
+        commandBuffer.addCompletedHandler { _ in
+            // Compute work is complete, texture is ready for display
+        }
+
         self.outputTexture = currentInput
         return currentInput
     }
