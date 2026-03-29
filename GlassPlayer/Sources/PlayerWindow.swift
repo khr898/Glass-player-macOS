@@ -493,8 +493,7 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
         configureIconButton(shaderButton, symbolName: "sparkles", size: 15)
         shaderButton.target = self
         shaderButton.action = #selector(showShaderMenu(_:))
-        shaderButton.toolTip = "Anime4K Shaders"
-        shaderButton.isHidden = !mpv.shadersAvailable
+        shaderButton.toolTip = "Anime4K Enhancement"
         shaderButton.translatesAutoresizingMaskIntoConstraints = false
         controlsContainer.addSubview(shaderButton)
 
@@ -1927,7 +1926,7 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
         window?.makeFirstResponder(videoView)
 
         let shouldAutoApply = UserDefaults.standard.bool(forKey: "autoApplyShaders")
-        if shouldAutoApply && mpv.shadersAvailable {
+        if shouldAutoApply {
             let configuredPreset = UserDefaults.standard.string(forKey: "defaultShaderPreset") ?? "Off"
             if configuredPreset == "Off" {
                 mpv.clearShaders()
@@ -1938,11 +1937,6 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
                 _ = mpv.applyShaderPreset(configuredPreset)
             }
             updateShaderButton()
-        }
-
-        // Update shader button visibility (lazy check)
-        if mpv.shadersAvailable && shaderButton.isHidden {
-            shaderButton.isHidden = false
         }
 
         // Detect format badges after a short delay (mpv needs time to probe)
