@@ -314,13 +314,16 @@ class Anime4KMetalPipeline {
             return sourceTexture
         }
 
+        NSLog("[Anime4K] Processing frame: %dx%d, preset=%@, passes=%d",
+              sourceTexture.width, sourceTexture.height, preset.name ?? "unknown", preset.passes.count)
+
         // Update source texture reference
         self.sourceTexture = sourceTexture
 
         // Encode all compute passes
         let encoder = commandBuffer.makeComputeCommandEncoder()
         guard let encoder = encoder else {
-            NSLog("[Anime4K] Failed to create compute encoder")
+            NSLog("[Anime4K] ERROR: Failed to create compute encoder")
             return sourceTexture
         }
 
@@ -331,10 +334,11 @@ class Anime4KMetalPipeline {
 
         for (index, shaderFile) in preset.passes.enumerated() {
             let kernelNames = getKernelNamesForShader(shaderFile)
+            NSLog("[Anime4K] Pass %d: %@ (%d kernels)", index, shaderFile, kernelNames.count)
 
             for kernelName in kernelNames {
                 guard let pipeline = pipelineStates[kernelName] else {
-                    NSLog("[Anime4K] Pipeline not found: %@", kernelName)
+                    NSLog("[Anime4K] ERROR: Pipeline not found: %@", kernelName)
                     continue
                 }
 
@@ -346,9 +350,11 @@ class Anime4KMetalPipeline {
                     // Final pass - use display output texture
                     outputTexture = ensureOutputTexture(width: inputWidth * scaleFactor,
                                                         height: inputHeight * scaleFactor)
+                    NSLog("[Anime4K] Final pass output: %dx%d", outputTexture.width, outputTexture.height)
                 } else {
                     // Intermediate pass - use intermediate texture
                     outputTexture = intermediateTextures[index].texture
+                    NSLog("[Anime4K] Intermediate pass %d output: %dx%d", index, outputTexture.width, outputTexture.height)
                 }
 
                 // Bind textures: index 0 = HOOKED (current input), index 1 = MAIN (same as HOOKED for most passes), index 2 = output
@@ -370,6 +376,7 @@ class Anime4KMetalPipeline {
                                            height: (height + threadGroupSize.height - 1) / threadGroupSize.height,
                                            depth: 1)
 
+                NSLog("[Anime4K] Dispatching %@ with threadGroups %dx%d", kernelName, threadGroups.width, threadGroups.height)
                 encoder.dispatchThreads(threadGroups, threadsPerThreadgroup: threadGroupSize)
 
                 // Note: Metal automatically handles resource barriers for texture read/write
@@ -385,10 +392,11 @@ class Anime4KMetalPipeline {
         // Ensure compute writes are visible to subsequent render passes
         // This is critical - without it, the render pass may read stale data
         commandBuffer.addCompletedHandler { _ in
-            // Compute work is complete, texture is ready for display
+            NSLog("[Anime4K] Compute completed, texture ready for display")
         }
 
         self.outputTexture = currentInput
+        NSLog("[Anime4K] Frame processed, returning texture: %dx%d", currentInput.width, currentInput.height)
         return currentInput
     }
 

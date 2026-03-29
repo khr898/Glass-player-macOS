@@ -637,15 +637,25 @@ class ViewLayer: CAMetalLayer {
         var finalTexture = videoTexture
 
         if let pipeline = anime4KPipeline, pipeline.isActive {
+            NSLog("[ViewLayer] Anime4K pipeline active, processing frame...")
             // Process frame through Anime4K compute shaders
             if let processedTexture = pipeline.processFrame(
                     sourceTexture: videoTexture,
                     commandBuffer: cmdBuf) {
                 finalTexture = processedTexture
                 anime4KOutputTexture = processedTexture
+                NSLog("[ViewLayer] Anime4K output texture: %dx%d", processedTexture.width, processedTexture.height)
                 // Add a blit encoder to create implicit barrier between compute and render
                 let blitEncoder = cmdBuf.makeBlitCommandEncoder()
                 blitEncoder?.endEncoding()
+            } else {
+                NSLog("[ViewLayer] Anime4K processFrame returned nil!")
+            }
+        } else {
+            if anime4KPipeline != nil {
+                NSLog("[ViewLayer] Anime4K pipeline exists but not active")
+            } else {
+                NSLog("[ViewLayer] Anime4K pipeline not initialized")
             }
         }
 
