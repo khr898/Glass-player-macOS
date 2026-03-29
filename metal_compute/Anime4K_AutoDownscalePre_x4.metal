@@ -32,7 +32,7 @@ using mat4 = float4x4;
 #define MAIN_tex(pos) MAIN.sample(textureSampler, pos)
 #define MAIN_texOff(off) MAIN_tex(MAIN_pos + MAIN_pt * float2(off))
 
-static float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> NATIVE, texture2d<float, access::sample> MAIN) {
+static float4 hook_pass0(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> NATIVE, texture2d<float, access::sample> MAIN) {
 	return HOOKED_tex(HOOKED_pos);
 }
 
@@ -44,6 +44,6 @@ kernel void Anime4K_AutoDownscalePre_x4_pass0_Anime4K_v3_2_AutoDownscalePre_x4(
     uint2 gid [[thread_position_in_grid]],
     sampler textureSampler [[sampler(0)]]) {
     float2 mtlPos = float2(gid) / (float2(output.get_width(), output.get_height()) - float2(1, 1));
-    output.write(hook(mtlPos, textureSampler, HOOKED, NATIVE, MAIN), gid);
+    output.write(hook_pass0(mtlPos, textureSampler, HOOKED, NATIVE, MAIN), gid);
 }
 

@@ -46,7 +46,7 @@ float gaussian(float2 mtlPos, sampler textureSampler, texture2d<float, access::s
 	return exp(-0.5 * scaled * scaled);
 }
 
-static float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> MAIN) {
+static float4 hook_pass0(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> MAIN) {
 	float4 sum = float4(0.0);
 	float4 n = float4(0.0);
 
@@ -73,6 +73,6 @@ kernel void Anime4K_Denoise_Bilateral_Mean_pass0_Anime4K_v3_2_Denoise_Bilateral_
     uint2 gid [[thread_position_in_grid]],
     sampler textureSampler [[sampler(0)]]) {
     float2 mtlPos = float2(gid) / (float2(output.get_width(), output.get_height()) - float2(1, 1));
-    output.write(hook(mtlPos, textureSampler, HOOKED, MAIN), gid);
+    output.write(hook_pass0(mtlPos, textureSampler, HOOKED, MAIN), gid);
 }
 

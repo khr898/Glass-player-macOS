@@ -29,7 +29,7 @@ float get_luma(float2 mtlPos, sampler textureSampler, texture2d<float, access::s
 	return dot(float4(0.299, 0.587, 0.114, 0.0), rgba);
 }
 
-static float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> MAIN) {
+static float4 hook_pass0(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> MAIN) {
     return float4(get_luma(mtlPos, textureSampler, HOOKED, MAIN, HOOKED_tex(HOOKED_pos)), 0.0, 0.0, 0.0);
 }
 
@@ -40,7 +40,7 @@ kernel void Anime4K_Thin_VeryFast_pass0_Anime4K_v3_2_Thin_VeryFast_Luma(
     uint2 gid [[thread_position_in_grid]],
     sampler textureSampler [[sampler(0)]]) {
     float2 mtlPos = float2(gid) / (float2(output.get_width(), output.get_height()) - float2(1, 1));
-    output.write(hook(mtlPos, textureSampler, HOOKED, MAIN), gid);
+    output.write(hook_pass0(mtlPos, textureSampler, HOOKED, MAIN), gid);
 }
 
 
@@ -73,7 +73,7 @@ using mat4 = float4x4;
 #define HOOKED_tex(pos) MAIN.sample(textureSampler, pos)
 #define HOOKED_texOff(off) HOOKED_tex(HOOKED_pos + HOOKED_pt * float2(off))
 
-static float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> LINELUMA, texture2d<float, access::sample> MAIN) {
+static float4 hook_pass1(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> LINELUMA, texture2d<float, access::sample> MAIN) {
 	float l = LINELUMA_texOff(float2(-0.5, 0.0)).x;
 	float c = LINELUMA_tex(LINELUMA_pos).x;
 	float r = LINELUMA_texOff(float2(0.5, 0.0)).x;
@@ -91,7 +91,7 @@ kernel void Anime4K_Thin_VeryFast_pass1_Anime4K_v3_2_Thin_VeryFast_Sobel_X(
     uint2 gid [[thread_position_in_grid]],
     sampler textureSampler [[sampler(0)]]) {
     float2 mtlPos = float2(gid) / (float2(output.get_width(), output.get_height()) - float2(1, 1));
-    output.write(hook(mtlPos, textureSampler, LINELUMA, MAIN), gid);
+    output.write(hook_pass1(mtlPos, textureSampler, LINELUMA, MAIN), gid);
 }
 
 
@@ -124,7 +124,7 @@ using mat4 = float4x4;
 #define HOOKED_tex(pos) MAIN.sample(textureSampler, pos)
 #define HOOKED_texOff(off) HOOKED_tex(HOOKED_pos + HOOKED_pt * float2(off))
 
-static float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> LINESOBEL, texture2d<float, access::sample> MAIN) {
+static float4 hook_pass2(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> LINESOBEL, texture2d<float, access::sample> MAIN) {
 	float tx = LINESOBEL_texOff(float2(0.0, -0.25)).x;
 	float cx = LINESOBEL_tex(LINESOBEL_pos).x;
 	float bx = LINESOBEL_texOff(float2(0.0, 0.25)).x;
@@ -148,7 +148,7 @@ kernel void Anime4K_Thin_VeryFast_pass2_Anime4K_v3_2_Thin_VeryFast_Sobel_Y(
     uint2 gid [[thread_position_in_grid]],
     sampler textureSampler [[sampler(0)]]) {
     float2 mtlPos = float2(gid) / (float2(output.get_width(), output.get_height()) - float2(1, 1));
-    output.write(hook(mtlPos, textureSampler, LINESOBEL, MAIN), gid);
+    output.write(hook_pass2(mtlPos, textureSampler, LINESOBEL, MAIN), gid);
 }
 
 
@@ -209,7 +209,7 @@ float comp_gaussian_x(float2 mtlPos, sampler textureSampler, texture2d<float, ac
 	return g / gn;
 }
 
-static float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LINESOBEL, texture2d<float, access::sample> MAIN) {
+static float4 hook_pass3(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LINESOBEL, texture2d<float, access::sample> MAIN) {
     return float4(comp_gaussian_x(mtlPos, textureSampler, HOOKED, LINESOBEL, MAIN), 0.0, 0.0, 0.0);
 }
 
@@ -225,7 +225,7 @@ kernel void Anime4K_Thin_VeryFast_pass3_Anime4K_v3_2_Thin_VeryFast_Gaussian_X(
     const int KERNELSIZE = max(int(ceil(SPATIAL_SIGMA * 2.0)), 1) * 2 + 1;
     const int KERNELHALFSIZE = int(KERNELSIZE / 2);
     const int KERNELLEN = KERNELSIZE * KERNELSIZE;
-    output.write(hook(mtlPos, textureSampler, HOOKED, LINESOBEL, MAIN), gid);
+    output.write(hook_pass3(mtlPos, textureSampler, HOOKED, LINESOBEL, MAIN), gid);
 }
 
 
@@ -286,7 +286,7 @@ float comp_gaussian_y(float2 mtlPos, sampler textureSampler, texture2d<float, ac
 	return g / gn;
 }
 
-static float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LINESOBEL, texture2d<float, access::sample> MAIN) {
+static float4 hook_pass4(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LINESOBEL, texture2d<float, access::sample> MAIN) {
     return float4(comp_gaussian_y(mtlPos, textureSampler, HOOKED, LINESOBEL, MAIN), 0.0, 0.0, 0.0);
 }
 
@@ -302,7 +302,7 @@ kernel void Anime4K_Thin_VeryFast_pass4_Anime4K_v3_2_Thin_VeryFast_Gaussian_Y(
     const int KERNELSIZE = max(int(ceil(SPATIAL_SIGMA * 2.0)), 1) * 2 + 1;
     const int KERNELHALFSIZE = int(KERNELSIZE / 2);
     const int KERNELLEN = KERNELSIZE * KERNELSIZE;
-    output.write(hook(mtlPos, textureSampler, HOOKED, LINESOBEL, MAIN), gid);
+    output.write(hook_pass4(mtlPos, textureSampler, HOOKED, LINESOBEL, MAIN), gid);
 }
 
 
@@ -335,7 +335,7 @@ using mat4 = float4x4;
 #define HOOKED_tex(pos) MAIN.sample(textureSampler, pos)
 #define HOOKED_texOff(off) HOOKED_tex(HOOKED_pos + HOOKED_pt * float2(off))
 
-static float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> LINESOBEL, texture2d<float, access::sample> MAIN) {
+static float4 hook_pass5(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> LINESOBEL, texture2d<float, access::sample> MAIN) {
 	float l = LINESOBEL_texOff(float2(-0.25, 0.0)).x;
 	float c = LINESOBEL_tex(LINESOBEL_pos).x;
 	float r = LINESOBEL_texOff(float2(0.25, 0.0)).x;
@@ -353,7 +353,7 @@ kernel void Anime4K_Thin_VeryFast_pass5_Anime4K_v3_2_Thin_VeryFast_Kernel_X(
     uint2 gid [[thread_position_in_grid]],
     sampler textureSampler [[sampler(0)]]) {
     float2 mtlPos = float2(gid) / (float2(output.get_width(), output.get_height()) - float2(1, 1));
-    output.write(hook(mtlPos, textureSampler, LINESOBEL, MAIN), gid);
+    output.write(hook_pass5(mtlPos, textureSampler, LINESOBEL, MAIN), gid);
 }
 
 
@@ -386,7 +386,7 @@ using mat4 = float4x4;
 #define HOOKED_tex(pos) MAIN.sample(textureSampler, pos)
 #define HOOKED_texOff(off) HOOKED_tex(HOOKED_pos + HOOKED_pt * float2(off))
 
-static float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> LINESOBEL, texture2d<float, access::sample> MAIN) {
+static float4 hook_pass6(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> LINESOBEL, texture2d<float, access::sample> MAIN) {
 	float tx = LINESOBEL_texOff(float2(0.0, -0.25)).x;
 	float cx = LINESOBEL_tex(LINESOBEL_pos).x;
 	float bx = LINESOBEL_texOff(float2(0.0, 0.25)).x;
@@ -409,7 +409,7 @@ kernel void Anime4K_Thin_VeryFast_pass6_Anime4K_v3_2_Thin_VeryFast_Kernel_Y(
     uint2 gid [[thread_position_in_grid]],
     sampler textureSampler [[sampler(0)]]) {
     float2 mtlPos = float2(gid) / (float2(output.get_width(), output.get_height()) - float2(1, 1));
-    output.write(hook(mtlPos, textureSampler, LINESOBEL, MAIN), gid);
+    output.write(hook_pass6(mtlPos, textureSampler, LINESOBEL, MAIN), gid);
 }
 
 
@@ -445,7 +445,7 @@ using mat4 = float4x4;
 #define STRENGTH 0.6 //Strength of warping for each iteration
 #define ITERATIONS 1 //Number of iterations for the forwards solver, decreasing strength and increasing iterations improves quality at the cost of speed.
 
-static float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LINESOBEL, texture2d<float, access::sample> MAIN) {
+static float4 hook_pass7(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LINESOBEL, texture2d<float, access::sample> MAIN) {
 	float2 d = HOOKED_pt;
 
 	float relstr = HOOKED_size.y / 1080.0 * STRENGTH;
@@ -469,6 +469,6 @@ kernel void Anime4K_Thin_VeryFast_pass7_Anime4K_v3_2_Thin_VeryFast_Warp(
     uint2 gid [[thread_position_in_grid]],
     sampler textureSampler [[sampler(0)]]) {
     float2 mtlPos = float2(gid) / (float2(output.get_width(), output.get_height()) - float2(1, 1));
-    output.write(hook(mtlPos, textureSampler, HOOKED, LINESOBEL, MAIN), gid);
+    output.write(hook_pass7(mtlPos, textureSampler, HOOKED, LINESOBEL, MAIN), gid);
 }
 

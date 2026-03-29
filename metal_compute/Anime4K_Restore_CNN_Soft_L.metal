@@ -26,7 +26,7 @@ using mat4 = float4x4;
 #define HOOKED_texOff(off) HOOKED_tex(HOOKED_pos + HOOKED_pt * float2(off))
 
 #define go_0(x_off, y_off) (MAIN_texOff(float2(x_off, y_off)))
-static float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> MAIN) {
+static float4 hook_pass0(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> MAIN) {
     float4 result = float4x4(-0.2676983, -0.1694746, 0.7231928, -0.050193843, 0.1850188, -0.4749505, 0.07632266, 0.17824799, 0.026348969, -0.213702, -0.16420218, -0.066780016, 0.0, 0.0, 0.0, 0.0) * go_0(-1.0, -1.0);
     result += float4x4(-0.09888135, -0.079641104, 0.51160043, 0.53629893, -0.1368544, -0.07092336, 0.18622977, 0.6388427, 0.19499005, 0.06811229, -0.31991923, 0.088302985, 0.0, 0.0, 0.0, 0.0) * go_0(-1.0, 0.0);
     result += float4x4(0.06487055, -0.1591197, -0.29304126, -0.428903, 0.1966732, 0.11229865, 0.089009434, 0.23463708, -0.22231965, -0.008649182, 0.3317394, 0.10976113, 0.0, 0.0, 0.0, 0.0) * go_0(-1.0, 1.0);
@@ -46,7 +46,7 @@ kernel void Anime4K_Restore_CNN_Soft_L_pass0_Anime4K_v4_0_Restore_CNN_Soft_L_Con
     uint2 gid [[thread_position_in_grid]],
     sampler textureSampler [[sampler(0)]]) {
     float2 mtlPos = float2(gid) / (float2(output.get_width(), output.get_height()) - float2(1, 1));
-    output.write(hook(mtlPos, textureSampler, MAIN), gid);
+    output.write(hook_pass0(mtlPos, textureSampler, MAIN), gid);
 }
 
 
@@ -74,7 +74,7 @@ using mat4 = float4x4;
 #define HOOKED_texOff(off) HOOKED_tex(HOOKED_pos + HOOKED_pt * float2(off))
 
 #define go_0(x_off, y_off) (MAIN_texOff(float2(x_off, y_off)))
-static float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> MAIN) {
+static float4 hook_pass1(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> MAIN) {
     float4 result = float4x4(0.09844753, -0.19389127, 0.029695928, 0.3805915, 0.1353029, 0.027786473, 0.15621242, 0.09383762, -0.1097243, 0.021245124, -0.016402386, 0.09129394, 0.0, 0.0, 0.0, 0.0) * go_0(-1.0, -1.0);
     result += float4x4(0.3038283, 0.03778846, 0.1898852, 0.23949303, -0.34829387, 0.20485392, 0.60560244, 0.4089768, -0.260066, 0.42611003, 0.19227165, 0.03948586, 0.0, 0.0, 0.0, 0.0) * go_0(-1.0, 0.0);
     result += float4x4(-0.033990905, 0.17583308, -0.2235879, 0.47376296, -0.1001787, 0.72851896, -0.056391567, -0.056544185, 0.0966166, -0.016663829, -0.15151545, -0.14227313, 0.0, 0.0, 0.0, 0.0) * go_0(-1.0, 1.0);
@@ -94,7 +94,7 @@ kernel void Anime4K_Restore_CNN_Soft_L_pass1_Anime4K_v4_0_Restore_CNN_Soft_L_Con
     uint2 gid [[thread_position_in_grid]],
     sampler textureSampler [[sampler(0)]]) {
     float2 mtlPos = float2(gid) / (float2(output.get_width(), output.get_height()) - float2(1, 1));
-    output.write(hook(mtlPos, textureSampler, MAIN), gid);
+    output.write(hook_pass1(mtlPos, textureSampler, MAIN), gid);
 }
 
 
@@ -137,7 +137,7 @@ using mat4 = float4x4;
 #define go_1(x_off, y_off) (max((conv2d_tf1_texOff(float2(x_off, y_off))), 0.0))
 #define go_2(x_off, y_off) (max(-(conv2d_tf_texOff(float2(x_off, y_off))), 0.0))
 #define go_3(x_off, y_off) (max(-(conv2d_tf1_texOff(float2(x_off, y_off))), 0.0))
-static float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> conv2d_tf, texture2d<float, access::sample> conv2d_tf1, texture2d<float, access::sample> MAIN) {
+static float4 hook_pass2(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> conv2d_tf, texture2d<float, access::sample> conv2d_tf1, texture2d<float, access::sample> MAIN) {
     float4 result = float4x4(0.20989326, 0.020975577, -0.005522964, -0.10013134, 0.013517254, -0.03347422, 0.40903455, 0.013940953, 0.01066957, 0.2569982, -0.018764338, -0.37931216, -0.20921241, -0.3565134, 0.1776639, 0.081515394) * go_0(-1.0, -1.0);
     result += float4x4(-0.2555968, -0.05024504, 0.046776827, 0.38626888, -0.21787676, 0.0013136056, -0.13391882, 0.00022813173, -0.042842478, -0.10413157, -0.008385445, -0.11843704, 0.062092766, -0.40029097, 0.31873867, -0.19030346) * go_0(-1.0, 0.0);
     result += float4x4(-0.19435422, -0.56006145, 0.050693467, -0.8857939, -0.0677575, -0.30498, 0.012069988, 0.026757652, -0.16890685, 0.04575225, -0.08477036, -0.018015383, 0.0002810964, 0.0772843, 0.00017034424, -0.228497) * go_0(-1.0, 1.0);
@@ -186,7 +186,7 @@ kernel void Anime4K_Restore_CNN_Soft_L_pass2_Anime4K_v4_0_Restore_CNN_Soft_L_Con
     uint2 gid [[thread_position_in_grid]],
     sampler textureSampler [[sampler(0)]]) {
     float2 mtlPos = float2(gid) / (float2(output.get_width(), output.get_height()) - float2(1, 1));
-    output.write(hook(mtlPos, textureSampler, conv2d_tf, conv2d_tf1, MAIN), gid);
+    output.write(hook_pass2(mtlPos, textureSampler, conv2d_tf, conv2d_tf1, MAIN), gid);
 }
 
 
@@ -229,7 +229,7 @@ using mat4 = float4x4;
 #define go_1(x_off, y_off) (max((conv2d_tf1_texOff(float2(x_off, y_off))), 0.0))
 #define go_2(x_off, y_off) (max(-(conv2d_tf_texOff(float2(x_off, y_off))), 0.0))
 #define go_3(x_off, y_off) (max(-(conv2d_tf1_texOff(float2(x_off, y_off))), 0.0))
-static float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> conv2d_tf, texture2d<float, access::sample> conv2d_tf1, texture2d<float, access::sample> MAIN) {
+static float4 hook_pass3(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> conv2d_tf, texture2d<float, access::sample> conv2d_tf1, texture2d<float, access::sample> MAIN) {
     float4 result = float4x4(0.10541986, -0.27021417, 0.30589217, -0.06793019, 0.0712113, -0.5818028, -0.09057832, 0.009519015, -0.07754299, 0.009050975, -0.08283811, -0.078837596, -0.008200866, 0.53291875, 0.22918138, 0.09433025) * go_0(-1.0, -1.0);
     result += float4x4(0.35867104, 0.17056245, 0.28573632, 0.45787787, 0.054377224, 0.30656826, -0.13864343, 0.13956884, -0.052365527, -0.17660435, -0.14363506, -0.11313267, -0.15472592, -0.011637987, 0.3057005, 0.40122506) * go_0(-1.0, 0.0);
     result += float4x4(-0.42738816, -0.13046122, -0.4223082, 0.32663476, -0.14648326, 0.056164477, 0.09366789, -0.046335716, 0.00401621, -0.008206323, -0.075975314, 0.046879925, 0.04891574, 0.08912198, 0.32541895, 0.014354832) * go_0(-1.0, 1.0);
@@ -278,7 +278,7 @@ kernel void Anime4K_Restore_CNN_Soft_L_pass3_Anime4K_v4_0_Restore_CNN_Soft_L_Con
     uint2 gid [[thread_position_in_grid]],
     sampler textureSampler [[sampler(0)]]) {
     float2 mtlPos = float2(gid) / (float2(output.get_width(), output.get_height()) - float2(1, 1));
-    output.write(hook(mtlPos, textureSampler, conv2d_tf, conv2d_tf1, MAIN), gid);
+    output.write(hook_pass3(mtlPos, textureSampler, conv2d_tf, conv2d_tf1, MAIN), gid);
 }
 
 
@@ -321,7 +321,7 @@ using mat4 = float4x4;
 #define go_1(x_off, y_off) (max((conv2d_1_tf1_texOff(float2(x_off, y_off))), 0.0))
 #define go_2(x_off, y_off) (max(-(conv2d_1_tf_texOff(float2(x_off, y_off))), 0.0))
 #define go_3(x_off, y_off) (max(-(conv2d_1_tf1_texOff(float2(x_off, y_off))), 0.0))
-static float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> conv2d_1_tf, texture2d<float, access::sample> conv2d_1_tf1, texture2d<float, access::sample> MAIN) {
+static float4 hook_pass4(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> conv2d_1_tf, texture2d<float, access::sample> conv2d_1_tf1, texture2d<float, access::sample> MAIN) {
     float4 result = float4x4(0.1156422, 0.13656664, 0.23103227, -0.09881847, -0.13118152, 0.063764885, -0.1902535, 0.12580052, -0.057555363, 0.0015611092, 0.009383415, 0.0028447553, -0.12577637, 0.06707094, 0.05323591, 0.087465174) * go_0(-1.0, -1.0);
     result += float4x4(0.023715734, 0.15901619, 0.010465818, -0.05401794, 0.12822664, -0.079860024, -0.107430205, -0.09094713, 0.11440009, -0.069189526, 0.1377121, -0.02780827, -0.2594948, -0.008447683, -0.052618783, 0.0995311) * go_0(-1.0, 0.0);
     result += float4x4(0.014655754, 0.0976315, -0.10425098, 0.06731683, -0.07336922, -0.09931748, -0.074338034, 0.014602733, 0.0761052, -0.14147633, 0.057346404, -0.10485628, 0.008160006, -0.14553718, -0.14069714, -0.106754564) * go_0(-1.0, 1.0);
@@ -370,7 +370,7 @@ kernel void Anime4K_Restore_CNN_Soft_L_pass4_Anime4K_v4_0_Restore_CNN_Soft_L_Con
     uint2 gid [[thread_position_in_grid]],
     sampler textureSampler [[sampler(0)]]) {
     float2 mtlPos = float2(gid) / (float2(output.get_width(), output.get_height()) - float2(1, 1));
-    output.write(hook(mtlPos, textureSampler, conv2d_1_tf, conv2d_1_tf1, MAIN), gid);
+    output.write(hook_pass4(mtlPos, textureSampler, conv2d_1_tf, conv2d_1_tf1, MAIN), gid);
 }
 
 
@@ -413,7 +413,7 @@ using mat4 = float4x4;
 #define go_1(x_off, y_off) (max((conv2d_1_tf1_texOff(float2(x_off, y_off))), 0.0))
 #define go_2(x_off, y_off) (max(-(conv2d_1_tf_texOff(float2(x_off, y_off))), 0.0))
 #define go_3(x_off, y_off) (max(-(conv2d_1_tf1_texOff(float2(x_off, y_off))), 0.0))
-static float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> conv2d_1_tf, texture2d<float, access::sample> conv2d_1_tf1, texture2d<float, access::sample> MAIN) {
+static float4 hook_pass5(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> conv2d_1_tf, texture2d<float, access::sample> conv2d_1_tf1, texture2d<float, access::sample> MAIN) {
     float4 result = float4x4(0.14002717, 0.058876935, 0.20110254, 0.08939276, 0.03416418, 0.0011943586, 0.042772148, -0.00071322336, -0.115944035, 0.04220234, -0.34941152, -0.01974448, -0.0860279, 0.062355816, -0.023853427, 0.02757322) * go_0(-1.0, -1.0);
     result += float4x4(0.07400734, 0.19251242, 0.22637455, -0.12530822, -0.17724502, -0.022523593, -0.15113536, 0.065425, 0.101782374, -0.014717139, -0.098752305, 0.080687046, -0.1023507, 0.019614108, 0.01754361, 0.017383952) * go_0(-1.0, 0.0);
     result += float4x4(-0.044900224, -0.04213899, 0.0073328684, 0.16705592, -0.051043745, -0.115500204, -0.07567362, 0.07818187, 0.26050508, 0.20679274, 0.04177571, 0.059024576, -0.12510507, -0.051585447, -0.007354538, 0.041514263) * go_0(-1.0, 1.0);
@@ -462,7 +462,7 @@ kernel void Anime4K_Restore_CNN_Soft_L_pass5_Anime4K_v4_0_Restore_CNN_Soft_L_Con
     uint2 gid [[thread_position_in_grid]],
     sampler textureSampler [[sampler(0)]]) {
     float2 mtlPos = float2(gid) / (float2(output.get_width(), output.get_height()) - float2(1, 1));
-    output.write(hook(mtlPos, textureSampler, conv2d_1_tf, conv2d_1_tf1, MAIN), gid);
+    output.write(hook_pass5(mtlPos, textureSampler, conv2d_1_tf, conv2d_1_tf1, MAIN), gid);
 }
 
 
@@ -505,7 +505,7 @@ using mat4 = float4x4;
 #define go_1(x_off, y_off) (max((conv2d_2_tf1_texOff(float2(x_off, y_off))), 0.0))
 #define go_2(x_off, y_off) (max(-(conv2d_2_tf_texOff(float2(x_off, y_off))), 0.0))
 #define go_3(x_off, y_off) (max(-(conv2d_2_tf1_texOff(float2(x_off, y_off))), 0.0))
-static float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> conv2d_2_tf, texture2d<float, access::sample> conv2d_2_tf1, texture2d<float, access::sample> MAIN) {
+static float4 hook_pass6(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> conv2d_2_tf, texture2d<float, access::sample> conv2d_2_tf1, texture2d<float, access::sample> MAIN) {
     float4 result = float4x4(0.012843345, 0.047590222, 0.0052741203, 0.017328946, 0.06774971, -0.028615275, 0.030839639, 0.053735327, -0.093057916, 0.08288735, 0.02991863, -0.040167376, 0.11699043, 0.062987246, 0.038180597, 0.11130321) * go_0(-1.0, -1.0);
     result += float4x4(0.047898952, 0.013089616, 0.13206771, 0.053474475, -0.24849094, -0.13717765, -0.14899106, 0.032647215, -0.111574546, -0.017941473, 0.017136412, -0.04121033, 0.04825172, -0.07243479, -0.30205736, -0.009043054) * go_0(-1.0, 0.0);
     result += float4x4(-0.006104078, -0.056147296, -0.05430816, -0.012150009, -0.12583707, -0.06810525, -0.18965304, -0.03767409, 0.038220566, 0.12901759, 0.14772348, -0.011318772, 0.10613474, -0.011039028, -0.017407915, -0.035597485) * go_0(-1.0, 1.0);
@@ -554,7 +554,7 @@ kernel void Anime4K_Restore_CNN_Soft_L_pass6_Anime4K_v4_0_Restore_CNN_Soft_L_Con
     uint2 gid [[thread_position_in_grid]],
     sampler textureSampler [[sampler(0)]]) {
     float2 mtlPos = float2(gid) / (float2(output.get_width(), output.get_height()) - float2(1, 1));
-    output.write(hook(mtlPos, textureSampler, conv2d_2_tf, conv2d_2_tf1, MAIN), gid);
+    output.write(hook_pass6(mtlPos, textureSampler, conv2d_2_tf, conv2d_2_tf1, MAIN), gid);
 }
 
 
@@ -597,7 +597,7 @@ using mat4 = float4x4;
 #define go_1(x_off, y_off) (max((conv2d_2_tf1_texOff(float2(x_off, y_off))), 0.0))
 #define go_2(x_off, y_off) (max(-(conv2d_2_tf_texOff(float2(x_off, y_off))), 0.0))
 #define go_3(x_off, y_off) (max(-(conv2d_2_tf1_texOff(float2(x_off, y_off))), 0.0))
-static float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> conv2d_2_tf, texture2d<float, access::sample> conv2d_2_tf1, texture2d<float, access::sample> MAIN) {
+static float4 hook_pass7(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> conv2d_2_tf, texture2d<float, access::sample> conv2d_2_tf1, texture2d<float, access::sample> MAIN) {
     float4 result = float4x4(-0.010251427, -0.045750465, 0.016315231, -0.008768869, 0.017431414, 0.080067836, 0.025827147, 0.10838066, 0.0024869177, -0.034495536, 0.09772538, 0.07213915, 0.016637174, 0.040788822, -0.022752339, 0.10970543) * go_0(-1.0, -1.0);
     result += float4x4(0.11526194, 0.09676918, -0.04237834, -0.2271947, 0.12261753, -0.24500768, 0.10468346, 0.13780572, -0.009849901, 0.023189532, 0.0011982447, 0.04185303, 0.045187697, 0.06505389, 0.096869685, -0.1784324) * go_0(-1.0, 0.0);
     result += float4x4(0.04672689, 0.13536161, -0.1818021, -0.20668268, 0.07533596, -0.032177944, -0.024819814, 0.036118865, 0.012960037, -0.04256549, 0.03154665, 0.10697645, 0.0455828, 0.15624708, 0.0880299, -0.044446476) * go_0(-1.0, 1.0);
@@ -646,7 +646,7 @@ kernel void Anime4K_Restore_CNN_Soft_L_pass7_Anime4K_v4_0_Restore_CNN_Soft_L_Con
     uint2 gid [[thread_position_in_grid]],
     sampler textureSampler [[sampler(0)]]) {
     float2 mtlPos = float2(gid) / (float2(output.get_width(), output.get_height()) - float2(1, 1));
-    output.write(hook(mtlPos, textureSampler, conv2d_2_tf, conv2d_2_tf1, MAIN), gid);
+    output.write(hook_pass7(mtlPos, textureSampler, conv2d_2_tf, conv2d_2_tf1, MAIN), gid);
 }
 
 
@@ -689,7 +689,7 @@ using mat4 = float4x4;
 #define go_1(x_off, y_off) (max((conv2d_3_tf1_texOff(float2(x_off, y_off))), 0.0))
 #define go_2(x_off, y_off) (max(-(conv2d_3_tf_texOff(float2(x_off, y_off))), 0.0))
 #define go_3(x_off, y_off) (max(-(conv2d_3_tf1_texOff(float2(x_off, y_off))), 0.0))
-static float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> MAIN, texture2d<float, access::sample> conv2d_3_tf, texture2d<float, access::sample> conv2d_3_tf1) {
+static float4 hook_pass8(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> MAIN, texture2d<float, access::sample> conv2d_3_tf, texture2d<float, access::sample> conv2d_3_tf1) {
     float4 result = float4x4(-0.01858372, 0.017144108, 0.02794388, 0.0, 0.0129101565, -0.0073674284, -0.011766938, 0.0, 0.01970984, 0.01209068, 0.009530311, 0.0, -0.009190449, -0.006996753, -0.0038750458, 0.0) * go_0(-1.0, -1.0);
     result += float4x4(0.15856947, 0.10162126, 0.08489005, 0.0, 0.038381726, -0.017771017, -0.03226132, 0.0, -0.011787879, -0.0152445, -0.007564454, 0.0, 0.055921376, 0.08389841, 0.08452836, 0.0) * go_0(-1.0, 0.0);
     result += float4x4(0.026705442, -0.0070655374, -0.018199183, 0.0, 0.016254421, -0.025398912, -0.03461042, 0.0, 0.03950644, 0.06586101, 0.0707467, 0.0, -0.03793455, -0.04957139, -0.04777402, 0.0) * go_0(-1.0, 1.0);
@@ -738,6 +738,6 @@ kernel void Anime4K_Restore_CNN_Soft_L_pass8_Anime4K_v4_0_Restore_CNN_Soft_L_Con
     uint2 gid [[thread_position_in_grid]],
     sampler textureSampler [[sampler(0)]]) {
     float2 mtlPos = float2(gid) / (float2(output.get_width(), output.get_height()) - float2(1, 1));
-    output.write(hook(mtlPos, textureSampler, MAIN, conv2d_3_tf, conv2d_3_tf1), gid);
+    output.write(hook_pass8(mtlPos, textureSampler, MAIN, conv2d_3_tf, conv2d_3_tf1), gid);
 }
 

@@ -29,7 +29,7 @@ float get_luma(float2 mtlPos, sampler textureSampler, texture2d<float, access::s
 	return dot(float4(0.299, 0.587, 0.114, 0.0), rgba);
 }
 
-static float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> MAIN) {
+static float4 hook_pass0(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> MAIN) {
     return float4(get_luma(mtlPos, textureSampler, HOOKED, MAIN, HOOKED_tex(HOOKED_pos)), 0.0, 0.0, 0.0);
 }
 
@@ -40,7 +40,7 @@ kernel void Anime4K_Upscale_DTD_x2_pass0_Anime4K_v3_2_Upscale_DTD_x2_Luma(
     uint2 gid [[thread_position_in_grid]],
     sampler textureSampler [[sampler(0)]]) {
     float2 mtlPos = float2(gid) / (float2(output.get_width(), output.get_height()) - float2(1, 1));
-    output.write(hook(mtlPos, textureSampler, HOOKED, MAIN), gid);
+    output.write(hook_pass0(mtlPos, textureSampler, HOOKED, MAIN), gid);
 }
 
 
@@ -100,7 +100,7 @@ float lumGaussian(float2 mtlPos, sampler textureSampler, texture2d<float, access
 	return g / gn;
 }
 
-static float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LINELUMA, texture2d<float, access::sample> MAIN) {
+static float4 hook_pass1(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LINELUMA, texture2d<float, access::sample> MAIN) {
     return float4(lumGaussian(mtlPos, textureSampler, HOOKED, LINELUMA, MAIN, HOOKED_pos, float2(HOOKED_pt.x, 0)));
 }
 
@@ -112,7 +112,7 @@ kernel void Anime4K_Upscale_DTD_x2_pass1_Anime4K_v3_2_Upscale_DTD_x2_Kernel_X(
     uint2 gid [[thread_position_in_grid]],
     sampler textureSampler [[sampler(0)]]) {
     float2 mtlPos = float2(gid) / (float2(output.get_width(), output.get_height()) - float2(1, 1));
-    output.write(hook(mtlPos, textureSampler, HOOKED, LINELUMA, MAIN), gid);
+    output.write(hook_pass1(mtlPos, textureSampler, HOOKED, LINELUMA, MAIN), gid);
 }
 
 
@@ -178,7 +178,7 @@ float lumGaussian(float2 mtlPos, sampler textureSampler, texture2d<float, access
 	return g / gn;
 }
 
-static float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LINELUMA, texture2d<float, access::sample> MMKERNEL, texture2d<float, access::sample> MAIN) {
+static float4 hook_pass2(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LINELUMA, texture2d<float, access::sample> MMKERNEL, texture2d<float, access::sample> MAIN) {
     return float4(min(LINELUMA_tex(HOOKED_pos).x - lumGaussian(mtlPos, textureSampler, HOOKED, LINELUMA, MMKERNEL, MAIN, HOOKED_pos, float2(0, HOOKED_pt.y)), 0.0));
 }
 
@@ -191,7 +191,7 @@ kernel void Anime4K_Upscale_DTD_x2_pass2_Anime4K_v3_2_Upscale_DTD_x2_Kernel_Y(
     uint2 gid [[thread_position_in_grid]],
     sampler textureSampler [[sampler(0)]]) {
     float2 mtlPos = float2(gid) / (float2(output.get_width(), output.get_height()) - float2(1, 1));
-    output.write(hook(mtlPos, textureSampler, HOOKED, LINELUMA, MMKERNEL, MAIN), gid);
+    output.write(hook_pass2(mtlPos, textureSampler, HOOKED, LINELUMA, MMKERNEL, MAIN), gid);
 }
 
 
@@ -251,7 +251,7 @@ float lumGaussian(float2 mtlPos, sampler textureSampler, texture2d<float, access
 	return g / gn;
 }
 
-static float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> MMKERNEL, texture2d<float, access::sample> MAIN) {
+static float4 hook_pass3(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> MMKERNEL, texture2d<float, access::sample> MAIN) {
     return float4(lumGaussian(mtlPos, textureSampler, HOOKED, MMKERNEL, MAIN, HOOKED_pos, float2(HOOKED_pt.x, 0)));
 }
 
@@ -263,7 +263,7 @@ kernel void Anime4K_Upscale_DTD_x2_pass3_Anime4K_v3_2_Upscale_DTD_x2_Kernel_X(
     uint2 gid [[thread_position_in_grid]],
     sampler textureSampler [[sampler(0)]]) {
     float2 mtlPos = float2(gid) / (float2(output.get_width(), output.get_height()) - float2(1, 1));
-    output.write(hook(mtlPos, textureSampler, HOOKED, MMKERNEL, MAIN), gid);
+    output.write(hook_pass3(mtlPos, textureSampler, HOOKED, MMKERNEL, MAIN), gid);
 }
 
 
@@ -323,7 +323,7 @@ float lumGaussian(float2 mtlPos, sampler textureSampler, texture2d<float, access
 	return g / gn;
 }
 
-static float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> MMKERNEL, texture2d<float, access::sample> MAIN) {
+static float4 hook_pass4(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> MMKERNEL, texture2d<float, access::sample> MAIN) {
     return float4(lumGaussian(mtlPos, textureSampler, HOOKED, MMKERNEL, MAIN, HOOKED_pos, float2(0, HOOKED_pt.y)));
 }
 
@@ -335,7 +335,7 @@ kernel void Anime4K_Upscale_DTD_x2_pass4_Anime4K_v3_2_Upscale_DTD_x2_Kernel_Y(
     uint2 gid [[thread_position_in_grid]],
     sampler textureSampler [[sampler(0)]]) {
     float2 mtlPos = float2(gid) / (float2(output.get_width(), output.get_height()) - float2(1, 1));
-    output.write(hook(mtlPos, textureSampler, HOOKED, MMKERNEL, MAIN), gid);
+    output.write(hook_pass4(mtlPos, textureSampler, HOOKED, MMKERNEL, MAIN), gid);
 }
 
 
@@ -371,7 +371,7 @@ using mat4 = float4x4;
 
 #define STRENGTH 1.8 //Line darken proportional strength, higher is darker.
 
-static float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> MMKERNEL, texture2d<float, access::sample> MAIN) {
+static float4 hook_pass5(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> MMKERNEL, texture2d<float, access::sample> MAIN) {
 	float c = (MMKERNEL_tex(HOOKED_pos).x) * STRENGTH;
 	//This trick is only possible if the inverse Y->RGB matrix has 1 for every row... (which is the case for BT.709)
 	//Otherwise we would need to convert RGB to YUV, modify Y then convert back to RGB.
@@ -386,7 +386,7 @@ kernel void Anime4K_Upscale_DTD_x2_pass5_Anime4K_v3_2_Upscale_DTD_x2(
     uint2 gid [[thread_position_in_grid]],
     sampler textureSampler [[sampler(0)]]) {
     float2 mtlPos = float2(gid) / (float2(output.get_width(), output.get_height()) - float2(1, 1));
-    output.write(hook(mtlPos, textureSampler, HOOKED, MMKERNEL, MAIN), gid);
+    output.write(hook_pass5(mtlPos, textureSampler, HOOKED, MMKERNEL, MAIN), gid);
 }
 
 
@@ -417,7 +417,7 @@ float get_luma(float2 mtlPos, sampler textureSampler, texture2d<float, access::s
 	return dot(float4(0.299, 0.587, 0.114, 0.0), rgba);
 }
 
-static float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> MAIN) {
+static float4 hook_pass6(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> MAIN) {
     return float4(get_luma(mtlPos, textureSampler, HOOKED, MAIN, HOOKED_tex(HOOKED_pos)), 0.0, 0.0, 0.0);
 }
 
@@ -428,7 +428,7 @@ kernel void Anime4K_Upscale_DTD_x2_pass6_Anime4K_v3_2_Upscale_DTD_x2_Luma(
     uint2 gid [[thread_position_in_grid]],
     sampler textureSampler [[sampler(0)]]) {
     float2 mtlPos = float2(gid) / (float2(output.get_width(), output.get_height()) - float2(1, 1));
-    output.write(hook(mtlPos, textureSampler, HOOKED, MAIN), gid);
+    output.write(hook_pass6(mtlPos, textureSampler, HOOKED, MAIN), gid);
 }
 
 
@@ -464,7 +464,7 @@ using mat4 = float4x4;
 
 #define L_tex LINELUMA_tex
 
-static float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LINELUMA, texture2d<float, access::sample> MAIN) {
+static float4 hook_pass7(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LINELUMA, texture2d<float, access::sample> MAIN) {
 	float2 d = HOOKED_pt;
 
 	//[tl  t tr]
@@ -499,7 +499,7 @@ kernel void Anime4K_Upscale_DTD_x2_pass7_Anime4K_v3_2_Upscale_DTD_x2_Kernel_X(
     uint2 gid [[thread_position_in_grid]],
     sampler textureSampler [[sampler(0)]]) {
     float2 mtlPos = float2(gid) / (float2(output.get_width(), output.get_height()) - float2(1, 1));
-    output.write(hook(mtlPos, textureSampler, HOOKED, LINELUMA, MAIN), gid);
+    output.write(hook_pass7(mtlPos, textureSampler, HOOKED, LINELUMA, MAIN), gid);
 }
 
 
@@ -533,7 +533,7 @@ using mat4 = float4x4;
 #define MAIN_tex(pos) MAIN.sample(textureSampler, pos)
 #define MAIN_texOff(off) MAIN_tex(MAIN_pos + MAIN_pt * float2(off))
 
-static float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LUMAD, texture2d<float, access::sample> MAIN) {
+static float4 hook_pass8(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LUMAD, texture2d<float, access::sample> MAIN) {
 	float2 d = HOOKED_pt;
 
 	//[tl  t tr]
@@ -574,7 +574,7 @@ kernel void Anime4K_Upscale_DTD_x2_pass8_Anime4K_v3_2_Upscale_DTD_x2_Kernel_Y(
     uint2 gid [[thread_position_in_grid]],
     sampler textureSampler [[sampler(0)]]) {
     float2 mtlPos = float2(gid) / (float2(output.get_width(), output.get_height()) - float2(1, 1));
-    output.write(hook(mtlPos, textureSampler, HOOKED, LUMAD, MAIN), gid);
+    output.write(hook_pass8(mtlPos, textureSampler, HOOKED, LUMAD, MAIN), gid);
 }
 
 
@@ -627,7 +627,7 @@ float lumGaussian(float2 mtlPos, sampler textureSampler, texture2d<float, access
 	return g;
 }
 
-static float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LUMAD, texture2d<float, access::sample> MAIN) {
+static float4 hook_pass9(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LUMAD, texture2d<float, access::sample> MAIN) {
     return float4(lumGaussian(mtlPos, textureSampler, HOOKED, LUMAD, MAIN, HOOKED_pos, float2(HOOKED_pt.x, 0)));
 }
 
@@ -639,7 +639,7 @@ kernel void Anime4K_Upscale_DTD_x2_pass9_Anime4K_v3_2_Upscale_DTD_x2_Kernel_X(
     uint2 gid [[thread_position_in_grid]],
     sampler textureSampler [[sampler(0)]]) {
     float2 mtlPos = float2(gid) / (float2(output.get_width(), output.get_height()) - float2(1, 1));
-    output.write(hook(mtlPos, textureSampler, HOOKED, LUMAD, MAIN), gid);
+    output.write(hook_pass9(mtlPos, textureSampler, HOOKED, LUMAD, MAIN), gid);
 }
 
 
@@ -698,7 +698,7 @@ float lumGaussian(float2 mtlPos, sampler textureSampler, texture2d<float, access
 	return g;
 }
 
-static float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LUMAD, texture2d<float, access::sample> LUMADG, texture2d<float, access::sample> MAIN) {
+static float4 hook_pass10(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LUMAD, texture2d<float, access::sample> LUMADG, texture2d<float, access::sample> MAIN) {
 	float g = lumGaussian(mtlPos, textureSampler, HOOKED, LUMAD, LUMADG, MAIN, HOOKED_pos, float2(0, HOOKED_pt.y));
     return float4(g);
 }
@@ -712,7 +712,7 @@ kernel void Anime4K_Upscale_DTD_x2_pass10_Anime4K_v3_2_Upscale_DTD_x2_Kernel_Y(
     uint2 gid [[thread_position_in_grid]],
     sampler textureSampler [[sampler(0)]]) {
     float2 mtlPos = float2(gid) / (float2(output.get_width(), output.get_height()) - float2(1, 1));
-    output.write(hook(mtlPos, textureSampler, HOOKED, LUMAD, LUMADG, MAIN), gid);
+    output.write(hook_pass10(mtlPos, textureSampler, HOOKED, LUMAD, LUMADG, MAIN), gid);
 }
 
 
@@ -746,7 +746,7 @@ using mat4 = float4x4;
 #define MAIN_tex(pos) MAIN.sample(textureSampler, pos)
 #define MAIN_texOff(off) MAIN_tex(MAIN_pos + MAIN_pt * float2(off))
 
-static float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LUMAD, texture2d<float, access::sample> MAIN) {
+static float4 hook_pass11(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LUMAD, texture2d<float, access::sample> MAIN) {
 	float2 d = HOOKED_pt;
 
 	//[tl  t tr]
@@ -781,7 +781,7 @@ kernel void Anime4K_Upscale_DTD_x2_pass11_Anime4K_v3_2_Upscale_DTD_x2_Kernel_X(
     uint2 gid [[thread_position_in_grid]],
     sampler textureSampler [[sampler(0)]]) {
     float2 mtlPos = float2(gid) / (float2(output.get_width(), output.get_height()) - float2(1, 1));
-    output.write(hook(mtlPos, textureSampler, HOOKED, LUMAD, MAIN), gid);
+    output.write(hook_pass11(mtlPos, textureSampler, HOOKED, LUMAD, MAIN), gid);
 }
 
 
@@ -815,7 +815,7 @@ using mat4 = float4x4;
 #define MAIN_tex(pos) MAIN.sample(textureSampler, pos)
 #define MAIN_texOff(off) MAIN_tex(MAIN_pos + MAIN_pt * float2(off))
 
-static float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LUMAD2, texture2d<float, access::sample> MAIN) {
+static float4 hook_pass12(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LUMAD2, texture2d<float, access::sample> MAIN) {
 	float2 d = HOOKED_pt;
 
 	//[tl  t tr]
@@ -855,7 +855,7 @@ kernel void Anime4K_Upscale_DTD_x2_pass12_Anime4K_v3_2_Upscale_DTD_x2_Kernel_Y(
     uint2 gid [[thread_position_in_grid]],
     sampler textureSampler [[sampler(0)]]) {
     float2 mtlPos = float2(gid) / (float2(output.get_width(), output.get_height()) - float2(1, 1));
-    output.write(hook(mtlPos, textureSampler, HOOKED, LUMAD2, MAIN), gid);
+    output.write(hook_pass12(mtlPos, textureSampler, HOOKED, LUMAD2, MAIN), gid);
 }
 
 
@@ -900,7 +900,7 @@ using mat4 = float4x4;
 
 #define L_tex HOOKED_tex
 
-static float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LUMAD, texture2d<float, access::sample> LUMAD2, texture2d<float, access::sample> MAIN) {
+static float4 hook_pass13(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LUMAD, texture2d<float, access::sample> LUMAD2, texture2d<float, access::sample> MAIN) {
 	float2 d = HOOKED_pt;
 
 	float relstr = HOOKED_size.y / 1080.0 * STRENGTH;
@@ -925,7 +925,7 @@ kernel void Anime4K_Upscale_DTD_x2_pass13_Anime4K_v3_2_Upscale_DTD_x2(
     uint2 gid [[thread_position_in_grid]],
     sampler textureSampler [[sampler(0)]]) {
     float2 mtlPos = float2(gid) / (float2(output.get_width(), output.get_height()) - float2(1, 1));
-    output.write(hook(mtlPos, textureSampler, HOOKED, LUMAD, LUMAD2, MAIN), gid);
+    output.write(hook_pass13(mtlPos, textureSampler, HOOKED, LUMAD, LUMAD2, MAIN), gid);
 }
 
 
@@ -962,7 +962,7 @@ float get_luma(float2 mtlPos, sampler textureSampler, texture2d<float, access::s
 	return dot(float4(0.299, 0.587, 0.114, 0.0), rgba);
 }
 
-static float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> MAINTEMPTHIN, texture2d<float, access::sample> MAIN) {
+static float4 hook_pass14(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> MAINTEMPTHIN, texture2d<float, access::sample> MAIN) {
     return float4(get_luma(mtlPos, textureSampler, HOOKED, MAINTEMPTHIN, MAIN, MAINTEMPTHIN_tex(HOOKED_pos)), 0.0, 0.0, 0.0);
 }
 
@@ -974,7 +974,7 @@ kernel void Anime4K_Upscale_DTD_x2_pass14_Anime4K_v3_2_Upscale_DTD_x2_Luma(
     uint2 gid [[thread_position_in_grid]],
     sampler textureSampler [[sampler(0)]]) {
     float2 mtlPos = float2(gid) / (float2(output.get_width(), output.get_height()) - float2(1, 1));
-    output.write(hook(mtlPos, textureSampler, HOOKED, MAINTEMPTHIN, MAIN), gid);
+    output.write(hook_pass14(mtlPos, textureSampler, HOOKED, MAINTEMPTHIN, MAIN), gid);
 }
 
 
@@ -1034,7 +1034,7 @@ float lumGaussian7(float2 mtlPos, sampler textureSampler, texture2d<float, acces
 }
 
 
-static float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> MAINTEMP, texture2d<float, access::sample> MAIN) {
+static float4 hook_pass15(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> MAINTEMP, texture2d<float, access::sample> MAIN) {
     return float4(lumGaussian7(mtlPos, textureSampler, HOOKED, MAINTEMP, MAIN, HOOKED_pos, float2(HOOKED_pt.x, 0)), minmax3(mtlPos, textureSampler, HOOKED, MAINTEMP, MAIN, HOOKED_pos, float2(HOOKED_pt.x, 0)), 0);
 }
 
@@ -1046,7 +1046,7 @@ kernel void Anime4K_Upscale_DTD_x2_pass15_Anime4K_v3_2_Upscale_DTD_x2_Kernel_X(
     uint2 gid [[thread_position_in_grid]],
     sampler textureSampler [[sampler(0)]]) {
     float2 mtlPos = float2(gid) / (float2(output.get_width(), output.get_height()) - float2(1, 1));
-    output.write(hook(mtlPos, textureSampler, HOOKED, MAINTEMP, MAIN), gid);
+    output.write(hook_pass15(mtlPos, textureSampler, HOOKED, MAINTEMP, MAIN), gid);
 }
 
 
@@ -1110,7 +1110,7 @@ float lumGaussian7(float2 mtlPos, sampler textureSampler, texture2d<float, acces
 }
 
 
-static float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> MMKERNEL, texture2d<float, access::sample> MAIN) {
+static float4 hook_pass16(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> MMKERNEL, texture2d<float, access::sample> MAIN) {
     return float4(lumGaussian7(mtlPos, textureSampler, HOOKED, MMKERNEL, MAIN, HOOKED_pos, float2(0, HOOKED_pt.y)), minmax3(mtlPos, textureSampler, HOOKED, MMKERNEL, MAIN, HOOKED_pos, float2(0, HOOKED_pt.y)), 0);
 }
 
@@ -1122,7 +1122,7 @@ kernel void Anime4K_Upscale_DTD_x2_pass16_Anime4K_v3_2_Upscale_DTD_x2_Kernel_Y(
     uint2 gid [[thread_position_in_grid]],
     sampler textureSampler [[sampler(0)]]) {
     float2 mtlPos = float2(gid) / (float2(output.get_width(), output.get_height()) - float2(1, 1));
-    output.write(hook(mtlPos, textureSampler, HOOKED, MMKERNEL, MAIN), gid);
+    output.write(hook_pass16(mtlPos, textureSampler, HOOKED, MMKERNEL, MAIN), gid);
 }
 
 
@@ -1175,7 +1175,7 @@ using mat4 = float4x4;
 
 #define L_tex MAINTEMP_tex
 
-static float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> MAINTEMPTHIN, texture2d<float, access::sample> MAINTEMP, texture2d<float, access::sample> MMKERNEL, texture2d<float, access::sample> MAIN) {
+static float4 hook_pass17(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> MAINTEMPTHIN, texture2d<float, access::sample> MAINTEMP, texture2d<float, access::sample> MMKERNEL, texture2d<float, access::sample> MAIN) {
 	float c = (L_tex(HOOKED_pos).x - MMKERNEL_tex(HOOKED_pos).x) * STRENGTH;
 
 	float t_range = BLUR_THRESHOLD - NOISE_THRESHOLD;
@@ -1207,6 +1207,6 @@ kernel void Anime4K_Upscale_DTD_x2_pass17_Anime4K_v3_2_Upscale_DTD_x2(
     uint2 gid [[thread_position_in_grid]],
     sampler textureSampler [[sampler(0)]]) {
     float2 mtlPos = float2(gid) / (float2(output.get_width(), output.get_height()) - float2(1, 1));
-    output.write(hook(mtlPos, textureSampler, HOOKED, MAINTEMPTHIN, MAINTEMP, MMKERNEL, MAIN), gid);
+    output.write(hook_pass17(mtlPos, textureSampler, HOOKED, MAINTEMPTHIN, MAINTEMP, MMKERNEL, MAIN), gid);
 }
 

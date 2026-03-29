@@ -32,7 +32,7 @@ float get_luma(float2 mtlPos, sampler textureSampler, texture2d<float, access::s
 	return dot(float4(0.299, 0.587, 0.114, 0.0), rgba);
 }
 
-static float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> MAIN) {
+static float4 hook_pass0(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> MAIN) {
 
 	float gmax = 0.0;
 
@@ -52,7 +52,7 @@ kernel void Anime4K_Clamp_Highlights_pass0_Anime4K_v4_0_De_Ring_Compute_Statisti
     uint2 gid [[thread_position_in_grid]],
     sampler textureSampler [[sampler(0)]]) {
     float2 mtlPos = float2(gid) / (float2(output.get_width(), output.get_height()) - float2(1, 1));
-    output.write(hook(mtlPos, textureSampler, HOOKED, MAIN), gid);
+    output.write(hook_pass0(mtlPos, textureSampler, HOOKED, MAIN), gid);
 }
 
 
@@ -88,7 +88,7 @@ using mat4 = float4x4;
 #define KERNELSIZE 5 //Kernel size, must be an positive odd integer.
 #define KERNELHALFSIZE 2 //Half of the kernel size without remainder. Must be equal to trunc(KERNELSIZE/2).
 
-static float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> STATSMAX, texture2d<float, access::sample> MAIN) {
+static float4 hook_pass1(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> STATSMAX, texture2d<float, access::sample> MAIN) {
 
 	float gmax = 0.0;
 
@@ -109,7 +109,7 @@ kernel void Anime4K_Clamp_Highlights_pass1_Anime4K_v4_0_De_Ring_Compute_Statisti
     uint2 gid [[thread_position_in_grid]],
     sampler textureSampler [[sampler(0)]]) {
     float2 mtlPos = float2(gid) / (float2(output.get_width(), output.get_height()) - float2(1, 1));
-    output.write(hook(mtlPos, textureSampler, HOOKED, STATSMAX, MAIN), gid);
+    output.write(hook_pass1(mtlPos, textureSampler, HOOKED, STATSMAX, MAIN), gid);
 }
 
 
@@ -146,7 +146,7 @@ float get_luma(float2 mtlPos, sampler textureSampler, texture2d<float, access::s
 	return dot(float4(0.299, 0.587, 0.114, 0.0), rgba);
 }
 
-static float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> STATSMAX, texture2d<float, access::sample> MAIN) {
+static float4 hook_pass2(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> STATSMAX, texture2d<float, access::sample> MAIN) {
 
 	float current_luma = get_luma(mtlPos, textureSampler, HOOKED, STATSMAX, MAIN, HOOKED_tex(HOOKED_pos));
 	float new_luma = min(current_luma, STATSMAX_tex(HOOKED_pos).x);
@@ -164,6 +164,6 @@ kernel void Anime4K_Clamp_Highlights_pass2_Anime4K_v4_0_De_Ring_Clamp(
     uint2 gid [[thread_position_in_grid]],
     sampler textureSampler [[sampler(0)]]) {
     float2 mtlPos = float2(gid) / (float2(output.get_width(), output.get_height()) - float2(1, 1));
-    output.write(hook(mtlPos, textureSampler, HOOKED, STATSMAX, MAIN), gid);
+    output.write(hook_pass2(mtlPos, textureSampler, HOOKED, STATSMAX, MAIN), gid);
 }
 

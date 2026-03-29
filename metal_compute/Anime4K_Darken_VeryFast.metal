@@ -29,7 +29,7 @@ float get_luma(float2 mtlPos, sampler textureSampler, texture2d<float, access::s
 	return dot(float4(0.299, 0.587, 0.114, 0.0), rgba);
 }
 
-static float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> MAIN) {
+static float4 hook_pass0(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> MAIN) {
     return float4(get_luma(mtlPos, textureSampler, HOOKED, MAIN, HOOKED_tex(HOOKED_pos)), 0.0, 0.0, 0.0);
 }
 
@@ -40,7 +40,7 @@ kernel void Anime4K_Darken_VeryFast_pass0_Anime4K_v3_2_Darken_DoG_HQ_Luma(
     uint2 gid [[thread_position_in_grid]],
     sampler textureSampler [[sampler(0)]]) {
     float2 mtlPos = float2(gid) / (float2(output.get_width(), output.get_height()) - float2(1, 1));
-    output.write(hook(mtlPos, textureSampler, HOOKED, MAIN), gid);
+    output.write(hook_pass0(mtlPos, textureSampler, HOOKED, MAIN), gid);
 }
 
 
@@ -101,7 +101,7 @@ float comp_gaussian_x(float2 mtlPos, sampler textureSampler, texture2d<float, ac
 	return g / gn;
 }
 
-static float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LINELUMA, texture2d<float, access::sample> MAIN) {
+static float4 hook_pass1(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LINELUMA, texture2d<float, access::sample> MAIN) {
     return float4(comp_gaussian_x(mtlPos, textureSampler, HOOKED, LINELUMA, MAIN), 0.0, 0.0, 0.0);
 }
 
@@ -117,7 +117,7 @@ kernel void Anime4K_Darken_VeryFast_pass1_Anime4K_v3_2_Darken_DoG_VeryFast_Gauss
     const int KERNELSIZE = max(int(ceil(SPATIAL_SIGMA * 2.0)), 1) * 2 + 1;
     const int KERNELHALFSIZE = int(KERNELSIZE / 2);
     const int KERNELLEN = KERNELSIZE * KERNELSIZE;
-    output.write(hook(mtlPos, textureSampler, HOOKED, LINELUMA, MAIN), gid);
+    output.write(hook_pass1(mtlPos, textureSampler, HOOKED, LINELUMA, MAIN), gid);
 }
 
 
@@ -184,7 +184,7 @@ float comp_gaussian_y(float2 mtlPos, sampler textureSampler, texture2d<float, ac
 	return g / gn;
 }
 
-static float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LINELUMA, texture2d<float, access::sample> LINEKERNEL, texture2d<float, access::sample> MAIN) {
+static float4 hook_pass2(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LINELUMA, texture2d<float, access::sample> LINEKERNEL, texture2d<float, access::sample> MAIN) {
     return float4(min(LINELUMA_tex(HOOKED_pos).x - comp_gaussian_y(mtlPos, textureSampler, HOOKED, LINELUMA, LINEKERNEL, MAIN), 0.0), 0.0, 0.0, 0.0);
 }
 
@@ -201,7 +201,7 @@ kernel void Anime4K_Darken_VeryFast_pass2_Anime4K_v3_2_Darken_DoG_VeryFast_Gauss
     const int KERNELSIZE = max(int(ceil(SPATIAL_SIGMA * 2.0)), 1) * 2 + 1;
     const int KERNELHALFSIZE = int(KERNELSIZE / 2);
     const int KERNELLEN = KERNELSIZE * KERNELSIZE;
-    output.write(hook(mtlPos, textureSampler, HOOKED, LINELUMA, LINEKERNEL, MAIN), gid);
+    output.write(hook_pass2(mtlPos, textureSampler, HOOKED, LINELUMA, LINEKERNEL, MAIN), gid);
 }
 
 
@@ -262,7 +262,7 @@ float comp_gaussian_x(float2 mtlPos, sampler textureSampler, texture2d<float, ac
 	return g / gn;
 }
 
-static float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LINEKERNEL, texture2d<float, access::sample> MAIN) {
+static float4 hook_pass3(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LINEKERNEL, texture2d<float, access::sample> MAIN) {
     return float4(comp_gaussian_x(mtlPos, textureSampler, HOOKED, LINEKERNEL, MAIN), 0.0, 0.0, 0.0);
 }
 
@@ -278,7 +278,7 @@ kernel void Anime4K_Darken_VeryFast_pass3_Anime4K_v3_2_Darken_DoG_VeryFast_Gauss
     const int KERNELSIZE = max(int(ceil(SPATIAL_SIGMA * 2.0)), 1) * 2 + 1;
     const int KERNELHALFSIZE = int(KERNELSIZE / 2);
     const int KERNELLEN = KERNELSIZE * KERNELSIZE;
-    output.write(hook(mtlPos, textureSampler, HOOKED, LINEKERNEL, MAIN), gid);
+    output.write(hook_pass3(mtlPos, textureSampler, HOOKED, LINEKERNEL, MAIN), gid);
 }
 
 
@@ -339,7 +339,7 @@ float comp_gaussian_y(float2 mtlPos, sampler textureSampler, texture2d<float, ac
 	return g / gn;
 }
 
-static float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LINEKERNEL, texture2d<float, access::sample> MAIN) {
+static float4 hook_pass4(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LINEKERNEL, texture2d<float, access::sample> MAIN) {
     return float4(comp_gaussian_y(mtlPos, textureSampler, HOOKED, LINEKERNEL, MAIN), 0.0, 0.0, 0.0);
 }
 
@@ -355,7 +355,7 @@ kernel void Anime4K_Darken_VeryFast_pass4_Anime4K_v3_2_Darken_DoG_VeryFast_Gauss
     const int KERNELSIZE = max(int(ceil(SPATIAL_SIGMA * 2.0)), 1) * 2 + 1;
     const int KERNELHALFSIZE = int(KERNELSIZE / 2);
     const int KERNELLEN = KERNELSIZE * KERNELSIZE;
-    output.write(hook(mtlPos, textureSampler, HOOKED, LINEKERNEL, MAIN), gid);
+    output.write(hook_pass4(mtlPos, textureSampler, HOOKED, LINEKERNEL, MAIN), gid);
 }
 
 
@@ -390,7 +390,7 @@ using mat4 = float4x4;
 
 #define STRENGTH 1.5 //Line darken proportional strength, higher is darker.
 
-static float4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LINEKERNEL, texture2d<float, access::sample> MAIN) {
+static float4 hook_pass5(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LINEKERNEL, texture2d<float, access::sample> MAIN) {
 	//This trick is only possible if the inverse Y->RGB matrix has 1 for every row... (which is the case for BT.709)
 	//Otherwise we would need to convert RGB to YUV, modify Y then convert back to RGB.
     return HOOKED_tex(HOOKED_pos) + (LINEKERNEL_tex(HOOKED_pos).x * STRENGTH);
@@ -404,6 +404,6 @@ kernel void Anime4K_Darken_VeryFast_pass5_Anime4K_v3_2_Darken_DoG_VeryFast_Upsam
     uint2 gid [[thread_position_in_grid]],
     sampler textureSampler [[sampler(0)]]) {
     float2 mtlPos = float2(gid) / (float2(output.get_width(), output.get_height()) - float2(1, 1));
-    output.write(hook(mtlPos, textureSampler, HOOKED, LINEKERNEL, MAIN), gid);
+    output.write(hook_pass5(mtlPos, textureSampler, HOOKED, LINEKERNEL, MAIN), gid);
 }
 
