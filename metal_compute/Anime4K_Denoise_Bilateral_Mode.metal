@@ -85,8 +85,8 @@ using mat4 = float4x4;
 
 #define GETOFFSET(i) float2((i % KERNELSIZE) - KERNELHALFSIZE, (i / KERNELSIZE) - KERNELHALFSIZE)
 
-float gaussian(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LINELUMA, texture2d<float, access::sample> MAIN, float x, float s, float m) {
-	float scaled = (x - m) / s;
+float gaussian(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LINELUMA, texture2d<float, access::sample> MAIN, float x, float m) {
+	float scaled = (x - m) / SPATIAL_SIGMA;
 	return exp(-0.5 * scaled * scaled);
 }
 

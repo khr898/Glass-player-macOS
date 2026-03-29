@@ -79,19 +79,19 @@ using mat4 = float4x4;
     // #define KERNELHALFSIZE (int(KERNELSIZE/2)) //Half of the kernel size without remainder. Must be equal to trunc(KERNELSIZE/2).  (computed dynamically below)
     // #define KERNELLEN (KERNELSIZE * KERNELSIZE) //Total area of kernel. Must be equal to KERNELSIZE * KERNELSIZE.  (computed dynamically below)
 
-float gaussian(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LINELUMA, texture2d<float, access::sample> MAIN, float x, float s, float m) {
-	float scaled = (x - m) / s;
+float gaussian(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LINELUMA, texture2d<float, access::sample> MAIN, float x, float m) {
+	float scaled = (x - m) / SPATIAL_SIGMA;
 	return exp(-0.5 * scaled * scaled);
 }
 
-float comp_gaussian_x(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LINELUMA, texture2d<float, access::sample> MAIN, int KERNELSIZE, int KERNELHALFSIZE) {
+float comp_gaussian_x(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LINELUMA, texture2d<float, access::sample> MAIN, int KERNELSIZE, int KERNELHALFSIZE, float SPATIAL_SIGMA, SPATIAL_SIGMA) {
 
 	float g = 0.0;
 	float gn = 0.0;
 
 	for (int i=0; i<KERNELSIZE; i++) {
 		float di = float(i - KERNELHALFSIZE);
-		float gf = gaussian(mtlPos, textureSampler, HOOKED, LINELUMA, MAIN, di, SPATIAL_SIGMA, 0.0);
+		float gf = gaussian(mtlPos, textureSampler, HOOKED, LINELUMA, MAIN, di, 0.0, SPATIAL_SIGMA);
 
 		g = g + LINELUMA_texOff(float2(di, 0.0)).x * gf;
 		gn = gn + gf;
@@ -102,7 +102,7 @@ float comp_gaussian_x(float2 mtlPos, sampler textureSampler, texture2d<float, ac
 }
 
 static float4 hook_pass1(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LINELUMA, texture2d<float, access::sample> MAIN) {
-    return float4(comp_gaussian_x(mtlPos, textureSampler, HOOKED, LINELUMA, MAIN), 0.0, 0.0, 0.0);
+    return float4(comp_gaussian_x(mtlPos, textureSampler, HOOKED, LINELUMA, MAIN, SPATIAL_SIGMA), 0.0, 0.0, 0.0);
 }
 
 kernel void Anime4K_Darken_HQ_pass1_Anime4K_v3_2_Darken_DoG_HQ_Difference_X(
@@ -158,8 +158,8 @@ using mat4 = float4x4;
     // #define KERNELHALFSIZE (int(KERNELSIZE/2)) //Half of the kernel size without remainder. Must be equal to trunc(KERNELSIZE/2).  (computed dynamically below)
     // #define KERNELLEN (KERNELSIZE * KERNELSIZE) //Total area of kernel. Must be equal to KERNELSIZE * KERNELSIZE.  (computed dynamically below)
 
-float gaussian(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LINELUMA, texture2d<float, access::sample> LINEKERNEL, texture2d<float, access::sample> MAIN, float x, float s, float m) {
-	float scaled = (x - m) / s;
+float gaussian(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LINELUMA, texture2d<float, access::sample> MAIN, float x, float m, float SPATIAL_SIGMA) {
+	float scaled = (x - m) / SPATIAL_SIGMA;
 	return exp(-0.5 * scaled * scaled);
 }
 
@@ -170,7 +170,7 @@ float comp_gaussian_y(float2 mtlPos, sampler textureSampler, texture2d<float, ac
 
 	for (int i=0; i<KERNELSIZE; i++) {
 		float di = float(i - KERNELHALFSIZE);
-		float gf = gaussian(mtlPos, textureSampler, HOOKED, LINELUMA, LINEKERNEL, MAIN, di, SPATIAL_SIGMA, 0.0);
+		float gf = gaussian(mtlPos, textureSampler, HOOKED, LINELUMA, LINEKERNEL, MAIN, di, 0.0, SPATIAL_SIGMA);
 
 		g = g + LINEKERNEL_texOff(float2(0.0, di)).x * gf;
 		gn = gn + gf;
@@ -232,19 +232,19 @@ using mat4 = float4x4;
     // #define KERNELHALFSIZE (int(KERNELSIZE/2)) //Half of the kernel size without remainder. Must be equal to trunc(KERNELSIZE/2).  (computed dynamically below)
     // #define KERNELLEN (KERNELSIZE * KERNELSIZE) //Total area of kernel. Must be equal to KERNELSIZE * KERNELSIZE.  (computed dynamically below)
 
-float gaussian(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LINEKERNEL, texture2d<float, access::sample> MAIN, float x, float s, float m) {
-	float scaled = (x - m) / s;
+float gaussian(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LINELUMA, texture2d<float, access::sample> MAIN, float x, float m, float SPATIAL_SIGMA) {
+	float scaled = (x - m) / SPATIAL_SIGMA;
 	return exp(-0.5 * scaled * scaled);
 }
 
-float comp_gaussian_x(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LINEKERNEL, texture2d<float, access::sample> MAIN, int KERNELSIZE, int KERNELHALFSIZE) {
+float comp_gaussian_x(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LINEKERNEL, texture2d<float, access::sample> MAIN, int KERNELSIZE, int KERNELHALFSIZE, float SPATIAL_SIGMA, SPATIAL_SIGMA) {
 
 	float g = 0.0;
 	float gn = 0.0;
 
 	for (int i=0; i<KERNELSIZE; i++) {
 		float di = float(i - KERNELHALFSIZE);
-		float gf = gaussian(mtlPos, textureSampler, HOOKED, LINEKERNEL, MAIN, di, SPATIAL_SIGMA, 0.0);
+		float gf = gaussian(mtlPos, textureSampler, HOOKED, LINEKERNEL, MAIN, di, 0.0, SPATIAL_SIGMA);
 
 		g = g + LINEKERNEL_texOff(float2(di, 0.0)).x * gf;
 		gn = gn + gf;
@@ -255,7 +255,7 @@ float comp_gaussian_x(float2 mtlPos, sampler textureSampler, texture2d<float, ac
 }
 
 static float4 hook_pass3(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LINEKERNEL, texture2d<float, access::sample> MAIN) {
-    return float4(comp_gaussian_x(mtlPos, textureSampler, HOOKED, LINEKERNEL, MAIN), 0.0, 0.0, 0.0);
+    return float4(comp_gaussian_x(mtlPos, textureSampler, HOOKED, LINEKERNEL, MAIN, SPATIAL_SIGMA), 0.0, 0.0, 0.0);
 }
 
 kernel void Anime4K_Darken_HQ_pass3_Anime4K_v3_2_Darken_DoG_HQ_Gaussian_X(
@@ -305,8 +305,8 @@ using mat4 = float4x4;
     // #define KERNELHALFSIZE (int(KERNELSIZE/2)) //Half of the kernel size without remainder. Must be equal to trunc(KERNELSIZE/2).  (computed dynamically below)
     // #define KERNELLEN (KERNELSIZE * KERNELSIZE) //Total area of kernel. Must be equal to KERNELSIZE * KERNELSIZE.  (computed dynamically below)
 
-float gaussian(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LINEKERNEL, texture2d<float, access::sample> MAIN, float x, float s, float m) {
-	float scaled = (x - m) / s;
+float gaussian(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> LINELUMA, texture2d<float, access::sample> MAIN, float x, float m, float SPATIAL_SIGMA) {
+	float scaled = (x - m) / SPATIAL_SIGMA;
 	return exp(-0.5 * scaled * scaled);
 }
 
@@ -317,7 +317,7 @@ float comp_gaussian_y(float2 mtlPos, sampler textureSampler, texture2d<float, ac
 
 	for (int i=0; i<KERNELSIZE; i++) {
 		float di = float(i - KERNELHALFSIZE);
-		float gf = gaussian(mtlPos, textureSampler, HOOKED, LINEKERNEL, MAIN, di, SPATIAL_SIGMA, 0.0);
+		float gf = gaussian(mtlPos, textureSampler, HOOKED, LINEKERNEL, MAIN, di, 0.0, SPATIAL_SIGMA);
 
 		g = g + LINEKERNEL_texOff(float2(0.0, di)).x * gf;
 		gn = gn + gf;
