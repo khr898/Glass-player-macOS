@@ -968,18 +968,23 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
 
     @objc private func applyShaderAction(_ sender: NSMenuItem) {
         if let preset = sender.representedObject as? String {
-            _ = mpv.applyShaderPreset(preset)
+            NSLog("[PlayerWindow] User selected shader preset: %@", preset)
+            let result = mpv.applyShaderPreset(preset)
+            NSLog("[PlayerWindow] applyShaderPreset returned: %@", result ? "true" : "false")
             updateShaderButton()
         }
     }
 
     @objc private func applyAutoShaderAction() {
         let resolved = UniversalMetalRuntime.recommendedAnime4KPreset()
-        _ = mpv.applyShaderPreset(resolved)
+        NSLog("[PlayerWindow] User selected Auto preset, resolved to: %@", resolved)
+        let result = mpv.applyShaderPreset(resolved)
+        NSLog("[PlayerWindow] applyShaderPreset returned: %@", result ? "true" : "false")
         updateShaderButton()
     }
 
     @objc private func clearShadersAction() {
+        NSLog("[PlayerWindow] User cleared shaders")
         mpv.clearShaders()
         updateShaderButton()
     }
