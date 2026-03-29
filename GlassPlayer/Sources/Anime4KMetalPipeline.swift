@@ -198,21 +198,26 @@ class Anime4KMetalPipeline {
         let contentsDir = (macosDir as NSString).deletingLastPathComponent
         let metallibPath = contentsDir + "/Resources/Anime4K.metallib"
 
-        if FileManager.default.fileExists(atPath: metallibPath) {
-            let url = URL(fileURLWithPath: metallibPath)
-            self.library = try device.makeLibrary(URL: url)
-            NSLog("[Anime4K] Loaded pre-compiled metallib from: %@", metallibPath)
-        } else {
-            // Fallback: try default.metallib (combined library)
-            let defaultLibPath = contentsDir + "/Resources/default.metallib"
-            if FileManager.default.fileExists(atPath: defaultLibPath) {
-                let url = URL(fileURLWithPath: defaultLibPath)
+        do {
+            if FileManager.default.fileExists(atPath: metallibPath) {
+                let url = URL(fileURLWithPath: metallibPath)
                 self.library = try device.makeLibrary(URL: url)
-                NSLog("[Anime4K] Loaded combined metallib from: %@", defaultLibPath)
+                NSLog("[Anime4K] Loaded pre-compiled metallib from: %@", metallibPath)
             } else {
-                NSLog("[Anime4K] No pre-compiled metallib found – runtime compilation required")
-                return nil
+                // Fallback: try default.metallib (combined library)
+                let defaultLibPath = contentsDir + "/Resources/default.metallib"
+                if FileManager.default.fileExists(atPath: defaultLibPath) {
+                    let url = URL(fileURLWithPath: defaultLibPath)
+                    self.library = try device.makeLibrary(URL: url)
+                    NSLog("[Anime4K] Loaded combined metallib from: %@", defaultLibPath)
+                } else {
+                    NSLog("[Anime4K] No pre-compiled metallib found – runtime compilation required")
+                    return nil
+                }
             }
+        } catch {
+            NSLog("[Anime4K] Failed to load metallib: \(error)")
+            return nil
         }
 
         // Create sampler state (linear filtering, clamp to edge)
