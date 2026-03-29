@@ -192,11 +192,11 @@ class Anime4KMetalPipeline {
         }
         self.commandQueue = queue
 
-        // Load the pre-compiled metallib from bundle resources
+        // Load the pre-compiled Anime4K metallib from bundle resources
         let execPath = ProcessInfo.processInfo.arguments[0]
         let macosDir = (execPath as NSString).deletingLastPathComponent
         let contentsDir = (macosDir as NSString).deletingLastPathComponent
-        let metallibPath = contentsDir + "/Resources/default.metallib"
+        let metallibPath = contentsDir + "/Resources/Anime4K.metallib"
 
         if FileManager.default.fileExists(atPath: metallibPath) {
             do {
@@ -205,14 +205,28 @@ class Anime4KMetalPipeline {
                 self.library = try device.makeLibrary(data: data, options: nil)
                 NSLog("[Anime4K] Loaded pre-compiled metallib from: %@", metallibPath)
             } catch {
-                NSLog("[Anime4K] Failed to load metallib: \(error)")
+                NSLog("[Anime4K] Failed to load metallib: \(error), falling back to runtime compilation")
+                // Fallback: compile from embedded source at runtime
+                // For now, return nil - runtime compilation not yet implemented
                 return nil
             }
         } else {
-            // Fallback: compile from embedded source at runtime
-            NSLog("[Anime4K] No pre-compiled metallib found, would compile from source")
-            // For now, fail - the build script should always generate default.metallib
-            return nil
+            // Fallback: try default.metallib (combined library)
+            let defaultLibPath = contentsDir + "/Resources/default.metallib"
+            if FileManager.default.fileExists(atPath: defaultLibPath) {
+                do {
+                    let url = URL(fileURLWithPath: defaultLibPath)
+                    let data = try Data(contentsOf: url)
+                    self.library = try device.makeLibrary(data: data, options: nil)
+                    NSLog("[Anime4K] Loaded combined metallib from: %@", defaultLibPath)
+                } catch {
+                    NSLog("[Anime4K] Failed to load default.metallib: \(error)")
+                    return nil
+                }
+            } else {
+                NSLog("[Anime4K] No pre-compiled metallib found – runtime compilation required")
+                return nil
+            }
         }
 
         // Create sampler state (linear filtering, clamp to edge)

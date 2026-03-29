@@ -93,6 +93,8 @@ mkdir -p "$APP_BUNDLE/Contents/Resources/shaders"
 # If the Metal toolchain is available, pre-compile shaders for faster startup.
 # If not, the app falls back to runtime compilation from embedded MSL source.
 echo "=== Compiling Metal shaders ==="
+
+# 1. Compile display shaders (Shaders.metal)
 METAL_SOURCE="$PROJECT_DIR/Sources/Shaders.metal"
 if [ -f "$METAL_SOURCE" ] && xcrun --find metal >/dev/null 2>&1; then
     xcrun metal -c "$METAL_SOURCE" \
@@ -102,11 +104,52 @@ if [ -f "$METAL_SOURCE" ] && xcrun --find metal >/dev/null 2>&1; then
     xcrun metallib "$BUILD_DIR/Shaders.air" \
         -o "$BUILD_DIR/default.metallib" 2>/dev/null && \
     cp "$BUILD_DIR/default.metallib" "$APP_BUNDLE/Contents/Resources/" && \
-    echo "  Compiled Metal shaders → default.metallib" || \
+    echo "  Compiled display shaders → default.metallib" || \
     echo "  Metal toolchain unavailable – shaders will compile at runtime"
     rm -f "$BUILD_DIR/Shaders.air"
 else
-    echo "  Skipping metallib (runtime MSL compilation will be used)"
+    echo "  Skipping display metallib (runtime MSL compilation will be used)"
+fi
+
+# 2. Compile Anime4K compute shaders (metal_compute/*.metal)
+METAL_COMPUTE_DIR="$PROJECT_DIR/../metal_compute"
+if [ -d "$METAL_COMPUTE_DIR" ] && xcrun --find metal >/dev/null 2>&1; then
+    echo "  Compiling Anime4K compute shaders..."
+    mkdir -p "$BUILD_DIR/anime4k_metallib"
+
+    # Compile each .metal file to .air
+    COMPILE_OK=true
+    for metal_file in "$METAL_COMPUTE_DIR"/*.metal; do
+        if [ -f "$metal_file" ]; then
+            basename=$(basename "$metal_file" .metal)
+            air_file="$BUILD_DIR/anime4k_metallib/${basename}.air"
+            if xcrun metal -c "$metal_file" \
+                -o "$air_file" \
+                -std=metal3.0 \
+                -target air64-apple-macos14.0 2>/dev/null; then
+                echo "    ✓ $basename"
+            else
+                echo "    ✗ $basename (compilation failed)"
+                COMPILE_OK=false
+            fi
+        fi
+    done
+
+    # Link all .air files into a single metallib
+    if $COMPILE_OK && ls "$BUILD_DIR/anime4k_metallib"/*.air 1>/dev/null 2>&1; then
+        if xcrun metallib "$BUILD_DIR/anime4k_metallib"/*.air \
+            -o "$BUILD_DIR/Anime4K.metallib" 2>/dev/null; then
+            cp "$BUILD_DIR/Anime4K.metallib" "$APP_BUNDLE/Contents/Resources/"
+            echo "  ✓ Anime4K.metallib created"
+        else
+            echo "  ✗ Failed to link Anime4K.metallib"
+        fi
+    fi
+
+    rm -rf "$BUILD_DIR/anime4k_metallib"
+    rm -f "$BUILD_DIR/Shaders.air"
+elif [ -d "$METAL_COMPUTE_DIR" ]; then
+    echo "  Metal toolchain not found – Anime4K shaders will compile at runtime"
 fi
 
 # Copy executable
