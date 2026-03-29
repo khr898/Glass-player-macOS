@@ -40,6 +40,7 @@ COMMON_SWIFTC_FLAGS=(
     -framework CoreAudio
     -framework Accelerate
     -target arm64-apple-macos14.0
+    -Xcc -DGL_SILENCE_DEPRECATION
 )
 
 PROFILE_SWIFTC_FLAGS=()
