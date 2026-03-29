@@ -359,7 +359,11 @@ class Anime4KMetalPipeline {
                 // Bind sampler at index 0
                 encoder.setSamplerState(samplerState, index: 0)
 
-                // Calculate thread groups
+                // Declare resource usage for proper barrier handling
+                encoder.useResource(currentInput, usage: .read)
+                encoder.useResource(outputTexture, usage: .write)
+
+                // Calculate thread groups based on OUTPUT dimensions
                 let width = outputTexture.width
                 let height = outputTexture.height
                 let threadGroups = MTLSize(width: (width + threadGroupSize.width - 1) / threadGroupSize.width,
@@ -367,6 +371,9 @@ class Anime4KMetalPipeline {
                                            depth: 1)
 
                 encoder.dispatchThreads(threadGroups, threadsPerThreadgroup: threadGroupSize)
+
+                // Add barrier to ensure write completes before next pass reads
+                encoder.memoryBarrier(scope: .texture)
 
                 // Next pass reads from this pass's output
                 currentInput = outputTexture
@@ -596,7 +603,7 @@ class Anime4KMetalPipeline {
                 mipmapped: false
             )
             descriptor.usage = [.shaderRead, .shaderWrite]
-            descriptor.storageMode = .private
+            descriptor.storageMode = .shared  // Use shared for CPU/GPU access compatibility
 
             if let texture = device.makeTexture(descriptor: descriptor) {
                 intermediateTextures.append(IntermediateTexture(
@@ -622,7 +629,7 @@ class Anime4KMetalPipeline {
             mipmapped: false
         )
         descriptor.usage = [.shaderRead, .shaderWrite]
-        descriptor.storageMode = .private
+        descriptor.storageMode = .shared  // Use shared for compatibility
 
         let texture = device.makeTexture(descriptor: descriptor)
         outputTexture = texture
