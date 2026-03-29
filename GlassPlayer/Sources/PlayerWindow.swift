@@ -968,6 +968,8 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
 
     @objc private func applyShaderAction(_ sender: NSMenuItem) {
         if let preset = sender.representedObject as? String {
+            // Visual feedback that code is running
+            shaderButton.contentTintColor = .yellow
             NSLog("[PlayerWindow] User selected shader preset: %@", preset)
             let result = mpv.applyShaderPreset(preset)
             NSLog("[PlayerWindow] applyShaderPreset returned: %@", result ? "true" : "false")
