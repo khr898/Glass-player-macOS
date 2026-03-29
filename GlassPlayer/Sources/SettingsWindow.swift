@@ -794,6 +794,17 @@ class SettingsWindow: NSWindowController, NSTableViewDelegate, NSTableViewDataSo
         ))
 
         views.append(makePopUpRow(
+            title: "Shader Backend",
+            key: "anime4KBackend",
+            options: ["Native Metal (Recommended)", "GLSL (mpv)"],
+            defaultValue: "Native Metal (Recommended)"
+        ))
+        views.append(makeDescriptionLabel(
+            "Native Metal uses Apple Silicon GPU compute shaders for better performance. " +
+            "GLSL uses mpv's software shader path (compatible with all systems)."
+        ))
+
+        views.append(makePopUpRow(
             title: "Default Preset",
             key: "defaultShaderPreset",
             options: ["Off", "Auto (Recommended)", "Mode A (HQ)", "Mode B (HQ)", "Mode C (HQ)",
@@ -809,7 +820,7 @@ class SettingsWindow: NSWindowController, NSTableViewDelegate, NSTableViewDataSo
         ))
 
         views.append(makeRestoreDefaultsButton(keys: [
-            "defaultShaderPreset", "autoApplyShaders"
+            "anime4KBackend", "defaultShaderPreset", "autoApplyShaders"
         ]))
 
         addViewsToContainer(container, views: views)
@@ -1072,6 +1083,29 @@ class SettingsWindow: NSWindowController, NSTableViewDelegate, NSTableViewDataSo
 
     /// Apply a settings change to all open player windows' mpv instances.
     private func applySettingToMPV(key: String, value: String) {
+        // Special handling for Anime4K backend setting
+        if key == "anime4KBackend" {
+            let useMetal = value == "Native Metal (Recommended)"
+            guard let appDelegate = NSApp.delegate as? AppDelegate else { return }
+            for pw in appDelegate.playerWindows {
+                pw.mpv.setShaderBackend(useMetal)
+            }
+            return
+        }
+
+        // Special handling for shader preset setting
+        if key == "defaultShaderPreset" {
+            guard let appDelegate = NSApp.delegate as? AppDelegate else { return }
+            for pw in appDelegate.playerWindows {
+                if value == "Off" {
+                    pw.mpv.clearShaders()
+                } else {
+                    pw.mpv.applyShaderPreset(value)
+                }
+            }
+            return
+        }
+
         guard let mpvProp = Self.keyToMPV[key] else { return }
 
         var mpvValue = value

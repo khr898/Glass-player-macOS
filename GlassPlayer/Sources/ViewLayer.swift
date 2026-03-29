@@ -113,6 +113,18 @@ class ViewLayer: CAMetalLayer {
     /// (cheap GPU scale) and the IOSurface is recreated once at final size.
     var isInLiveResize = false
 
+    // ═══════════════════════════════════════════════════════════════════
+    // MARK: - Anime4K Metal Compute Pipeline
+    /// Optional Anime4K upscaling/enhancement pipeline. When active, frames
+    /// are processed through compute shaders before display compositing.
+    // ═══════════════════════════════════════════════════════════════════
+
+    var anime4KPipeline: Anime4KMetalPipeline?
+    /// Current Anime4K preset name (nil = disabled)
+    var anime4KPreset: String?
+    /// Texture containing Anime4K-processed frame (nil = use source texture)
+    private var anime4KOutputTexture: MTLTexture?
+
     // MARK: - Initialization
 
     override init() {
@@ -249,6 +261,68 @@ class ViewLayer: CAMetalLayer {
         CGLReleaseContext(cglCtx)
         CGLReleasePixelFormat(cglPix)
         GPAlignedRenderStateDestroy(renderState)
+        anime4KPipeline = nil
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // MARK: - Anime4K Pipeline Control
+    // ═══════════════════════════════════════════════════════════════════
+
+    /// Enable Anime4K processing with the specified preset
+    func enableAnime4K(preset: String) -> Bool {
+        guard anime4KPipeline == nil else {
+            // Already enabled, just change preset if different
+            if anime4KPreset != preset {
+                anime4KPipeline?.deactivate()
+                if let pipeline = Anime4KMetalPipeline(device: mtlDevice) {
+                    let dims = getDisplayDimensions()
+                    if pipeline.activatePreset(preset,
+                                               inputWidth: Int(dims.width),
+                                               inputHeight: Int(dims.height)) {
+                        anime4KPipeline = pipeline
+                        anime4KPreset = preset
+                        NSLog("[ViewLayer] Anime4K preset changed to: %@", preset)
+                        return true
+                    }
+                }
+            }
+            return false
+        }
+
+        // Create new pipeline
+        guard let pipeline = Anime4KMetalPipeline(device: mtlDevice) else {
+            NSLog("[ViewLayer] Failed to create Anime4K pipeline")
+            return false
+        }
+
+        let dims = getDisplayDimensions()
+        if pipeline.activatePreset(preset,
+                                   inputWidth: Int(dims.width),
+                                   inputHeight: Int(dims.height)) {
+            anime4KPipeline = pipeline
+            anime4KPreset = preset
+            NSLog("[ViewLayer] Anime4K enabled: %@ (%dx%d → %dx%d)",
+                  preset, dims.width, dims.height,
+                  dims.width * pipeline.getOutputDimensions(inputWidth: 1, inputHeight: 1).width,
+                  dims.height * pipeline.getOutputDimensions(inputWidth: 1, inputHeight: 1).height)
+            return true
+        }
+
+        return false
+    }
+
+    /// Disable Anime4K processing
+    func disableAnime4K() {
+        anime4KPipeline?.deactivate()
+        anime4KPipeline = nil
+        anime4KPreset = nil
+        anime4KOutputTexture = nil
+        NSLog("[ViewLayer] Anime4K disabled")
+    }
+
+    /// Get list of available Anime4K presets
+    static var availableAnime4KPresets: [String] {
+        return Array(Anime4KMetalPipeline.presetDefinitions.keys).sorted()
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -547,6 +621,23 @@ class ViewLayer: CAMetalLayer {
         // Get next drawable from CAMetalLayer
         guard let drawable = nextDrawable() else { return }
 
+        // ── Allocate command buffer (one per frame) ──
+        guard let cmdBuf = commandQueue.makeCommandBuffer() else { return }
+        cmdBuf.label = "GlassPlayer Frame"
+
+        // ── Process through Anime4K pipeline if active ──
+        var finalTexture = videoTexture
+
+        if let pipeline = anime4KPipeline, pipeline.isActive {
+            // Process frame through Anime4K compute shaders
+            if let processedTexture = pipeline.processFrame(
+                    sourceTexture: videoTexture,
+                    commandBuffer: cmdBuf) {
+                finalTexture = processedTexture
+                anime4KOutputTexture = processedTexture
+            }
+        }
+
         // ── Configure render pass descriptor ──
         // .loadAction = .clear replaces glClear(GL_COLOR_BUFFER_BIT)
         // .storeAction = .store preserves rendered content for presentation
@@ -558,10 +649,6 @@ class ViewLayer: CAMetalLayer {
             red: 0, green: 0, blue: 0, alpha: 1
         )
 
-        // ── Allocate command buffer (one per frame) ──
-        guard let cmdBuf = commandQueue.makeCommandBuffer() else { return }
-        cmdBuf.label = "GlassPlayer Frame"
-
         // ── Encode render pass ──
         guard let encoder = cmdBuf.makeRenderCommandEncoder(descriptor: passDesc) else { return }
         encoder.label = "Video Display Pass"
@@ -572,7 +659,7 @@ class ViewLayer: CAMetalLayer {
 
         // Bind video frame texture (IOSurface-backed, zero-copy on UMA)
         // Replaces OpenGL texture binding (glBindTexture, glActiveTexture)
-        encoder.setFragmentTexture(videoTexture, index: 0)
+        encoder.setFragmentTexture(finalTexture, index: 0)
 
         // Draw fullscreen quad – vertex positions generated in shader from vertex_id
         // Replaces glDrawArrays/glDrawElements with no VBO needed
@@ -653,6 +740,8 @@ class ViewLayer: CAMetalLayer {
 
         // Store CGL context reference for lifecycle management
         controller.openGLContext = cglCtx
+        // Set back-reference so MPVController can control the Metal pipeline
+        controller.viewLayer = self
         CGLUnlockContext(cglCtx)
 
         // Set mpv update callback – pass self as unretained pointer

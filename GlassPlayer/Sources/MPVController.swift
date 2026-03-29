@@ -345,7 +345,7 @@ class MPVController {
             guard let ctx = ctx else { return }
             let controller = Unmanaged<MPVController>.fromOpaque(ctx).takeUnretainedValue()
             controller.updatePowerSourceState()
-        }, selfPtr)
+        }, selfPtr)?.takeRetainedValue()
         if let src = src {
             powerSourceRunLoopSource = src
             CFRunLoopAddSource(CFRunLoopGetMain(), src, .defaultMode)
@@ -760,9 +760,38 @@ class MPVController {
 
     // MARK: - Anime4K Shader Presets
 
+    /// Weak reference to the ViewLayer for Metal pipeline control
+    weak var viewLayer: ViewLayer?
+
+    /// Whether to use native Metal pipeline for Anime4K (true) or GLSL shaders via mpv (false)
+    var useMetalPipeline: Bool = false
+
+    /// Apply an Anime4K shader preset.
+    /// If useMetalPipeline is true and the preset is available, uses the native Metal compute pipeline.
+    /// Otherwise, falls back to GLSL shaders via mpv's glsl-shaders property.
     func applyShaderPreset(_ preset: String) -> Bool {
-        guard let dir = shaderDir else { return false }
-        guard let shaderNames = kShaderPresets[preset] else { return false }
+        // Try Metal pipeline first if enabled
+        if useMetalPipeline, let layer = viewLayer {
+            if layer.enableAnime4K(preset: preset) {
+                currentShaderPreset = preset
+                // Clear any GLSL shaders to prevent double-processing
+                clearGLSLShaders()
+                NSLog("[MPV] Applied Metal Anime4K preset: %@", preset)
+                return true
+            }
+            // Metal pipeline failed, fall back to GLSL
+            NSLog("[MPV] Metal pipeline failed for preset %@, falling back to GLSL", preset)
+        }
+
+        // Fall back to GLSL shaders via mpv
+        guard let dir = shaderDir else {
+            NSLog("[MPV] No shader directory available")
+            return false
+        }
+        guard let shaderNames = kShaderPresets[preset] else {
+            NSLog("[MPV] Unknown preset: %@", preset)
+            return false
+        }
 
         let paths = shaderNames
             .map { "\(dir)/\($0)" }
@@ -773,14 +802,46 @@ class MPVController {
         let joined = paths.joined(separator: ":")
         mpv_command_string(mpvHandle, "change-list glsl-shaders set \"\(joined)\"")
         currentShaderPreset = preset
-        NSLog("[MPV] Applied shader preset: %@ (%d shaders)", preset, paths.count)
+        NSLog("[MPV] Applied GLSL shader preset: %@ (%d shaders)", preset, paths.count)
         return true
     }
 
+    /// Clear all Anime4K shaders (both Metal and GLSL)
     func clearShaders() {
-        mpv_command_string(mpvHandle, "change-list glsl-shaders clr \"\"")
+        // Disable Metal pipeline
+        if useMetalPipeline, let layer = viewLayer {
+            layer.disableAnime4K()
+        }
+        // Clear GLSL shaders
+        clearGLSLShaders()
         currentShaderPreset = nil
         NSLog("[MPV] Shaders cleared")
+    }
+
+    /// Clear only GLSL shaders (used when switching to Metal pipeline)
+    private func clearGLSLShaders() {
+        mpv_command_string(mpvHandle, "change-list glsl-shaders clr \"\"")
+    }
+
+    /// Switch between Metal and GLSL shader backend
+    func setShaderBackend(_ useMetal: Bool) {
+        useMetalPipeline = useMetal
+        if useMetal {
+            // Clear any active GLSL shaders
+            clearGLSLShaders()
+            // Re-apply current preset with Metal pipeline if one was active
+            if let preset = currentShaderPreset {
+                applyShaderPreset(preset)
+            }
+        } else {
+            // Disable Metal pipeline
+            viewLayer?.disableAnime4K()
+            // Re-apply current preset with GLSL if one was active
+            if let preset = currentShaderPreset {
+                applyShaderPreset(preset)
+            }
+        }
+        NSLog("[MPV] Shader backend: %@", useMetal ? "Metal" : "GLSL")
     }
 
     // MARK: - Property observation
