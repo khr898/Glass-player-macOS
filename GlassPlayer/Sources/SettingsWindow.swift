@@ -1074,12 +1074,15 @@ class SettingsWindow: NSWindowController, NSTableViewDelegate, NSTableViewDataSo
     private func applySettingToMPV(key: String, value: String) {
         // Special handling for shader preset setting
         if key == "defaultShaderPreset" {
+            NSLog("[Settings] applySettingToMPV: defaultShaderPreset = %@", value)
             guard let appDelegate = NSApp.delegate as? AppDelegate else { return }
             for pw in appDelegate.playerWindows {
+                NSLog("[Settings] Applying preset %@ to player window", value)
                 if value == "Off" {
                     pw.mpv.clearShaders()
                 } else {
-                    _ = pw.mpv.applyShaderPreset(value)
+                    let result = pw.mpv.applyShaderPreset(value)
+                    NSLog("[Settings] applyShaderPreset returned: %@", result ? "true" : "false")
                 }
             }
             return

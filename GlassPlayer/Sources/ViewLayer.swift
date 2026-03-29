@@ -270,9 +270,13 @@ class ViewLayer: CAMetalLayer {
 
     /// Enable Anime4K processing with the specified preset
     func enableAnime4K(preset: String) -> Bool {
+        NSLog("[ViewLayer] enableAnime4K called with preset: %@", preset)
+
         guard anime4KPipeline == nil else {
+            NSLog("[ViewLayer] Pipeline already exists, checking preset change...")
             // Already enabled, just change preset if different
             if anime4KPreset != preset {
+                NSLog("[ViewLayer] Preset changed from %@ to %@", anime4KPreset ?? "nil", preset)
                 anime4KPipeline?.deactivate()
                 if let pipeline = Anime4KMetalPipeline(device: mtlDevice) {
                     let dims = getLayerDimensions()
@@ -283,29 +287,37 @@ class ViewLayer: CAMetalLayer {
                         anime4KPreset = preset
                         NSLog("[ViewLayer] Anime4K preset changed to: %@", preset)
                         return true
+                    } else {
+                        NSLog("[ViewLayer] activatePreset failed")
                     }
+                } else {
+                    NSLog("[ViewLayer] Failed to create new pipeline")
                 }
             }
             return false
         }
 
+        NSLog("[ViewLayer] Creating new Anime4K pipeline...")
         // Create new pipeline
         guard let pipeline = Anime4KMetalPipeline(device: mtlDevice) else {
-            NSLog("[ViewLayer] Failed to create Anime4K pipeline")
+            NSLog("[ViewLayer] ERROR: Failed to create Anime4K pipeline (makeLibrary failed?)")
             return false
         }
+        NSLog("[ViewLayer] Pipeline created successfully")
 
         let dims = getLayerDimensions()
+        NSLog("[ViewLayer] Layer dimensions: %dx%d", dims.width, dims.height)
         if pipeline.activatePreset(preset,
                                    inputWidth: Int(dims.width),
                                    inputHeight: Int(dims.height)) {
             anime4KPipeline = pipeline
             anime4KPreset = preset
-            NSLog("[ViewLayer] Anime4K enabled: %@ (%dx%d → %dx%d)",
-                  preset, dims.width, dims.height,
-                  dims.width * pipeline.getOutputDimensions(inputWidth: 1, inputHeight: 1).width,
-                  dims.height * pipeline.getOutputDimensions(inputWidth: 1, inputHeight: 1).height)
+            let outDims = pipeline.getOutputDimensions(inputWidth: Int(dims.width), inputHeight: Int(dims.height))
+            NSLog("[ViewLayer] SUCCESS: Anime4K enabled: %@ (%dx%d → %dx%d)",
+                  preset, dims.width, dims.height, outDims.width, outDims.height)
             return true
+        } else {
+            NSLog("[ViewLayer] ERROR: activatePreset returned false")
         }
 
         return false

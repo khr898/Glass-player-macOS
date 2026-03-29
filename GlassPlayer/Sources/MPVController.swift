@@ -629,18 +629,20 @@ class MPVController {
     /// Apply an Anime4K shader preset using the native Metal compute pipeline.
     /// All Anime4K processing is done via Metal compute shaders - no GLSL involved.
     func applyShaderPreset(_ preset: String) -> Bool {
+        NSLog("[MPV] applyShaderPreset called with: %@", preset)
         guard let layer = viewLayer else {
-            NSLog("[MPV] No ViewLayer reference for Metal pipeline")
+            NSLog("[MPV] ERROR: No ViewLayer reference for Metal pipeline")
             return false
         }
+        NSLog("[MPV] ViewLayer exists, calling enableAnime4K...")
 
         if layer.enableAnime4K(preset: preset) {
             currentShaderPreset = preset
-            NSLog("[MPV] Applied Metal Anime4K preset: %@", preset)
+            NSLog("[MPV] SUCCESS: Applied Metal Anime4K preset: %@", preset)
             return true
         }
 
-        NSLog("[MPV] Failed to apply Metal Anime4K preset: %@", preset)
+        NSLog("[MPV] FAILED: enableAnime4K returned false for preset: %@", preset)
         return false
     }
 
