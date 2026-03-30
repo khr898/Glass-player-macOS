@@ -88,6 +88,7 @@ Leverages Apple Silicon's Unified Memory Architecture (UMA). Frames are rendered
 Enable the bundled Anime4K upscaling shaders via **Settings → Shaders**.
 
 Check out the Anime4K Github repo for more information.
+
 ---
 
 
