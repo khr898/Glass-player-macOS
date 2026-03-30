@@ -282,13 +282,16 @@ else
 
     ENTITLEMENTS="$PROJECT_DIR/GlassPlayer.entitlements"
     SIGNED_COUNT=0
+    
+    # 1. Sign individual frameworks (Strict Rule: NO entitlements for dylibs)
     find "$FRAMEWORKS_DIR" -type f -print0 | while IFS= read -r -d '' lib; do
         if file "$lib" | grep -qE 'Mach-O|universal binary'; then
-            codesign --force --timestamp --options runtime --entitlements "$ENTITLEMENTS" -s "$SIGN_ID" "$lib" 2>/dev/null || true
+            codesign --force --timestamp --options runtime -s "$SIGN_ID" "$lib" 2>/dev/null || true
             SIGNED_COUNT=$((SIGNED_COUNT + 1))
         fi
     done
 
+    # 2. Sign the main application bundle (WITH entitlements)
     codesign --force --timestamp --options runtime --entitlements "$ENTITLEMENTS" --deep -s "$SIGN_ID" "$APP_BUNDLE"
     codesign --verify --strict "$APP_BUNDLE" && echo "  ✓ Signature valid" || echo "  ✗ Signature verification failed"
 fi
