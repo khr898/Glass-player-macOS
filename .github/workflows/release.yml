@@ -1,5 +1,5 @@
 # ═══════════════════════════════════════════════════════════════════════
-# Glass Player — Release Build
+# Glass Player — Fully Vendored Release Build
 # ═══════════════════════════════════════════════════════════════════════
 name: Release
 
@@ -16,29 +16,11 @@ jobs:
   build:
     name: Build & Release
     runs-on: macos-14 
-    timeout-minutes: 30
+    timeout-minutes: 15
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Install dependencies
-        run: |
-          brew install mpv
-
-      - name: Inject Strict Dependencies (libplacebo 351)
-        run: |
-          # 🚨 STRICT RULE: Prevent Homebrew from using the bugged version.
-          # IMPORTANT: You MUST copy 'libplacebo.351.dylib' from your local Mac 
-          # into a 'vendor' folder in your GitHub repository for this to work.
-          if [ -f "vendor/libplacebo.351.dylib" ]; then
-              echo "Injecting pinned libplacebo.351.dylib into CI runner..."
-              sudo cp vendor/libplacebo.351.dylib /opt/homebrew/lib/
-          else
-              echo "❌ ERROR: vendor/libplacebo.351.dylib not found in repository!"
-              echo "Please copy the file from your Mac to a 'vendor' folder and push."
-              exit 1
-          fi
 
       - name: Build Glass Player
         run: |
@@ -53,8 +35,6 @@ jobs:
           file "$APP/Contents/MacOS/Glass Player"
           echo "=== Size ==="
           du -sh "$APP"
-          echo "=== Frameworks ==="
-          ls "$APP/Contents/Frameworks/" | wc -l | xargs echo "Bundled libraries:"
 
       - name: Get version from tag
         id: version
@@ -93,9 +73,8 @@ jobs:
 
             ### Installation
             1. Download `GlassPlayer-${{ steps.version.outputs.version }}.dmg`
-            2. Open the DMG
-            3. Drag Glass Player to your Applications folder.
+            2. Open the DMG and drag Glass Player to your Applications folder.
 
             ### Requirements
             - macOS 14.0 (Sonoma) or later
-            - Apple Silicon (M1/M2/M3/M4/M5)
+            - Apple Silicon (M-series)
