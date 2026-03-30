@@ -90,14 +90,6 @@ Enable the bundled Anime4K upscaling shaders via **Settings → Shaders**.
 Check out the Anime4K Github repo for more information.
 ---
 
-## Releases
-Release compilation is automated via GitHub Actions. To initiate a release workflow:
-```bash
-git tag v1.0.0
-git push origin v1.0.0
-```
-
----
 
 ## License & Acknowledgments
 - **License:** GPL-3.0 (due to FFmpeg/mpv dependencies). Anime4K shaders are licensed under MIT.
