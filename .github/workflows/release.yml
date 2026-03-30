@@ -1,5 +1,5 @@
 # ═══════════════════════════════════════════════════════════════════════
-# Glass Player — Fully Vendored Release Build
+# Glass Player — Release Build
 # ═══════════════════════════════════════════════════════════════════════
 name: Release
 
@@ -16,11 +16,15 @@ jobs:
   build:
     name: Build & Release
     runs-on: macos-14 
-    timeout-minutes: 15
+    timeout-minutes: 30
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          brew install mpv
 
       - name: Build Glass Player
         run: |
@@ -35,6 +39,8 @@ jobs:
           file "$APP/Contents/MacOS/Glass Player"
           echo "=== Size ==="
           du -sh "$APP"
+          echo "=== Frameworks ==="
+          ls "$APP/Contents/Frameworks/" | wc -l | xargs echo "Bundled libraries:"
 
       - name: Get version from tag
         id: version
