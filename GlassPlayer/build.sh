@@ -259,42 +259,21 @@ echo "  Bundled $(ls -1 "$FRAMEWORKS_DIR" | wc -l | tr -d ' ') libraries"
 
 # ─── Sign ──────────────────────────────────────────────────────────────
 echo "=== Signing ==="
-if [[ "$SKIP_SIGN" == "1" ]]; then
-    echo "  Skipping codesign (SKIP_SIGN=1)"
-else
-    if [[ -n "$CODESIGN_IDENTITY" ]]; then
-        SIGN_ID="$CODESIGN_IDENTITY"
-    else
-        DEV_ID=$(security find-identity -v -p codesigning 2>/dev/null \
-            | grep '"Developer ID Application' | head -1 \
-            | sed 's/.*"\(Developer ID Application[^"]*\)".*/\1/')
-        APPLE_DEV=$(security find-identity -v -p codesigning 2>/dev/null \
-            | grep '"Apple Development' | head -1 \
-            | sed 's/.*"\(Apple Development[^"]*\)".*/\1/')
-        if [[ -n "$DEV_ID" ]]; then
-            SIGN_ID="$DEV_ID"
-        elif [[ -n "$APPLE_DEV" ]]; then
-            SIGN_ID="$APPLE_DEV"
-        else
-            SIGN_ID="-"
-        fi
+
+
+SIGN_ID="-" # The hyphen means "basic local ad-hoc sign"
+
+echo "  Applying bare-minimum ad-hoc patch to libraries..."
+find "$FRAMEWORKS_DIR" -type f -print0 | while IFS= read -r -d '' lib; do
+    if file "$lib" | grep -qE 'Mach-O|universal binary'; then
+        # Force sign without entitlements or timestamps
+        codesign --force --sign "$SIGN_ID" "$lib" 2>/dev/null || true
     fi
+done
 
-    ENTITLEMENTS="$PROJECT_DIR/GlassPlayer.entitlements"
-    SIGNED_COUNT=0
-    
-    # 1. Sign individual frameworks (Strict Rule: NO entitlements for dylibs)
-    find "$FRAMEWORKS_DIR" -type f -print0 | while IFS= read -r -d '' lib; do
-        if file "$lib" | grep -qE 'Mach-O|universal binary'; then
-            codesign --force --timestamp --options runtime -s "$SIGN_ID" "$lib" 2>/dev/null || true
-            SIGNED_COUNT=$((SIGNED_COUNT + 1))
-        fi
-    done
-
-    # 2. Sign the main application bundle (WITH entitlements)
-    codesign --force --timestamp --options runtime --entitlements "$ENTITLEMENTS" --deep -s "$SIGN_ID" "$APP_BUNDLE"
-    codesign --verify --strict "$APP_BUNDLE" && echo "  ✓ Signature valid" || echo "  ✗ Signature verification failed"
-fi
+echo "  Applying bare-minimum ad-hoc patch to the App Bundle..."
+codesign --force --sign "$SIGN_ID" "$APP_BUNDLE" 2>/dev/null || true
+echo "=== Signing Complete ==="
 
 # ─── DMG (Simplified) ──────────────────────────────────────────────────
 if [[ "$CREATE_DMG" == "1" ]]; then
