@@ -18,17 +18,18 @@ DMG_OUTPUT="$BUILD_DIR/GlassPlayer.dmg"
 
 echo "=== Building Glass Player (Vendored) ==="
 echo "Project: $PROJECT_DIR"
+echo "Root: $ROOT_DIR"
 echo "Profile: $BUILD_PROFILE"
 
 # Clean
 rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR"
 
-# Point the compiler explicitly to the local vendor folder
+# Point the compiler explicitly to the root vendor folder
 COMMON_SWIFTC_FLAGS=(
     -import-objc-header "$PROJECT_DIR/BridgingHeader.h"
-    -I "$PROJECT_DIR/vendor/include"
-    -L "$PROJECT_DIR/vendor/lib"
+    -I "$ROOT_DIR/vendor/include"
+    -L "$ROOT_DIR/vendor/lib"
     -lmpv
     -framework Cocoa
     -framework Metal
@@ -83,8 +84,8 @@ echo -n "APPL????" > "$APP_BUNDLE/Contents/PkgInfo"
 
 # ─── Bundle Vendored Dylibs ───────────────────────────────────────────
 echo "=== Bundling vendored dylibs ==="
-cp -a "$PROJECT_DIR/vendor/lib/." "$FRAMEWORKS_DIR/"
-echo "  Copied all pre-patched libraries from vendor folder."
+cp -a "$ROOT_DIR/vendor/lib/." "$FRAMEWORKS_DIR/"
+echo "  Copied all pre-patched libraries from root vendor folder."
 
 # ─── Sign ──────────────────────────────────────────────────────────────
 echo "=== Signing ==="
