@@ -143,6 +143,12 @@ resolve_rpath() {
     local lib="$1"
     local source_binary="$2"
     
+    # FIX: If the path is already a valid absolute file, accept it immediately!
+    if [ -f "$lib" ]; then
+        echo "$lib"
+        return
+    fi
+
     if [[ "$lib" == *'*'* ]]; then
         local expanded=( $lib )
         for exp in "${expanded[@]}"; do
@@ -259,14 +265,13 @@ echo "  Bundled $(ls -1 "$FRAMEWORKS_DIR" | wc -l | tr -d ' ') libraries"
 
 # ─── Sign ──────────────────────────────────────────────────────────────
 echo "=== Signing ==="
-
-
-SIGN_ID="-" # The hyphen means "basic local ad-hoc sign"
+# 🚨 APPLE SILICON MANDATE: 
+# We must apply a basic ad-hoc signature to modified binaries to satisfy Gatekeeper
+SIGN_ID="-" 
 
 echo "  Applying bare-minimum ad-hoc patch to libraries..."
 find "$FRAMEWORKS_DIR" -type f -print0 | while IFS= read -r -d '' lib; do
     if file "$lib" | grep -qE 'Mach-O|universal binary'; then
-        # Force sign without entitlements or timestamps
         codesign --force --sign "$SIGN_ID" "$lib" 2>/dev/null || true
     fi
 done
@@ -289,10 +294,6 @@ if [[ "$CREATE_DMG" == "1" ]]; then
         -ov -format UDZO \
         -imagekey zlib-level=9 \
         "$DMG_OUTPUT"
-
-    if [[ "$SKIP_SIGN" != "1" ]] && [[ -n "$SIGN_ID" ]] && [[ "$SIGN_ID" != "-" ]]; then
-        codesign --force --timestamp -s "$SIGN_ID" "$DMG_OUTPUT" 2>/dev/null || true
-    fi
 
     echo "  ✓ DMG created: $DMG_OUTPUT"
     rm -rf "$DMG_DIR"
