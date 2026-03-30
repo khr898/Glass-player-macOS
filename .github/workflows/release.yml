@@ -1,12 +1,5 @@
 # ═══════════════════════════════════════════════════════════════════════
 # Glass Player — Release Build
-#
-# Triggers on version tags (v1.0.0, v2.3.1, etc.)
-# Builds the app, creates a DMG, and uploads it to GitHub Releases.
-#
-# Usage:
-#   git tag v1.0.0
-#   git push origin v1.0.0
 # ═══════════════════════════════════════════════════════════════════════
 name: Release
 
@@ -14,8 +7,6 @@ on:
   push:
     tags:
       - 'v*'
-
-  # Allow manual trigger from Actions tab
   workflow_dispatch:
 
 permissions:
@@ -24,7 +15,7 @@ permissions:
 jobs:
   build:
     name: Build & Release
-    runs-on: macos-14          # Apple Silicon (M1) runner
+    runs-on: macos-14 
     timeout-minutes: 30
 
     steps:
@@ -35,12 +26,24 @@ jobs:
         run: |
           brew install mpv
 
+      - name: Inject Strict Dependencies (libplacebo 351)
+        run: |
+          # 🚨 STRICT RULE: Prevent Homebrew from using the bugged version.
+          # IMPORTANT: You MUST copy 'libplacebo.351.dylib' from your local Mac 
+          # into a 'vendor' folder in your GitHub repository for this to work.
+          if [ -f "vendor/libplacebo.351.dylib" ]; then
+              echo "Injecting pinned libplacebo.351.dylib into CI runner..."
+              sudo cp vendor/libplacebo.351.dylib /opt/homebrew/lib/
+          else
+              echo "❌ ERROR: vendor/libplacebo.351.dylib not found in repository!"
+              echo "Please copy the file from your Mac to a 'vendor' folder and push."
+              exit 1
+          fi
+
       - name: Build Glass Player
         run: |
           cd GlassPlayer
           chmod +x build.sh
-          # CI build: skip local install, skip signing (no cert in CI),
-          # but still create the DMG
           NO_INSTALL=1 SKIP_SIGN=1 CREATE_DMG=1 BUILD_PROFILE=optimized ./build.sh
 
       - name: Verify build
@@ -91,11 +94,7 @@ jobs:
             ### Installation
             1. Download `GlassPlayer-${{ steps.version.outputs.version }}.dmg`
             2. Open the DMG
-            3. **Option A**: Double-click "Install Glass Player" (recommended)
-            4. **Option B**: Drag to Applications, then run in Terminal:
-               ```
-               xattr -cr "/Applications/Glass Player.app"
-               ```
+            3. Drag Glass Player to your Applications folder.
 
             ### Requirements
             - macOS 14.0 (Sonoma) or later
