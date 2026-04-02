@@ -87,6 +87,10 @@ COMMON_SWIFTC_FLAGS=(
     -framework IOSurface
     -framework AVFoundation
     -framework CoreAudio
+    -framework CoreImage
+    -framework CoreML
+    -framework Vision
+    -framework MetalPerformanceShaders
     -framework Accelerate
     -target arm64-apple-macos14.0
     -Xcc -DGL_SILENCE_DEPRECATION
@@ -228,6 +232,13 @@ if [ -d "$ROOT_DIR/shaders" ]; then
     echo "  Copied shaders"
 fi
 
+# Copy generated Metal shader sources for runtime metadata parsing.
+if [ -d "$PROJECT_DIR/MetalShaders" ]; then
+    mkdir -p "$APP_BUNDLE/Contents/Resources/metal_sources"
+    rsync -a --delete "$PROJECT_DIR/MetalShaders/" "$APP_BUNDLE/Contents/Resources/metal_sources/"
+    echo "  Copied Metal shader sources"
+fi
+
 # ─── Generate App Icon ─────────────────────────────────────────────────
 echo "=== Generating app icon ==="
 ICONSET="$BUILD_DIR/AppIcon.iconset"
@@ -309,8 +320,34 @@ resolve_rpath() {
             fi
         done
     elif [[ "$lib" == /opt/homebrew/* ]] || [[ "$lib" == /usr/local/* ]]; then
-        echo "$lib"
-        return
+        if [ -f "$lib" ]; then
+            echo "$lib"
+            return
+        fi
+
+        # Fallback for versioned dylib mismatches (e.g., libfoo.360.dylib -> libfoo.351.dylib).
+        local dir="$(dirname "$lib")"
+        local base="$(basename "$lib")"
+        local stem="${base%.*.dylib}"
+        if [[ "$stem" != "$base" ]]; then
+            local candidates=()
+            local search_dirs=("$dir" "/opt/homebrew/lib" "/usr/local/lib")
+            for search_dir in "${search_dirs[@]}"; do
+                [ -d "$search_dir" ] || continue
+                while IFS= read -r candidate; do
+                    [ -f "$candidate" ] && candidates+=("$candidate")
+                done < <(find "$search_dir" -maxdepth 1 -type f -name "$stem.*.dylib" 2>/dev/null)
+            done
+            if (( ${#candidates[@]} > 0 )); then
+                local fallback
+                fallback=$(printf "%s\n" "${candidates[@]}" | sort -V | tail -n 1)
+                if [ -n "$fallback" ] && [ -f "$fallback" ]; then
+                    echo "  Warning: Using compatibility dylib for $base -> $(basename "$fallback")" >&2
+                    echo "$fallback"
+                    return
+                fi
+            fi
+        fi
     fi
     echo ""
 }
@@ -363,6 +400,8 @@ process_deps() {
 
             # Bundle the dependency
             bundle_lib "$resolved"
+        else
+            echo "  Warning: Unresolved dependency in $(basename "$binary"): $dep"
         fi
     done
 }
@@ -380,8 +419,13 @@ echo "  Bundled $(ls -1 "$FRAMEWORKS_DIR" | wc -l | tr -d ' ') libraries"
 #   4. Ad-hoc "-" (fallback)
 # ───────────────────────────────────────────────────────────────────────
 echo "=== Signing ==="
+ENTITLEMENTS="$PROJECT_DIR/GlassPlayer.entitlements"
+SIGN_FLAGS=(--force -s)
 if [[ "$SKIP_SIGN" == "1" ]]; then
-    echo "  Skipping codesign (SKIP_SIGN=1)"
+    # Even for fast local builds, install_name_tool mutates Mach-O load commands.
+    # Re-sign ad-hoc so the executable remains launchable under macOS code integrity checks.
+    SIGN_ID="-"
+    echo "  SKIP_SIGN=1: using ad-hoc signing for local launch stability"
 else
     # Resolve best identity
     if [[ -n "$CODESIGN_IDENTITY" ]]; then
@@ -406,24 +450,25 @@ else
         fi
     fi
 
-    # Sign every Mach-O binary in Frameworks (dylib, so, and bare executables like Python)
-    ENTITLEMENTS="$PROJECT_DIR/GlassPlayer.entitlements"
-    echo "  Signing bundled frameworks..."
-    SIGNED_COUNT=0
-    find "$FRAMEWORKS_DIR" -type f -print0 | while IFS= read -r -d '' lib; do
-        # Only sign Mach-O binaries (skip symlinks, text files, etc.)
-        if file "$lib" | grep -qE 'Mach-O|universal binary'; then
-            codesign --force --timestamp --options runtime --entitlements "$ENTITLEMENTS" -s "$SIGN_ID" "$lib" 2>/dev/null || true
-            SIGNED_COUNT=$((SIGNED_COUNT + 1))
-        fi
-    done
-    echo "  Signed framework binaries"
-
-    # Sign the main app bundle (must come after all subcomponents)
-    echo "  Signing app bundle..."
-    codesign --force --timestamp --options runtime --entitlements "$ENTITLEMENTS" --deep -s "$SIGN_ID" "$APP_BUNDLE"
-    codesign --verify --strict "$APP_BUNDLE" && echo "  ✓ Signature valid" || echo "  ✗ Signature verification failed"
+    if [[ "$SIGN_ID" != "-" ]]; then
+        SIGN_FLAGS=(--force --timestamp --options runtime --entitlements "$ENTITLEMENTS" -s)
+    fi
 fi
+
+# Sign every Mach-O binary in Frameworks (dylib, so, and bare executables like Python)
+echo "  Signing bundled frameworks..."
+find "$FRAMEWORKS_DIR" -type f -print0 | while IFS= read -r -d '' lib; do
+    # Only sign Mach-O binaries (skip symlinks, text files, etc.)
+    if file "$lib" | grep -qE 'Mach-O|universal binary'; then
+        codesign "${SIGN_FLAGS[@]}" "$SIGN_ID" "$lib"
+    fi
+done
+echo "  Signed framework binaries"
+
+# Sign the main app bundle (must come after all subcomponents)
+echo "  Signing app bundle..."
+codesign "${SIGN_FLAGS[@]}" "$SIGN_ID" --deep "$APP_BUNDLE"
+codesign --verify --deep --strict "$APP_BUNDLE" && echo "  ✓ Signature valid" || echo "  ✗ Signature verification failed"
 echo "=== Signed ==="
 
 # ─── DMG ───────────────────────────────────────────────────────────────

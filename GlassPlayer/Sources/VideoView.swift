@@ -58,6 +58,7 @@ class VideoView: NSView {
     }
     override func viewDidEndLiveResize() {
         super.viewDidEndLiveResize()
+        guard !videoLayer.isUninited else { return }
         videoLayer.liveResizeEnded()
     }
 

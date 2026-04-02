@@ -82,3 +82,43 @@ fragment float4 textureFragment(VertexOut in [[stage_in]],
                                     address::clamp_to_edge);
     return videoFrame.sample(linearSampler, in.texCoord);
 }
+
+// ---------------------------------------------------------------------------
+// centerResizeKernel
+// ---------------------------------------------------------------------------
+// Final display-stage compute pass modeled after Anime4KMetal's CenterResize.
+// It center-fits input into output while preserving aspect ratio and writes
+// black padding outside valid region.
+kernel void centerResizeKernel(texture2d<float, access::sample> input [[texture(0)]],
+                               texture2d<half, access::write> output [[texture(1)]],
+                               uint2 gid [[thread_position_in_grid]]) {
+    if (gid.x >= output.get_width() || gid.y >= output.get_height()) {
+        return;
+    }
+
+    constexpr sampler bicubicSampler(coord::normalized,
+                                     address::clamp_to_edge,
+                                     filter::linear);
+
+    float inW = input.get_width();
+    float inH = input.get_height();
+    float outW = output.get_width();
+    float outH = output.get_height();
+
+    float scale = min(outW / inW, outH / inH);
+    float outValidW = round(inW * scale);
+    float outValidH = round(inH * scale);
+    float outPadW = round((outW - outValidW) / 2.0);
+    float outPadH = round((outH - outValidH) / 2.0);
+
+    float2 nPos = float2((float(gid.x) - outPadW + 0.5) / max(outValidW, 1.0),
+                         (float(gid.y) - outPadH + 0.5) / max(outValidH, 1.0));
+
+    if (nPos.x < 0.0 || nPos.x > 1.0 || nPos.y < 0.0 || nPos.y > 1.0) {
+        output.write(half4(0.0), gid);
+        return;
+    }
+
+    float4 c = input.sample(bicubicSampler, nPos);
+    output.write(half4(c), gid);
+}

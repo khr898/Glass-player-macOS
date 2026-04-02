@@ -113,8 +113,8 @@ class MpvNoVapoursynth < Formula
       end
     end
 
-    bash_completion.install "etc/mpv.bash_completions" => "mpv"
-    zsh_completion.install "etc/_mpv.zsh" => "_mpv"
+    bash_completion.install "etc/mpv.bash_completions" => "mpv" if File.exist?("etc/mpv.bash_completions")
+    zsh_completion.install "etc/_mpv.zsh" => "_mpv" if File.exist?("etc/_mpv.zsh")
   end
 
   test do

@@ -106,6 +106,8 @@ class MPVController {
     var currentShaderPreset: String?
     // Power source state: true = AC, false = battery
     private var isOnAC: Bool = true
+    // Legacy escape hatch: allow battery quality downgrade only when explicitly opted in.
+    private let allowBatteryQualityDowngrade = ProcessInfo.processInfo.environment["GLASS_ALLOW_BATTERY_DOWNGRADE"] == "1"
     // Power source notification run loop source
     private var powerSourceRunLoopSource: CFRunLoopSource?
 
@@ -146,18 +148,55 @@ class MPVController {
         // HDR tone mapping is handled by a conditional profile in mpv.conf.
         setOption("target-prim", "display-p3")
 
-        // Try to load config file from bundle resources
+        // Load bundled default config once, but keep runtime mpv state in a
+        // user-writable location to avoid mutating the signed app bundle.
         let execPath = ProcessInfo.processInfo.arguments[0]
         let macosDir = (execPath as NSString).deletingLastPathComponent
         let contentsDir = (macosDir as NSString).deletingLastPathComponent
-        let configDir = (contentsDir as NSString)
+        let bundledConfigDir = (contentsDir as NSString)
             .appendingPathComponent("Resources")
             .appending("/configs")
+        let bundledConfigPath = (bundledConfigDir as NSString).appendingPathComponent("mpv.conf")
 
-        if FileManager.default.fileExists(atPath: configDir + "/mpv.conf") {
-            setOption("config-dir", configDir)
+        if let appSupportDir = FileManager.default.urls(for: .applicationSupportDirectory,
+                                                        in: .userDomainMask).first {
+            let userMPVDir = appSupportDir
+                .appendingPathComponent("Glass Player", isDirectory: true)
+                .appendingPathComponent("mpv", isDirectory: true)
+            let userConfigPath = userMPVDir.appendingPathComponent("mpv.conf").path
+            let watchLaterDir = userMPVDir.appendingPathComponent("watch_later", isDirectory: true)
+
+            do {
+                try FileManager.default.createDirectory(at: userMPVDir,
+                                                        withIntermediateDirectories: true)
+                try FileManager.default.createDirectory(at: watchLaterDir,
+                                                        withIntermediateDirectories: true)
+
+                if FileManager.default.fileExists(atPath: bundledConfigPath) &&
+                    !FileManager.default.fileExists(atPath: userConfigPath) {
+                    try FileManager.default.copyItem(atPath: bundledConfigPath, toPath: userConfigPath)
+                }
+
+                if FileManager.default.fileExists(atPath: userConfigPath) {
+                    setOption("config-dir", userMPVDir.path)
+                    setOption("config", "yes")
+                    NSLog("[MPV] Loading config from: %@", userConfigPath)
+                }
+            } catch {
+                NSLog("[MPV] Warning: failed to prepare user config dir: %@", String(describing: error))
+                if FileManager.default.fileExists(atPath: bundledConfigPath) {
+                    setOption("config-dir", bundledConfigDir)
+                    setOption("config", "yes")
+                    NSLog("[MPV] Loading config from bundled path: %@", bundledConfigPath)
+                }
+            }
+
+            // Keep resume/watch-later state outside the signed app bundle.
+            setOption("watch-later-directory", watchLaterDir.path)
+        } else if FileManager.default.fileExists(atPath: bundledConfigPath) {
+            setOption("config-dir", bundledConfigDir)
             setOption("config", "yes")
-            NSLog("[MPV] Loading config from: %@", configDir)
+            NSLog("[MPV] Loading config from bundled path: %@", bundledConfigPath)
         }
 
         // 3. Initialize mpv
@@ -190,13 +229,13 @@ class MPVController {
         // 5. Start event loop
         startEventLoop()
 
-        // 6. Start power source monitoring (Bug 10: adapt quality to battery)
+        // 6. Start power source monitoring (quality-preserving telemetry).
         setupPowerSourceMonitoring()
 
         NSLog("[MPV] Initialized successfully")
     }
 
-    // MARK: - Power Source Monitoring (Bug 10: battery-aware quality)
+    // MARK: - Power Source Monitoring
 
     private func setupPowerSourceMonitoring() {
         // Read initial power source
@@ -238,21 +277,25 @@ class MPVController {
     }
 
     /// Apply quality profile based on current power source.
-    /// On battery: switch to default profile (less CPU/GPU load).
-    /// On AC: restore high-quality profile.
+    /// Default behavior keeps high quality on both AC and battery.
+    /// Legacy battery downgrade can be re-enabled with GLASS_ALLOW_BATTERY_DOWNGRADE=1.
     func applyPowerProfile() {
         guard mpvHandle != nil else { return }
         if isOnAC {
             mpv_command_string(mpvHandle, "set profile high-quality")
             NSLog("[MPV] Power: AC — high-quality profile active")
         } else {
-            mpv_command_string(mpvHandle, "set profile default")
-            // Also disable Anime4K Metal pipeline on battery to reduce GPU load
-            if currentShaderPreset != nil {
-                clearShaders()
-                NSLog("[MPV] Power: Battery — cleared Anime4K Metal pipeline")
+            if allowBatteryQualityDowngrade {
+                mpv_command_string(mpvHandle, "set profile default")
+                if currentShaderPreset != nil {
+                    clearShaders()
+                    NSLog("[MPV] Power: Battery — legacy downgrade active, cleared Anime4K Metal pipeline")
+                } else {
+                    NSLog("[MPV] Power: Battery — legacy downgrade active (default profile)")
+                }
             } else {
-                NSLog("[MPV] Power: Battery — default profile active")
+                mpv_command_string(mpvHandle, "set profile high-quality")
+                NSLog("[MPV] Power: Battery — keeping high-quality profile")
             }
         }
     }
@@ -291,89 +334,107 @@ class MPVController {
     }
 
     func togglePause() {
-        mpv_command_string(mpvHandle, "cycle pause")
+        guard let handle = mpvHandle else { return }
+        mpv_command_string(handle, "cycle pause")
     }
 
     func seek(by seconds: Double) {
-        mpv_command_string(mpvHandle, "seek \(seconds) relative+exact")
+        guard let handle = mpvHandle else { return }
+        mpv_command_string(handle, "seek \(seconds) relative+exact")
     }
 
     func seek(to position: Double) {
-        mpv_command_string(mpvHandle, "seek \(position) absolute+exact")
+        guard let handle = mpvHandle else { return }
+        mpv_command_string(handle, "seek \(position) absolute+exact")
     }
 
     /// Fast keyframe seek for scrubbing — snaps to nearest keyframe (instant)
     func seekKeyframe(to position: Double) {
-        mpv_command_string(mpvHandle, "seek \(position) absolute+keyframes")
+        guard let handle = mpvHandle else { return }
+        mpv_command_string(handle, "seek \(position) absolute+keyframes")
     }
 
     func frameStep() {
-        mpv_command_string(mpvHandle, "frame-step")
+        guard let handle = mpvHandle else { return }
+        mpv_command_string(handle, "frame-step")
     }
 
     func frameBackStep() {
-        mpv_command_string(mpvHandle, "frame-back-step")
+        guard let handle = mpvHandle else { return }
+        mpv_command_string(handle, "frame-back-step")
     }
 
     /// Set mpv volume (0-200).
     /// Uses Accelerate vDSP clamp (Phase 1C: SIMD/Accelerate Abstraction)
     func setVolume(_ volume: Double) {
+        guard let handle = mpvHandle else { return }
         var vol = clampRangeAccelerate(volume, lower: 0, upper: 200)
-        mpv_set_property(mpvHandle, "volume", MPV_FORMAT_DOUBLE, &vol)
+        mpv_set_property(handle, "volume", MPV_FORMAT_DOUBLE, &vol)
     }
 
     func getVolume() -> Double {
+        guard let handle = mpvHandle else { return 100 }
         var vol: Double = 100
-        mpv_get_property(mpvHandle, "volume", MPV_FORMAT_DOUBLE, &vol)
+        mpv_get_property(handle, "volume", MPV_FORMAT_DOUBLE, &vol)
         return vol
     }
 
     func toggleMute() {
-        mpv_command_string(mpvHandle, "cycle mute")
+        guard let handle = mpvHandle else { return }
+        mpv_command_string(handle, "cycle mute")
     }
 
     func setSpeed(_ speed: Double) {
-        mpv_command_string(mpvHandle, "set speed \(speed)")
+        guard let handle = mpvHandle else { return }
+        mpv_command_string(handle, "set speed \(speed)")
     }
 
     func getSpeed() -> Double {
+        guard let handle = mpvHandle else { return 1.0 }
         var s: Double = 1.0
-        mpv_get_property(mpvHandle, "speed", MPV_FORMAT_DOUBLE, &s)
+        mpv_get_property(handle, "speed", MPV_FORMAT_DOUBLE, &s)
         return s
     }
 
     func getAudioDelay() -> Double {
+        guard let handle = mpvHandle else { return 0.0 }
         var d: Double = 0.0
-        mpv_get_property(mpvHandle, "audio-delay", MPV_FORMAT_DOUBLE, &d)
+        mpv_get_property(handle, "audio-delay", MPV_FORMAT_DOUBLE, &d)
         return d
     }
 
     // MARK: - Track Selection
 
     func cycleSubtitle() {
-        mpv_command_string(mpvHandle, "cycle sub")
+        guard let handle = mpvHandle else { return }
+        mpv_command_string(handle, "cycle sub")
     }
 
     func cycleAudio() {
-        mpv_command_string(mpvHandle, "cycle audio")
+        guard let handle = mpvHandle else { return }
+        mpv_command_string(handle, "cycle audio")
     }
 
     func setSubTrack(_ id: Int) {
+        guard let handle = mpvHandle else { return }
         var val = Int64(id)
-        mpv_set_property(mpvHandle, "sid", MPV_FORMAT_INT64, &val)
+        mpv_set_property(handle, "sid", MPV_FORMAT_INT64, &val)
     }
 
     func disableSubtitles() {
-        mpv_command_string(mpvHandle, "set sid no")
+        guard let handle = mpvHandle else { return }
+        mpv_command_string(handle, "set sid no")
     }
 
     func setAudioTrack(_ id: Int) {
+        guard let handle = mpvHandle else { return }
         var val = Int64(id)
-        mpv_set_property(mpvHandle, "aid", MPV_FORMAT_INT64, &val)
+        mpv_set_property(handle, "aid", MPV_FORMAT_INT64, &val)
     }
 
     func toggleSubVisibility() {
-        mpv_command_string(mpvHandle, "cycle sub-visibility")
+        guard let handle = mpvHandle else { return }
+        mpv_command_string(handle, "cycle sub-visibility")
     }
 
     /// Add an external subtitle file
@@ -392,13 +453,15 @@ class MPVController {
     /// Set mpv software brightness (-100 to 100)
     /// Uses Accelerate vDSP clamp (Phase 1C: SIMD/Accelerate Abstraction)
     func setBrightness(_ value: Double) {
+        guard let handle = mpvHandle else { return }
         var v = clampRangeAccelerate(value, lower: -100, upper: 100)
-        mpv_set_property(mpvHandle, "brightness", MPV_FORMAT_DOUBLE, &v)
+        mpv_set_property(handle, "brightness", MPV_FORMAT_DOUBLE, &v)
     }
 
     func getBrightness() -> Double {
+        guard let handle = mpvHandle else { return 0 }
         var v: Double = 0
-        mpv_get_property(mpvHandle, "brightness", MPV_FORMAT_DOUBLE, &v)
+        mpv_get_property(handle, "brightness", MPV_FORMAT_DOUBLE, &v)
         return v
     }
 
@@ -406,32 +469,54 @@ class MPVController {
     /// These account for pixel aspect ratio AND video-aspect-override.
     /// Falls back to video-params/w,h if out-params unavailable.
     func getDisplayDimensions() -> (width: Int64, height: Int64) {
+        guard let handle = mpvHandle else { return (0, 0) }
         var dw: Int64 = 0
         var dh: Int64 = 0
-        mpv_get_property(mpvHandle, "video-out-params/dw", MPV_FORMAT_INT64, &dw)
-        mpv_get_property(mpvHandle, "video-out-params/dh", MPV_FORMAT_INT64, &dh)
+        mpv_get_property(handle, "video-out-params/dw", MPV_FORMAT_INT64, &dw)
+        mpv_get_property(handle, "video-out-params/dh", MPV_FORMAT_INT64, &dh)
         if dw > 0 && dh > 0 { return (dw, dh) }
         // Fallback to coded dimensions
-        mpv_get_property(mpvHandle, "video-params/w", MPV_FORMAT_INT64, &dw)
-        mpv_get_property(mpvHandle, "video-params/h", MPV_FORMAT_INT64, &dh)
+        mpv_get_property(handle, "video-params/w", MPV_FORMAT_INT64, &dw)
+        mpv_get_property(handle, "video-params/h", MPV_FORMAT_INT64, &dh)
         return (dw, dh)
+    }
+
+    /// Return native coded video dimensions.
+    /// Prefer width/height, which reflect the decoded stream dimensions in this app.
+    /// Fall back to video-params/w,h when width/height are unavailable.
+    func getNativeVideoDimensions() -> (width: Int64, height: Int64) {
+        guard let handle = mpvHandle else { return (0, 0) }
+        var w: Int64 = 0
+        var h: Int64 = 0
+        mpv_get_property(handle, "width", MPV_FORMAT_INT64, &w)
+        mpv_get_property(handle, "height", MPV_FORMAT_INT64, &h)
+        if w > 0 && h > 0 {
+            return (w, h)
+        }
+
+        mpv_get_property(handle, "video-params/w", MPV_FORMAT_INT64, &w)
+        mpv_get_property(handle, "video-params/h", MPV_FORMAT_INT64, &h)
+        return (w, h)
     }
 
     /// Set aspect ratio override (empty string = auto)
     func setAspectOverride(_ aspect: String) {
+        guard let handle = mpvHandle else { return }
         if aspect.isEmpty || aspect == "auto" {
-            mpv_command_string(mpvHandle, "set video-aspect-override -1")
+            mpv_command_string(handle, "set video-aspect-override -1")
         } else {
-            mpv_command_string(mpvHandle, "set video-aspect-override \(aspect)")
+            mpv_command_string(handle, "set video-aspect-override \(aspect)")
         }
     }
 
     func prevFile() {
-        mpv_command_string(mpvHandle, "playlist-prev")
+        guard let handle = mpvHandle else { return }
+        mpv_command_string(handle, "playlist-prev")
     }
 
     func nextFile() {
-        mpv_command_string(mpvHandle, "playlist-next")
+        guard let handle = mpvHandle else { return }
+        mpv_command_string(handle, "playlist-next")
     }
 
     // MARK: - Track List Parsing
@@ -483,32 +568,33 @@ class MPVController {
     // MARK: - Video Info
 
     func getVideoInfo() -> VideoInfo {
+        guard let handle = mpvHandle else { return VideoInfo() }
         var info = VideoInfo()
         info.filename = getString("filename") ?? ""
         info.fileFormat = getString("file-format") ?? ""
 
         var fileSize: Int64 = 0
-        mpv_get_property(mpvHandle, "file-size", MPV_FORMAT_INT64, &fileSize)
+        mpv_get_property(handle, "file-size", MPV_FORMAT_INT64, &fileSize)
         info.fileSize = fileSize
 
         var dur: Double = 0
-        mpv_get_property(mpvHandle, "duration", MPV_FORMAT_DOUBLE, &dur)
+        mpv_get_property(handle, "duration", MPV_FORMAT_DOUBLE, &dur)
         info.duration = dur
 
         info.videoCodec = getString("video-codec") ?? ""
 
         var w: Int64 = 0, h: Int64 = 0
-        mpv_get_property(mpvHandle, "width", MPV_FORMAT_INT64, &w)
-        mpv_get_property(mpvHandle, "height", MPV_FORMAT_INT64, &h)
+        mpv_get_property(handle, "width", MPV_FORMAT_INT64, &w)
+        mpv_get_property(handle, "height", MPV_FORMAT_INT64, &h)
         info.width = w
         info.height = h
 
         var fps: Double = 0
-        mpv_get_property(mpvHandle, "estimated-vf-fps", MPV_FORMAT_DOUBLE, &fps)
+        mpv_get_property(handle, "estimated-vf-fps", MPV_FORMAT_DOUBLE, &fps)
         info.fps = fps
 
         var vbr: Double = 0
-        mpv_get_property(mpvHandle, "video-bitrate", MPV_FORMAT_DOUBLE, &vbr)
+        mpv_get_property(handle, "video-bitrate", MPV_FORMAT_DOUBLE, &vbr)
         info.videoBitrate = vbr
 
         info.hwdec = getString("hwdec-current") ?? "none"
@@ -523,15 +609,15 @@ class MPVController {
         info.audioChannelLayout = getString("audio-params/channels") ?? ""
 
         var sr: Int64 = 0
-        mpv_get_property(mpvHandle, "audio-params/samplerate", MPV_FORMAT_INT64, &sr)
+        mpv_get_property(handle, "audio-params/samplerate", MPV_FORMAT_INT64, &sr)
         info.audioSampleRate = sr
 
         var ch: Int64 = 0
-        mpv_get_property(mpvHandle, "audio-params/channel-count", MPV_FORMAT_INT64, &ch)
+        mpv_get_property(handle, "audio-params/channel-count", MPV_FORMAT_INT64, &ch)
         info.audioChannels = ch
 
         var abr: Double = 0
-        mpv_get_property(mpvHandle, "audio-bitrate", MPV_FORMAT_DOUBLE, &abr)
+        mpv_get_property(handle, "audio-bitrate", MPV_FORMAT_DOUBLE, &abr)
         info.audioBitrate = abr
 
         return info
@@ -665,7 +751,8 @@ class MPVController {
     // MARK: - Property observation
 
     private func observeProperty(_ name: String, format: mpv_format) {
-        mpv_observe_property(mpvHandle!, 0, name, format)
+        guard let handle = mpvHandle else { return }
+        mpv_observe_property(handle, 0, name, format)
     }
 
     // MARK: - Event loop

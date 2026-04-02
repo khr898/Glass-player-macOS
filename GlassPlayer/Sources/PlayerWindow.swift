@@ -5,6 +5,12 @@ import AVFoundation
 import CoreAudio
 import MediaPlayer
 
+struct CLIFrameCaptureRequest {
+    let captureTimeSeconds: Double
+    let outputPath: String
+    let settleDelayMilliseconds: Int
+}
+
 // ---------------------------------------------------------------------------
 // PlayerWindow – full-featured player window with glass overlay controls
 // Ports ALL features from the Electron React UI:
@@ -20,6 +26,14 @@ import MediaPlayer
 class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate, NSTextFieldDelegate {
 
     let mpv = MPVController()
+    /// If set, this preset is applied once on first file load and bypasses default auto-apply.
+    var startupShaderPresetOverride: String?
+    /// Enables Neural Engine-assisted preset adaptation when available.
+    var startupNeuralAssistEnabled = false
+    /// Legacy flag retained for CLI compatibility; no preset downgrades are applied.
+    var startupLowHeatModeEnabled = false
+    /// Optional one-shot CLI frame capture request.
+    var startupFrameCaptureRequest: CLIFrameCaptureRequest?
     let videoView: VideoView
     var filePath: String?
 
@@ -1917,8 +1931,10 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
     private func updateShaderButton() {
         if mpv.currentShaderPreset != nil {
             shaderButton.contentTintColor = NSColor(red: 1.0, green: 0.42, blue: 0.8, alpha: 1.0)
+            NSLog("[PlayerWindow] Shader button active tint set (preset=%@)", mpv.currentShaderPreset ?? "nil")
         } else {
             shaderButton.contentTintColor = .white
+            NSLog("[PlayerWindow] Shader button reset to inactive tint")
         }
     }
 
@@ -2016,18 +2032,12 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
         // Bug 5: ensure keyboard focus is on the video view after any file/URL load
         window?.makeFirstResponder(videoView)
 
-        let shouldAutoApply = UserDefaults.standard.bool(forKey: "autoApplyShaders")
-        if shouldAutoApply {
-            let configuredPreset = UserDefaults.standard.string(forKey: "defaultShaderPreset") ?? "Off"
-            if configuredPreset == "Off" {
-                mpv.clearShaders()
-            } else if configuredPreset == "Auto (Recommended)" {
-                let resolved = UniversalMetalRuntime.recommendedAnime4KPreset()
-                _ = mpv.applyShaderPreset(resolved)
-            } else {
-                _ = mpv.applyShaderPreset(configuredPreset)
+        applyStartupPresetConfiguration { [weak self] in
+            guard let self = self else { return }
+            if let captureRequest = self.startupFrameCaptureRequest {
+                self.startupFrameCaptureRequest = nil
+                self.runStartupFrameCapture(captureRequest)
             }
-            updateShaderButton()
         }
 
         // Detect format badges after a short delay (mpv needs time to probe)
@@ -2035,6 +2045,172 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
             self?.updateFormatBadges()
             self?.updateNowPlayingInfo()
         }
+    }
+
+    private func applyStartupPresetConfiguration(completion: @escaping () -> Void) {
+        var requestedPreset: String?
+        var shouldClear = false
+
+        if let startupPreset = startupShaderPresetOverride,
+           !startupPreset.isEmpty,
+           startupPreset != "Off" {
+            requestedPreset = startupPreset
+        } else {
+            let shouldAutoApply = UserDefaults.standard.bool(forKey: "autoApplyShaders")
+            if shouldAutoApply {
+                let configuredPreset = UserDefaults.standard.string(forKey: "defaultShaderPreset") ?? "Off"
+                if configuredPreset == "Off" {
+                    shouldClear = true
+                } else if configuredPreset == "Auto (Recommended)" {
+                    requestedPreset = UniversalMetalRuntime.recommendedAnime4KPreset()
+                } else {
+                    requestedPreset = configuredPreset
+                }
+            }
+        }
+
+        startupShaderPresetOverride = nil
+
+        if shouldClear {
+            mpv.clearShaders()
+            updateShaderButton()
+            completion()
+            return
+        }
+
+        guard let preset = requestedPreset else {
+            completion()
+            return
+        }
+
+        resolvePresetWithNeuralAssistIfNeeded(requestedPreset: preset) { [weak self] resolvedPreset in
+            guard let self = self else { return }
+            _ = self.mpv.applyShaderPreset(resolvedPreset)
+            self.updateShaderButton()
+            completion()
+        }
+    }
+
+    private func resolvePresetWithNeuralAssistIfNeeded(requestedPreset: String,
+                                                       completion: @escaping (String) -> Void) {
+        guard startupNeuralAssistEnabled else {
+            completion(requestedPreset)
+            return
+        }
+
+        guard NeuralAssistEngine.shared.hasNeuralEngine else {
+            completion(requestedPreset)
+            return
+        }
+
+        let probePath = NSTemporaryDirectory() + "glass_neural_probe_\(UUID().uuidString).png"
+        try? FileManager.default.removeItem(atPath: probePath)
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+            guard let self = self else { return }
+            _ = self.mpv.screenshotToFile(probePath)
+            self.waitForFile(path: probePath, timeoutSeconds: 2.0) { exists in
+                defer { try? FileManager.default.removeItem(atPath: probePath) }
+                guard exists,
+                      let frame = NSImage(contentsOfFile: probePath) else {
+                    completion(requestedPreset)
+                    return
+                }
+
+                let resolved = NeuralAssistEngine.shared.resolvePreset(requestedPreset: requestedPreset,
+                                                                       frameImage: frame)
+                completion(resolved)
+            }
+        }
+    }
+
+    private func waitForFile(path: String,
+                             timeoutSeconds: Double,
+                             completion: @escaping (Bool) -> Void) {
+        let deadline = Date().addingTimeInterval(timeoutSeconds)
+
+        func poll() {
+            if FileManager.default.fileExists(atPath: path) {
+                completion(true)
+                return
+            }
+
+            if Date() >= deadline {
+                completion(false)
+                return
+            }
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
+                poll()
+            }
+        }
+
+        poll()
+    }
+
+    private func runStartupFrameCapture(_ request: CLIFrameCaptureRequest) {
+        let expandedPath = (request.outputPath as NSString).expandingTildeInPath
+        let outputURL = URL(fileURLWithPath: expandedPath)
+        let outputDirectory = outputURL.deletingLastPathComponent()
+
+        do {
+            try FileManager.default.createDirectory(at: outputDirectory,
+                                                    withIntermediateDirectories: true)
+        } catch {
+            NSLog("[CLICapture] Failed to create output directory %@: %@",
+                  outputDirectory.path,
+                  String(describing: error))
+        }
+
+        let seekDelay: Double = 0.75
+        let settleDelay = max(0.1, Double(request.settleDelayMilliseconds) / 1000.0)
+        NSLog("[CLICapture] Scheduled capture at %.3fs → %@", request.captureTimeSeconds, expandedPath)
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + seekDelay) { [weak self] in
+            guard let self = self else { return }
+            self.mpv.seek(to: request.captureTimeSeconds)
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + settleDelay) { [weak self] in
+                guard let self = self else { return }
+                self.videoView.videoLayer.requestRenderedFrameCapture(to: expandedPath) { [weak self] success in
+                    DispatchQueue.main.async {
+                        guard let self = self else { return }
+                        if success {
+                            NSLog("[CLICapture] Capture saved: %@", expandedPath)
+                            NSApp.terminate(nil)
+                        } else {
+                            NSLog("[CLICapture] Rendered capture callback failed, falling back to file polling")
+                            self.waitForCaptureAndTerminate(expectedPath: expandedPath)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func waitForCaptureAndTerminate(expectedPath: String) {
+        let timeoutSeconds: Double = 6.0
+        let deadline = Date().addingTimeInterval(timeoutSeconds)
+
+        func poll() {
+            if FileManager.default.fileExists(atPath: expectedPath) {
+                NSLog("[CLICapture] Capture saved: %@", expectedPath)
+                NSApp.terminate(nil)
+                return
+            }
+
+            if Date() >= deadline {
+                NSLog("[CLICapture] Timed out waiting for capture file: %@", expectedPath)
+                NSApp.terminate(nil)
+                return
+            }
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+                poll()
+            }
+        }
+
+        poll()
     }
 
     func mpvPlaybackEnded() {
@@ -2197,7 +2373,9 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
         // (mpv handles letterboxing internally)
         window?.resizeIncrements = NSSize(width: 1, height: 1)
         // Bug 6: end the live-resize guard now that the FS animation is complete
-        videoView.videoLayer.liveResizeEnded()
+        if !videoView.videoLayer.isUninited {
+            videoView.videoLayer.liveResizeEnded()
+        }
         // topBar is managed via Auto Layout constraints pinned to contentView.topAnchor,
         // so it automatically adjusts — no manual frame manipulation needed.
     }
@@ -2216,7 +2394,9 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
         fullscreenButton.image = cachedFSEnter
         window?.titlebarAppearsTransparent = true
         // Bug 6: end the live-resize guard after exit animation completes
-        videoView.videoLayer.liveResizeEnded()
+        if !videoView.videoLayer.isUninited {
+            videoView.videoLayer.liveResizeEnded()
+        }
         // Restore correct aspect ratio constraint after leaving fullscreen
         resizeWindowToVideo()
     }

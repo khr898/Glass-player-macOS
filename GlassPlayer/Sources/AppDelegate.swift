@@ -14,6 +14,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var settingsWindow: SettingsWindow?
     private var fileOpenedExternally = false
     var pendingAnime4KPreset: String? = nil   // Anime4K preset to apply after file loads
+    var pendingFrameCaptureRequest: CLIFrameCaptureRequest? = nil
+    var pendingNeuralAssistEnabled = false
+    // Legacy CLI/env flag retained for compatibility. Quality remains locked.
+    var pendingLowHeatModeEnabled = false
     /// Flag: when true, the next openFile call came from Launch Services
     /// (re-invoked via `open -b`) so we skip the fullscreen redirect.
     private var reopenedFromFullscreen = false
@@ -38,6 +42,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // If launched with a file argument, open it
         let args = CommandLine.arguments
         var anime4kPreset: String? = nil
+        var captureTimeSeconds: Double? = nil
+        var captureOutputPath: String? = nil
+        var captureSettleDelayMilliseconds = 700
+        pendingNeuralAssistEnabled = ProcessInfo.processInfo.environment["GLASS_NEURAL_ASSIST"] == "1"
+        pendingLowHeatModeEnabled = ProcessInfo.processInfo.environment["GLASS_LOW_HEAT"] == "1"
+        if pendingLowHeatModeEnabled {
+            NSLog("[Startup] GLASS_LOW_HEAT detected; preset quality downgrade path is disabled")
+        }
 
         if args.count > 1 {
             var i = 1
@@ -47,13 +59,52 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     if i + 1 < args.count {
                         anime4kPreset = args[i + 1]
                         i += 2
+                    } else {
+                        i += 1
                     }
+                case "--capture-time":
+                    if i + 1 < args.count, let parsed = Double(args[i + 1]) {
+                        captureTimeSeconds = max(0, parsed)
+                        i += 2
+                    } else {
+                        i += 1
+                    }
+                case "--capture-out":
+                    if i + 1 < args.count {
+                        captureOutputPath = (args[i + 1] as NSString).expandingTildeInPath
+                        i += 2
+                    } else {
+                        i += 1
+                    }
+                case "--capture-settle-ms":
+                    if i + 1 < args.count, let parsed = Int(args[i + 1]) {
+                        captureSettleDelayMilliseconds = max(0, parsed)
+                        i += 2
+                    } else {
+                        i += 1
+                    }
+                case "--neural-assist":
+                    pendingNeuralAssistEnabled = true
+                    i += 1
+                case "--low-heat":
+                    pendingLowHeatModeEnabled = true
+                    NSLog("[Startup] --low-heat accepted for compatibility; preset quality downgrade path is disabled")
+                    i += 1
                 default:
                     let path = args[i]
                     if FileManager.default.fileExists(atPath: path) {
-                        openFile(path)
                         // Store preset to apply after file loads
                         pendingAnime4KPreset = anime4kPreset
+                        if let captureTimeSeconds = captureTimeSeconds,
+                           let captureOutputPath = captureOutputPath,
+                           !captureOutputPath.isEmpty {
+                            pendingFrameCaptureRequest = CLIFrameCaptureRequest(
+                                captureTimeSeconds: captureTimeSeconds,
+                                outputPath: captureOutputPath,
+                                settleDelayMilliseconds: captureSettleDelayMilliseconds
+                            )
+                        }
+                        openFile(path)
                         return
                     }
                     i += 1
@@ -117,29 +168,39 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
             reopenedFromFullscreen = false
             let newPlayer = PlayerWindow()
+            if let preset = pendingAnime4KPreset {
+                newPlayer.startupShaderPresetOverride = preset
+            }
+            if let captureRequest = pendingFrameCaptureRequest {
+                newPlayer.startupFrameCaptureRequest = captureRequest
+            }
+            newPlayer.startupNeuralAssistEnabled = pendingNeuralAssistEnabled
+            newPlayer.startupLowHeatModeEnabled = pendingLowHeatModeEnabled
             newPlayer.loadFile(path)
             playerWindows.append(newPlayer)
             playerWindow = newPlayer
-            // Apply pending Anime4K preset if specified
-            if let preset = pendingAnime4KPreset {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                    newPlayer.mpv.applyShaderPreset(preset)
-                }
-            }
         } else {
             if playerWindow == nil {
                 let newPlayer = PlayerWindow()
                 playerWindows.append(newPlayer)
                 playerWindow = newPlayer
             }
-            playerWindow?.loadFile(path)
-            // Apply pending Anime4K preset if specified
             if let preset = pendingAnime4KPreset {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-                    self?.playerWindow?.mpv.applyShaderPreset(preset)
-                }
+                playerWindow?.startupShaderPresetOverride = preset
             }
+            if let captureRequest = pendingFrameCaptureRequest {
+                playerWindow?.startupFrameCaptureRequest = captureRequest
+            }
+            playerWindow?.startupNeuralAssistEnabled = pendingNeuralAssistEnabled
+            playerWindow?.startupLowHeatModeEnabled = pendingLowHeatModeEnabled
+            playerWindow?.loadFile(path)
         }
+
+        // CLI preset is one-shot for this file open.
+        pendingAnime4KPreset = nil
+        pendingFrameCaptureRequest = nil
+        pendingNeuralAssistEnabled = false
+        pendingLowHeatModeEnabled = false
     }
 
     /// Remove a closed player window from tracking

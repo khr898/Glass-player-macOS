@@ -1,0 +1,13 @@
+preset,ssim,psnr,glsl_png,metal_png,diff_png,status
+"Mode A (Fast)",0.994504,37.248475,"/tmp/glass_parity_run7/glsl/Mode_A__Fast_.png","/tmp/glass_parity_run7/metal/Mode_A__Fast_.png","/tmp/glass_parity_run7/diff/Mode_A__Fast_.png",ok
+"Mode B (Fast)",0.995352,37.675953,"/tmp/glass_parity_run7/glsl/Mode_B__Fast_.png","/tmp/glass_parity_run7/metal/Mode_B__Fast_.png","/tmp/glass_parity_run7/diff/Mode_B__Fast_.png",ok
+"Mode C (Fast)",0.995401,37.947664,"/tmp/glass_parity_run7/glsl/Mode_C__Fast_.png","/tmp/glass_parity_run7/metal/Mode_C__Fast_.png","/tmp/glass_parity_run7/diff/Mode_C__Fast_.png",ok
+"Mode A+A (Fast)",0.989360,35.504535,"/tmp/glass_parity_run7/glsl/Mode_A_A__Fast_.png","/tmp/glass_parity_run7/metal/Mode_A_A__Fast_.png","/tmp/glass_parity_run7/diff/Mode_A_A__Fast_.png",ok
+"Mode B+B (Fast)",0.991476,36.409893,"/tmp/glass_parity_run7/glsl/Mode_B_B__Fast_.png","/tmp/glass_parity_run7/metal/Mode_B_B__Fast_.png","/tmp/glass_parity_run7/diff/Mode_B_B__Fast_.png",ok
+"Mode C+A (Fast)",0.986375,35.323477,"/tmp/glass_parity_run7/glsl/Mode_C_A__Fast_.png","/tmp/glass_parity_run7/metal/Mode_C_A__Fast_.png","/tmp/glass_parity_run7/diff/Mode_C_A__Fast_.png",ok
+"Mode A (HQ)",0.994199,37.261877,"/tmp/glass_parity_run7/glsl/Mode_A__HQ_.png","/tmp/glass_parity_run7/metal/Mode_A__HQ_.png","/tmp/glass_parity_run7/diff/Mode_A__HQ_.png",ok
+"Mode B (HQ)",0.995288,37.716107,"/tmp/glass_parity_run7/glsl/Mode_B__HQ_.png","/tmp/glass_parity_run7/metal/Mode_B__HQ_.png","/tmp/glass_parity_run7/diff/Mode_B__HQ_.png",ok
+"Mode C (HQ)",0.995325,38.019496,"/tmp/glass_parity_run7/glsl/Mode_C__HQ_.png","/tmp/glass_parity_run7/metal/Mode_C__HQ_.png","/tmp/glass_parity_run7/diff/Mode_C__HQ_.png",ok
+"Mode A+A (HQ)",0.989612,35.685767,"/tmp/glass_parity_run7/glsl/Mode_A_A__HQ_.png","/tmp/glass_parity_run7/metal/Mode_A_A__HQ_.png","/tmp/glass_parity_run7/diff/Mode_A_A__HQ_.png",ok
+"Mode B+B (HQ)",0.989492,35.859630,"/tmp/glass_parity_run7/glsl/Mode_B_B__HQ_.png","/tmp/glass_parity_run7/metal/Mode_B_B__HQ_.png","/tmp/glass_parity_run7/diff/Mode_B_B__HQ_.png",ok
+"Mode C+A (HQ)",0.981999,34.540504,"/tmp/glass_parity_run7/glsl/Mode_C_A__HQ_.png","/tmp/glass_parity_run7/metal/Mode_C_A__HQ_.png","/tmp/glass_parity_run7/diff/Mode_C_A__HQ_.png",ok

@@ -121,13 +121,15 @@ The build script will:
 |---|---|---|
 | `BUILD_PROFILE` | `optimized` | `optimized` (LTO + aggressive opts) or `baseline` (fast compile) |
 | `NO_INSTALL` | `0` | Set to `1` to skip copying to `/Applications` |
-| `SKIP_SIGN` | `0` | Set to `1` to skip code signing |
+| `SKIP_SIGN` | `0` | Set to `1` to use local ad-hoc signing (skip identity/runtime signing path) |
 | `CREATE_DMG` | `1` | Set to `0` to skip DMG creation |
 
 ```bash
 # Example: fast debug build, no install
 BUILD_PROFILE=baseline NO_INSTALL=1 bash build.sh
 ```
+
+`SKIP_SIGN=1` still performs ad-hoc signing so local debug builds remain launchable after binary patching.
 
 ---
 
@@ -188,14 +190,19 @@ GlassPlayer/
 │   ├── RcloneBrowser.swift     # rclone remote file browser
 │   ├── UniversalSilicon.swift  # Hardware detection & QoS
 │   ├── Shaders.metal           # Metal vertex/fragment shaders (display)
-│   └── Anime4KMetalPipeline.swift  # Anime4K compute shader pipeline
+│   ├── Anime4KMetalPipeline.swift   # Anime4K pipeline orchestrator
+│   └── Anime4KRuntimePipeline.swift # Metadata-driven Anime4K runtime pass executor
 ├── MetalShaders/
 │   └── Anime4K_*.metal         # Anime4K compute shaders (Metal)
+├── Tools/
+│   └── preset_soak.zsh         # Preset stability soak test helper
 ├── BridgingHeader.h            # C/ObjC bridge for mpv + OpenGL
 ├── Info.plist                  # App metadata & file associations
 └── build.sh                    # Build script (no Xcode required)
 configs/
 └── mpv.conf                    # Default mpv configuration
+Scripts/
+└── export_anime4kmetal_shaders.swift  # Export/translate helper using Anime4KMetal parser
 ```
 
 ---
@@ -209,6 +216,15 @@ Glass Player bundles the full [Anime4K](https://github.com/bloc97/Anime4K) shade
 | Fast | Restore CNN S + Upscale CNN x2 S | Smooth playback on all Macs |
 | High | Restore CNN M + Upscale CNN x2 M | Good balance |
 | Ultra | Restore CNN VL + Upscale CNN x2 VL | Best quality, M2 Pro+ |
+
+### Repo Maintenance Utilities
+
+The repository currently keeps a minimal maintenance script/tool set:
+
+- `GlassPlayer/Tools/preset_soak.zsh`
+  - Runs preset soak checks across Anime4K modes and writes summary logs.
+- `Scripts/export_anime4kmetal_shaders.swift`
+  - Exports required Anime4K GLSL shaders to Metal source using Anime4KMetal parsing logic.
 
 ---
 

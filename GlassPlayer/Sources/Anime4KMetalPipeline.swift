@@ -36,10 +36,14 @@ final class TexturePool {
     private var pooledTextures: [String: [MTLTexture]] = [:]
     private let device: MTLDevice
     private let pixelFormat: MTLPixelFormat = .rgba16Float
+    private let verboseLogging: Bool
 
     init(device: MTLDevice) {
         self.device = device
-        NSLog("[TexturePool] Initialized")
+        self.verboseLogging = ProcessInfo.processInfo.environment["GLASS_VERBOSE_PIPELINE"] == "1"
+        if verboseLogging {
+            NSLog("[TexturePool] Initialized")
+        }
     }
 
     /// Get a texture from the pool or create a new one
@@ -51,7 +55,9 @@ final class TexturePool {
             let texture = textures.removeLast()
             pooledTextures[key] = textures
             texture.label = label
-            NSLog("[TexturePool] Reused texture from pool: \(key)")
+            if verboseLogging {
+                NSLog("[TexturePool] Reused texture from pool: \(key)")
+            }
             return texture
         }
 
@@ -67,7 +73,9 @@ final class TexturePool {
 
         if let texture = device.makeTexture(descriptor: descriptor) {
             texture.label = label
-            NSLog("[TexturePool] Created new texture: \(key)")
+            if verboseLogging {
+                NSLog("[TexturePool] Created new texture: \(key)")
+            }
             return texture
         }
 
@@ -82,19 +90,25 @@ final class TexturePool {
             pooledTextures[key] = []
         }
         pooledTextures[key]?.append(texture)
-        NSLog("[TexturePool] Released texture to pool: \(key) (pool size: \(pooledTextures[key]!.count))")
+        if verboseLogging {
+            NSLog("[TexturePool] Released texture to pool: \(key) (pool size: \(pooledTextures[key]!.count))")
+        }
     }
 
     /// Clear all pooled textures (call when preset changes or on deinit)
     func clear() {
         let totalTextures = pooledTextures.values.reduce(0) { $0 + $1.count }
         pooledTextures.removeAll()
-        NSLog("[TexturePool] Cleared \(totalTextures) pooled textures")
+        if verboseLogging {
+            NSLog("[TexturePool] Cleared \(totalTextures) pooled textures")
+        }
     }
 
     deinit {
         clear()
-        NSLog("[TexturePool] Deinitialized")
+        if verboseLogging {
+            NSLog("[TexturePool] Deinitialized")
+        }
     }
 }
 
@@ -295,6 +309,8 @@ class Anime4KMetalPipeline {
 
     /// Current preset configuration (stores the mode type)
     private var currentModeType: (any Anime4KMode.Type)?
+    /// Runtime file pipelines built from Anime4K GLSL metadata.
+    private var filePipelines: [A4KFilePipeline] = []
 
     /// Thread group size for compute dispatch
     private let threadGroupSize = MTLSize(width: 16, height: 16, depth: 1)
@@ -329,6 +345,17 @@ class Anime4KMetalPipeline {
 
     /// Profiling: Frame counter for statistics
     private var frameCount: UInt = 0
+
+    /// Optional perf telemetry for heavy preset validation.
+    private let perfStatsLoggingEnabled: Bool = ProcessInfo.processInfo.environment["GLASS_PERF_STATS"] == "1"
+    private let perfStatsLogInterval: UInt = {
+        if let raw = ProcessInfo.processInfo.environment["GLASS_PERF_LOG_INTERVAL"],
+           let parsed = UInt(raw),
+           parsed >= 30 {
+            return parsed
+        }
+        return 120
+    }()
 
 
     // MARK: - Initialization
@@ -405,85 +432,53 @@ class Anime4KMetalPipeline {
             NSLog("[Anime4K] ERROR: Unknown preset '%@' - not found in registry", presetName)
             return false
         }
-        NSLog("[Anime4K] Found preset: %@ with %d shader passes", modeType.displayName, modeType.shaderPasses.count)
+        NSLog("[Anime4K] Found preset: %@ with %d shader files", modeType.displayName, modeType.shaderPasses.count)
 
-        // Get shader passes from the protocol-based preset
-        let shaderPasses = modeType.shaderPasses
-        let shaderFiles = shaderPasses.map { $0.shaderFile }
-
-        // Determine scale factor from preset
+        let shaderFiles = modeType.shaderPasses.map { $0.shaderFile }
         self.scaleFactor = modeType.scaleFactor
-
         self.inputWidth = inputWidth
         self.inputHeight = inputHeight
 
-        // Compile/load all required kernel functions with strict validation.
-        var requiredKernels: Set<String> = []
-        var missingShaderMappings: [String] = []
+        // Reset runtime pipelines for the new preset.
+        filePipelines.removeAll()
 
         for shaderFile in shaderFiles {
-            let kernels = KernelFunctionRegistry.kernels(for: shaderFile)
-            if kernels.isEmpty {
-                missingShaderMappings.append(shaderFile)
-                continue
+            guard let metalSource = loadMetalSource(shaderFile: shaderFile) else {
+                NSLog("[Anime4K] ERROR: Missing .metal source metadata for %@", shaderFile)
+                return false
             }
-            requiredKernels.formUnion(kernels)
-        }
 
-        if !missingShaderMappings.isEmpty {
-            NSLog("[Anime4K] ERROR: Missing kernel mappings for preset %@: %@",
-                  presetName,
-                  missingShaderMappings.joined(separator: ", "))
-            return false
-        }
-
-        var missingKernelFunctions: [String] = []
-
-        for kernelName in requiredKernels {
-            if pipelineStates[kernelName] == nil {
-                guard let function = library.makeFunction(name: kernelName) else {
-                    missingKernelFunctions.append(kernelName)
-                    continue
-                }
-
-                do {
-                    let pipeline = try device.makeComputePipelineState(function: function)
-                    pipelineStates[kernelName] = pipeline
-                    NSLog("[Anime4K] Compiled pipeline: %@", kernelName)
-                } catch {
-                    NSLog("[Anime4K] Failed to compile pipeline %@: \(error)", kernelName)
-                    return false
-                }
+            guard let filePipeline = A4KFilePipeline(shaderFileName: shaderFile,
+                                                     metalSource: metalSource,
+                                                     targetOutputScale: Float(modeType.scaleFactor),
+                                                     device: device,
+                                                     library: library) else {
+                NSLog("[Anime4K] ERROR: Failed to create runtime pipeline for %@", shaderFile)
+                return false
             }
-        }
 
-        if !missingKernelFunctions.isEmpty {
-            NSLog("[Anime4K] ERROR: Missing kernel functions in metallib for preset %@", presetName)
-            for missing in missingKernelFunctions.sorted() {
-                NSLog("[Anime4K]   missing kernel: %@", missing)
+            guard filePipeline.recompileIfNeeded(inputWidth: inputWidth, inputHeight: inputHeight) else {
+                NSLog("[Anime4K] ERROR: Failed to compile runtime pipeline for %@", shaderFile)
+                return false
             }
-            return false
+
+            filePipelines.append(filePipeline)
         }
 
-        // Configure dimensions for each pass and clear stale intermediates.
-        configurePassOutputSizes(shaderFiles: shaderFiles,
-                     inputWidth: inputWidth,
-                     inputHeight: inputHeight)
-
-        // Store the mode type for static member access
         self.currentModeType = modeType
-
         isActive = true
-        NSLog("[Anime4K] Activated preset: %@ (%dx%d → %dx%d, %d passes)",
-              presetName, inputWidth, inputHeight,
-              inputWidth * scaleFactor, inputHeight * scaleFactor,
-              shaderPasses.count)
+
+        NSLog("[Anime4K] Activated preset: %@ (%d runtime shader files)",
+              presetName,
+              filePipelines.count)
 
         return true
     }
 
     /// Deactivate the current preset
     func deactivate() {
+        filePipelines.removeAll()
+
         // Return intermediate textures to pool before clearing.
         for texture in namedIntermediateTextures.values {
             texturePool.releaseTexture(texture)
@@ -514,159 +509,105 @@ class Anime4KMetalPipeline {
     func processFrame(sourceTexture: MTLTexture,
                       commandBuffer: MTLCommandBuffer,
                       completionFence: MTLFence? = nil) -> MTLTexture? {
-        if !isActive {
-            NSLog("[Anime4K] processFrame: pipeline NOT active, returning source texture")
+        guard isActive, !filePipelines.isEmpty else {
             return sourceTexture
         }
-        if currentModeType == nil {
-            NSLog("[Anime4K] processFrame: currentModeType is nil, returning source texture")
-            return sourceTexture
-        }
-        guard let modeType = currentModeType else {
-            return sourceTexture
-        }
-        NSLog("[Anime4K] processFrame: processing with preset %@ (%d shader passes)", modeType.displayName, modeType.shaderPasses.count)
-        NSLog("[Anime4K] processFrame: source format=%@", String(describing: sourceTexture.pixelFormat))
 
-        let shaderPasses = modeType.shaderPasses
         let frameStart = CACurrentMediaTime()
-
-        // Update source texture reference
         self.sourceTexture = sourceTexture
+        self.inputWidth = sourceTexture.width
+        self.inputHeight = sourceTexture.height
 
-        // Encode all compute passes
-        let encoder = commandBuffer.makeComputeCommandEncoder()
-        guard let encoder = encoder else {
-            NSLog("[Anime4K] ERROR: Failed to create compute encoder")
-            return sourceTexture
-        }
+        let nativeWidth = sourceTexture.width
+        let nativeHeight = sourceTexture.height
+        let targetOutputWidth = max(1, nativeWidth * max(1, scaleFactor))
+        let targetOutputHeight = max(1, nativeHeight * max(1, scaleFactor))
 
-        encoder.label = "Anime4K Compute Pipeline"
+        var currentTexture: MTLTexture = sourceTexture
 
-        // Push debug group for profiling in Xcode Instruments
-        encoder.pushDebugGroup("Anime4K: \(modeType.displayName)")
+        for filePipeline in filePipelines {
+            filePipeline.updateFrameContext(nativeWidth: nativeWidth,
+                                            nativeHeight: nativeHeight,
+                                            targetOutputWidth: targetOutputWidth,
+                                            targetOutputHeight: targetOutputHeight)
 
-        // Chain passes together using a symbolic texture map for each shader pass.
-        var currentInput = sourceTexture
-        let originalSource = sourceTexture
-
-        for (index, pass) in shaderPasses.enumerated() {
-            let kernelNames = KernelFunctionRegistry.kernels(for: pass.shaderFile)
-            NSLog("[Anime4K] Pass %d: %@ (%d kernels)", index, pass.description, kernelNames.count)
-
-            var textureMap: [String: MTLTexture] = [
-                "MAIN": originalSource
-            ]
-
-            for (kernelIdx, kernelName) in kernelNames.enumerated() {
-                guard let pipeline = pipelineStates[kernelName] else {
-                    NSLog("[Anime4K] ERROR: Pipeline not found: %@", kernelName)
-                    continue
-                }
-
-                encoder.setComputePipelineState(pipeline)
-
-                let bindingSpec = bindingSpec(for: pass.shaderFile,
-                                              kernelIndex: kernelIdx,
-                                              kernelCount: kernelNames.count)
-
-                // Determine output texture for this specific kernel.
-                let outputTexture: MTLTexture
-                let isLastKernelOfLastPass = (index == shaderPasses.count - 1) && (kernelIdx == kernelNames.count - 1)
-                if bindingSpec.outputName == "OUTPUT" && isLastKernelOfLastPass {
-                    // Final kernel - use display output texture
-                    outputTexture = ensureOutputTexture(width: inputWidth * scaleFactor,
-                                                        height: inputHeight * scaleFactor)
-                    NSLog("[Anime4K] Final kernel output: %dx%d", outputTexture.width, outputTexture.height)
-                    NSLog("[Anime4K] Final kernel output format=%@", String(describing: outputTexture.pixelFormat))
-                } else {
-                    guard let intermediate = getOrCreateIntermediateTexture(passIndex: index,
-                                                                             textureName: bindingSpec.outputName) else {
-                        NSLog("[Anime4K] ERROR: Failed to allocate intermediate texture for %@", bindingSpec.outputName)
-                        continue
-                    }
-                    outputTexture = intermediate
-
-                    if outputTexture === currentInput {
-                        NSLog("[Anime4K] WARNING: output aliases input at pass=%d kernel=%d", index, kernelIdx)
-                    }
-
-                    NSLog("[Anime4K] Intermediate kernel %d.%d output: %dx%d", index, kernelIdx, outputTexture.width, outputTexture.height)
-                }
-
-                // Bind input textures in exact symbolic order and output after inputs.
-                var inputTextures: [MTLTexture] = []
-                for (inputIndex, inputName) in bindingSpec.inputNames.enumerated() {
-                    guard let inputTexture = resolveInputTexture(inputName,
-                                                                 textureMap: textureMap,
-                                                                 currentInput: currentInput,
-                                                                 originalSource: originalSource) else {
-                        NSLog("[Anime4K] ERROR: Missing input texture '%@' for kernel %@", inputName, kernelName)
-                        continue
-                    }
-                    encoder.setTexture(inputTexture, index: inputIndex)
-                    inputTextures.append(inputTexture)
-                }
-                encoder.setTexture(outputTexture, index: bindingSpec.inputNames.count)
-
-                // Bind sampler at index 0
-                encoder.setSamplerState(samplerState, index: 0)
-
-                // Declare resource usage for proper barrier handling
-                for inputTexture in inputTextures {
-                    encoder.useResource(inputTexture, usage: .read)
-                }
-                encoder.useResource(outputTexture, usage: .write)
-
-                // Calculate thread groups based on OUTPUT dimensions
-                let width = outputTexture.width
-                let height = outputTexture.height
-                let threadGroups = MTLSize(width: (width + threadGroupSize.width - 1) / threadGroupSize.width,
-                                           height: (height + threadGroupSize.height - 1) / threadGroupSize.height,
-                                           depth: 1)
-
-                    NSLog("[Anime4K] Dispatching kernel with threadgroups %dx%d for output %dx%d",
-                        threadGroups.width, threadGroups.height, width, height)
-                    encoder.dispatchThreadgroups(threadGroups, threadsPerThreadgroup: threadGroupSize)
-
-                // Note: Metal automatically handles resource barriers for texture read/write
-                // Explicit barriers not needed for simple pass chaining
-
-                // Next kernel/pass reads from this kernel's output
-                currentInput = outputTexture
-                textureMap[bindingSpec.outputName] = outputTexture
+            guard filePipeline.recompileIfNeeded(inputWidth: currentTexture.width,
+                                                 inputHeight: currentTexture.height) else {
+                NSLog("[Anime4K] ERROR: Runtime pipeline recompile failed")
+                return sourceTexture
             }
+
+            guard let processed = filePipeline.encode(commandBuffer: commandBuffer,
+                                                      input: currentTexture) else {
+                NSLog("[Anime4K] ERROR: Runtime pipeline encode failed")
+                return sourceTexture
+            }
+
+            currentTexture = processed
         }
 
-        encoder.popDebugGroup()
-
-        // Explicitly signal compute completion for the render pass in the same command buffer.
-        if let completionFence {
-            encoder.updateFence(completionFence)
+        // Signal compute completion for render synchronization fence.
+        if let completionFence,
+           let blit = commandBuffer.makeBlitCommandEncoder() {
+            blit.updateFence(completionFence)
+            blit.endEncoding()
         }
 
-        encoder.endEncoding()
-
-        // Profile frame processing time
-        let frameTime = (CACurrentMediaTime() - frameStart) * 1000.0  // Convert to ms
+        let frameTime = (CACurrentMediaTime() - frameStart) * 1000.0
         frameCount += 1
-        // Exponential moving average for smooth profiling display
         averageComputeTimeMs = averageComputeTimeMs * 0.95 + frameTime * 0.05
 
-        // Ensure compute writes are visible to subsequent render passes
-        // This is critical - without it, the render pass may read stale data
-        commandBuffer.addCompletedHandler { [weak self] _ in
-            if let self = self {
-                if self.frameCount % 60 == 0 {
-                    // Log stats every 60 frames
-                    NSLog("[Anime4K] Profile: avg=%.2fms (%.1f fps), frame #%d",
-                          self.averageComputeTimeMs, 1000.0 / max(self.averageComputeTimeMs, 0.001), self.frameCount)
-                }
+        if perfStatsLoggingEnabled,
+           frameCount % perfStatsLogInterval == 0 {
+            let estimatedFPS = 1000.0 / max(averageComputeTimeMs, 0.001)
+            NSLog("[Anime4KPerf] preset=%@ frame=%u avgCompute=%.2fms estFPS=%.1f input=%dx%d output=%dx%d",
+                  currentModeType?.displayName ?? "unknown",
+                  UInt32(frameCount),
+                  averageComputeTimeMs,
+                  estimatedFPS,
+                  sourceTexture.width,
+                  sourceTexture.height,
+                  currentTexture.width,
+                  currentTexture.height)
+        }
+
+        self.outputTexture = currentTexture
+        return currentTexture
+    }
+
+    private func loadMetalSource(shaderFile: String) -> String? {
+        guard let url = resolveMetalSourceURL(shaderFile: shaderFile) else {
+            return nil
+        }
+        return try? String(contentsOf: url, encoding: .utf8)
+    }
+
+    private func resolveMetalSourceURL(shaderFile: String) -> URL? {
+        let execPath = ProcessInfo.processInfo.arguments[0]
+        let macosDir = (execPath as NSString).deletingLastPathComponent
+        let contentsDir = (macosDir as NSString).deletingLastPathComponent
+
+        let bundledPath = contentsDir + "/Resources/metal_sources/\(shaderFile).metal"
+        if FileManager.default.fileExists(atPath: bundledPath) {
+            return URL(fileURLWithPath: bundledPath)
+        }
+
+        // Fallback for local development runs outside installed app bundles.
+        let cwd = FileManager.default.currentDirectoryPath
+        let fallbackRoots = [
+            cwd + "/MetalShaders",
+            cwd + "/../GlassPlayer/MetalShaders",
+            cwd + "/../MetalShaders"
+        ]
+
+        for root in fallbackRoots {
+            let path = root + "/\(shaderFile).metal"
+            if FileManager.default.fileExists(atPath: path) {
+                return URL(fileURLWithPath: path)
             }
         }
 
-        self.outputTexture = currentInput
-        return currentInput
+        return nil
     }
 
     /// Get current profiling statistics
@@ -749,15 +690,17 @@ class Anime4KMetalPipeline {
 
         var currentWidth = inputWidth
         var currentHeight = inputHeight
+        var appliedScale = 1
 
         for shaderFile in shaderFiles {
             // Check if this shader upscales
             let isUpscale = shaderFile.contains("Upscale") &&
                            !shaderFile.contains("AutoDownscale")
 
-            if isUpscale {
+            if isUpscale && appliedScale < scaleFactor {
                 currentWidth *= 2
                 currentHeight *= 2
+                appliedScale *= 2
             }
 
             passOutputSizes.append(PassOutputSize(width: currentWidth, height: currentHeight))
@@ -767,20 +710,21 @@ class Anime4KMetalPipeline {
     }
 
     private func getOrCreateIntermediateTexture(passIndex: Int,
-                                                textureName: String) -> MTLTexture? {
+                                                textureName: String,
+                                                width: Int,
+                                                height: Int) -> MTLTexture? {
         let key = "p\(passIndex):\(textureName)"
         if let existing = namedIntermediateTextures[key] {
-            return existing
+            if existing.width == width && existing.height == height {
+                return existing
+            }
+            texturePool.releaseTexture(existing)
+            namedIntermediateTextures.removeValue(forKey: key)
         }
 
-        guard passIndex < passOutputSizes.count else {
-            return nil
-        }
-
-        let size = passOutputSizes[passIndex]
         let label = "Anime4K_\(key)"
-        guard let texture = texturePool.acquireTexture(width: size.width,
-                                                       height: size.height,
+        guard let texture = texturePool.acquireTexture(width: width,
+                                                       height: height,
                                                        label: label) else {
             return nil
         }
@@ -793,13 +737,21 @@ class Anime4KMetalPipeline {
                                      textureMap: [String: MTLTexture],
                                      currentInput: MTLTexture,
                                      originalSource: MTLTexture) -> MTLTexture? {
-        if inputName == "MAIN" {
-            return originalSource
+        if let bound = textureMap[inputName] { return bound }
+        if inputName == "HOOKED" {
+            // HOOKED is the pass source texture, not the rolling kernel output.
+            return textureMap["MAIN"] ?? currentInput
         }
         if inputName == "$CURRENT" {
             return currentInput
         }
-        return textureMap[inputName]
+        if inputName == "MAIN" {
+            return currentInput
+        }
+        if inputName == "ORIGINAL" {
+            return originalSource
+        }
+        return nil
     }
 
     private func bindingSpec(for shaderFile: String,
@@ -808,11 +760,11 @@ class Anime4KMetalPipeline {
         if shaderFile == "Anime4K_Clamp_Highlights" {
             switch kernelIndex {
             case 0:
-                return KernelBindingSpec(inputNames: ["MAIN"], outputName: "STATSMAX")
+                return KernelBindingSpec(inputNames: ["HOOKED", "MAIN"], outputName: "STATSMAX")
             case 1:
-                return KernelBindingSpec(inputNames: ["STATSMAX", "STATSMAX", "MAIN"], outputName: "STATSMAX")
+                return KernelBindingSpec(inputNames: ["HOOKED", "STATSMAX", "MAIN"], outputName: "STATSMAX")
             default:
-                return KernelBindingSpec(inputNames: ["STATSMAX", "STATSMAX", "MAIN"], outputName: "OUTPUT")
+                return KernelBindingSpec(inputNames: ["HOOKED", "STATSMAX", "MAIN"], outputName: "OUTPUT")
             }
         }
 

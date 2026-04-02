@@ -65,6 +65,7 @@ class ViewLayer: CAMetalLayer {
     private let mtlDevice: MTLDevice
     private let commandQueue: MTLCommandQueue
     private let pipelineState: MTLRenderPipelineState
+    private let centerResizePipelineState: MTLComputePipelineState
     private let computeToRenderFence: MTLFence?
 
     // ═══════════════════════════════════════════════════════════════════
@@ -125,6 +126,8 @@ class ViewLayer: CAMetalLayer {
     var anime4KPreset: String?
     /// Texture containing Anime4K-processed frame (nil = use source texture)
     private var anime4KOutputTexture: MTLTexture?
+    /// Reusable display-sized texture for final center-resize/format conversion.
+    private var anime4KPresentationTexture: MTLTexture?
 
     // ═══════════════════════════════════════════════════════════════════
     // MARK: - Frame Capture for Quality Comparison
@@ -133,7 +136,7 @@ class ViewLayer: CAMetalLayer {
     // ═══════════════════════════════════════════════════════════════════
 
     /// Enable frame capture mode for quality verification
-    var frameCaptureEnabled: Bool = true  // Enabled for quality comparison testing
+    var frameCaptureEnabled: Bool = false  // Enable manually for quality comparison testing
 
     /// Output directory for captured frames
     let frameCaptureDirectory = "/tmp/glass-player-captures"
@@ -143,6 +146,23 @@ class ViewLayer: CAMetalLayer {
 
     /// Maximum frames to capture (prevents disk space exhaustion)
     let maxFrameCaptures: Int = 10
+
+    /// One-shot capture request used by CLI parity runs.
+    private var pendingRenderedCapturePath: String?
+    private var pendingRenderedCaptureCallback: ((Bool) -> Void)?
+    private let renderedCaptureQueue = DispatchQueue(label: "com.glassplayer.rendered-capture", qos: .utility)
+
+    // Automatic output verification for CLI runs.
+    private var autoOutputVerificationEnabled: Bool = false
+    private var autoOutputVerificationCompleted: Bool = false
+    private var autoOutputVerificationFramesSeen: Int = 0
+    private let autoOutputVerificationTriggerFrame: Int = 120
+    private var autoOutputVerificationSourceStagingTexture: MTLTexture?
+    private var autoOutputVerificationFinalStagingTexture: MTLTexture?
+    private let autoOutputVerificationQueue = DispatchQueue(label: "com.glassplayer.output-verification",
+                                                            qos: .utility)
+    private let centerResizeEnabled: Bool = false
+    private let verbosePipelineLogging: Bool = ProcessInfo.processInfo.environment["GLASS_VERBOSE_PIPELINE"] == "1"
 
     // MARK: - Initialization
 
@@ -186,6 +206,15 @@ class ViewLayer: CAMetalLayer {
             pipelineState = try device.makeRenderPipelineState(descriptor: pipelineDesc)
         } catch {
             fatalError("[ViewLayer] MTLRenderPipelineState creation failed: \(error)")
+        }
+
+        guard let centerResizeFn = library.makeFunction(name: "centerResizeKernel") else {
+            fatalError("[ViewLayer] Missing centerResizeKernel in Metal library")
+        }
+        do {
+            centerResizePipelineState = try device.makeComputePipelineState(function: centerResizeFn)
+        } catch {
+            fatalError("[ViewLayer] centerResizeKernel pipeline creation failed: \(error)")
         }
 
         // ── 3. Aligned Render State (lock-free frame flags) ──
@@ -270,6 +299,32 @@ class ViewLayer: CAMetalLayer {
         self.backgroundColor = NSColor.black.cgColor
         // Allow 3 drawables in flight to prevent stalls during resize
         self.maximumDrawableCount = 3
+
+        // CLI quality gate: run one-shot luminance verification only for
+        // explicit capture workflows, not general playback.
+        let args = ProcessInfo.processInfo.arguments
+        if args.contains("--capture-out") ||
+            ProcessInfo.processInfo.environment["GLASS_AUTOVERIFY_OUTPUT"] == "1" {
+            autoOutputVerificationEnabled = true
+            NSLog("[AutoVerify] Enabled automatic non-black output verification")
+        }
+    }
+
+    /// Request a one-shot capture of the displayed texture after Metal processing.
+    /// This captures the true post-processing output used for presentation.
+    func requestRenderedFrameCapture(to outputPath: String,
+                                     completion: @escaping (Bool) -> Void) {
+        let normalizedPath = (outputPath as NSString).expandingTildeInPath
+        metalRenderQueue.async { [weak self] in
+            guard let self = self else {
+                completion(false)
+                return
+            }
+
+            self.pendingRenderedCapturePath = normalizedPath
+            self.pendingRenderedCaptureCallback = completion
+            self.update(force: true)
+        }
     }
 
     required init?(coder: NSCoder) {
@@ -294,6 +349,9 @@ class ViewLayer: CAMetalLayer {
 
         // Handle "Auto (Recommended)" by mapping to Mode A (Fast)
         let actualPreset = (preset == "Auto (Recommended)") ? "Mode A (Fast)" : preset
+        let layerDims = getLayerDimensions()
+        let dims = getPreferredRenderInputDimensions(layerWidth: layerDims.width,
+                                 layerHeight: layerDims.height)
 
         guard anime4KPipeline == nil else {
             NSLog("[ViewLayer] Pipeline already exists, checking preset change...")
@@ -302,13 +360,13 @@ class ViewLayer: CAMetalLayer {
                 NSLog("[ViewLayer] Preset changed from %@ to %@", anime4KPreset ?? "nil", actualPreset)
                 anime4KPipeline?.deactivate()
                 if let pipeline = Anime4KMetalPipeline(device: mtlDevice) {
-                    let dims = getLayerDimensions()
-                    if pipeline.activatePreset(actualPreset,
-                                               inputWidth: Int(dims.width),
-                                               inputHeight: Int(dims.height)) {
+                    if let appliedPreset = activatePresetWithFallback(pipeline,
+                                                                      requestedPreset: actualPreset,
+                                                                      inputWidth: Int(dims.width),
+                                                                      inputHeight: Int(dims.height)) {
                         anime4KPipeline = pipeline
-                        anime4KPreset = actualPreset
-                        NSLog("[ViewLayer] Anime4K preset changed to: %@", actualPreset)
+                        anime4KPreset = appliedPreset
+                        NSLog("[ViewLayer] Anime4K preset changed to: %@", appliedPreset)
                         // Force a refresh to apply the new preset
                         update(force: true)
                         return true
@@ -330,16 +388,16 @@ class ViewLayer: CAMetalLayer {
         }
         NSLog("[ViewLayer] Pipeline created successfully")
 
-        let dims = getLayerDimensions()
         NSLog("[ViewLayer] Layer dimensions: %dx%d", dims.width, dims.height)
-        if pipeline.activatePreset(actualPreset,
-                                   inputWidth: Int(dims.width),
-                                   inputHeight: Int(dims.height)) {
+          if let appliedPreset = activatePresetWithFallback(pipeline,
+                                            requestedPreset: actualPreset,
+                                            inputWidth: Int(dims.width),
+                                            inputHeight: Int(dims.height)) {
             anime4KPipeline = pipeline
-            anime4KPreset = actualPreset
+            anime4KPreset = appliedPreset
             let outDims = pipeline.getOutputDimensions(inputWidth: Int(dims.width), inputHeight: Int(dims.height))
             NSLog("[ViewLayer] SUCCESS: Anime4K enabled: %@ (%dx%d → %dx%d)",
-                  actualPreset, dims.width, dims.height, outDims.width, outDims.height)
+                appliedPreset, dims.width, dims.height, outDims.width, outDims.height)
             // Force a refresh to apply the new preset
             update(force: true)
             return true
@@ -348,6 +406,27 @@ class ViewLayer: CAMetalLayer {
         }
 
         return false
+    }
+
+    /// Try requested preset first; if activation fails and it's an HQ mode,
+    /// fallback once to the matching Fast mode.
+    private func activatePresetWithFallback(_ pipeline: Anime4KMetalPipeline,
+                                            requestedPreset: String,
+                                            inputWidth: Int,
+                                            inputHeight: Int) -> String? {
+        if pipeline.activatePreset(requestedPreset, inputWidth: inputWidth, inputHeight: inputHeight) {
+            return requestedPreset
+        }
+
+        guard requestedPreset.contains("(HQ)") else { return nil }
+        let fastPreset = requestedPreset.replacingOccurrences(of: "(HQ)", with: "(Fast)")
+        guard ViewLayer.availableAnime4KPresets.contains(fastPreset) else { return nil }
+
+        NSLog("[ViewLayer] Requested preset %@ failed, trying fallback %@", requestedPreset, fastPreset)
+        guard pipeline.activatePreset(fastPreset, inputWidth: inputWidth, inputHeight: inputHeight) else {
+            return nil
+        }
+        return fastPreset
     }
 
     /// Disable Anime4K processing
@@ -370,6 +449,26 @@ class ViewLayer: CAMetalLayer {
         let w = max(1, Int(bounds.width * scale))
         let h = max(1, Int(bounds.height * scale))
         return (w, h)
+    }
+
+    /// Resolve the preferred mpv render input size.
+    /// When Anime4K is active, prefer video display dimensions so the pipeline
+    /// enhances native content rather than an already window-upscaled frame.
+    private func getPreferredRenderInputDimensions(layerWidth: Int,
+                                                   layerHeight: Int) -> (width: Int, height: Int) {
+        guard anime4KPipeline?.isActive == true, let mpv else {
+            return (layerWidth, layerHeight)
+        }
+
+        let videoDims = mpv.getNativeVideoDimensions()
+        let vw = max(4, Int(videoDims.width))
+        let vh = max(4, Int(videoDims.height))
+
+        if vw > 0 && vh > 0 {
+            return (min(vw, layerWidth), min(vh, layerHeight))
+        }
+
+        return (layerWidth, layerHeight)
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -516,6 +615,9 @@ class ViewLayer: CAMetalLayer {
     override func layoutSublayers() {
         super.layoutSublayers()
 
+        // Ignore resize/layout notifications after teardown.
+        guard !isUninited else { return }
+
         // Update drawable size for Retina displays
         let scale = contentsScale
         let bw = bounds.width * scale
@@ -534,9 +636,10 @@ class ViewLayer: CAMetalLayer {
 
         // Recreate IOSurface if viewport dimensions changed.
         // Lock to prevent race with renderFrame() on metalRenderQueue.
-        if w != surfaceWidth || h != surfaceHeight {
+        let preferred = getPreferredRenderInputDimensions(layerWidth: w, layerHeight: h)
+        if preferred.width != surfaceWidth || preferred.height != surfaceHeight {
             displayLock.lock()
-            createIOSurface(width: w, height: h)
+            createIOSurface(width: preferred.width, height: preferred.height)
             displayLock.unlock()
         }
     }
@@ -545,6 +648,7 @@ class ViewLayer: CAMetalLayer {
     /// Recreates the IOSurface at the final viewport size so subsequent
     /// frames render at native resolution.
     func liveResizeEnded() {
+        guard !isUninited else { return }
         isInLiveResize = false
         let scale = contentsScale
         let bw = bounds.width * scale
@@ -553,9 +657,10 @@ class ViewLayer: CAMetalLayer {
         let w = max(4, Int(bw))
         let h = max(4, Int(bh))
         drawableSize = CGSize(width: CGFloat(w), height: CGFloat(h))
-        if w != surfaceWidth || h != surfaceHeight {
+        let preferred = getPreferredRenderInputDimensions(layerWidth: w, layerHeight: h)
+        if preferred.width != surfaceWidth || preferred.height != surfaceHeight {
             displayLock.lock()
-            createIOSurface(width: w, height: h)
+            createIOSurface(width: preferred.width, height: preferred.height)
             displayLock.unlock()
         }
         // Force a fresh render at the new resolution
@@ -606,7 +711,8 @@ class ViewLayer: CAMetalLayer {
             let w = max(1, Int(bounds.width * scale))
             let h = max(1, Int(bounds.height * scale))
             guard w > 0 && h > 0 else { return }
-            createIOSurface(width: w, height: h)
+            let preferred = getPreferredRenderInputDimensions(layerWidth: w, layerHeight: h)
+            createIOSurface(width: preferred.width, height: preferred.height)
         }
 
         guard glFBO != 0, let metalTex = metalVideoTexture else {
@@ -665,18 +771,15 @@ class ViewLayer: CAMetalLayer {
     /// This is the Metal 3 command encoding path:
     ///   MTLCommandBuffer → MTLRenderCommandEncoder → present drawable.
     private func displayWithMetal(_ videoTexture: MTLTexture) {
-        // Get next drawable from CAMetalLayer
-        guard let drawable = nextDrawable() else { return }
-
         // ── Allocate command buffer (one per frame) ──
         guard let cmdBuf = commandQueue.makeCommandBuffer() else { return }
         cmdBuf.label = "GlassPlayer Frame"
 
         // ── Process through Anime4K pipeline if active ──
         var finalTexture = videoTexture
+        var computeWorkSubmitted = false
 
         if let pipeline = anime4KPipeline, pipeline.isActive {
-            NSLog("[ViewLayer] Anime4K pipeline active, processing frame...")
             // Process frame through Anime4K compute shaders
             if let processedTexture = pipeline.processFrame(
                     sourceTexture: videoTexture,
@@ -684,22 +787,48 @@ class ViewLayer: CAMetalLayer {
                     completionFence: computeToRenderFence) {
                 finalTexture = processedTexture
                 anime4KOutputTexture = processedTexture
-                NSLog("[ViewLayer] Anime4K output texture: %dx%d", processedTexture.width, processedTexture.height)
+                computeWorkSubmitted = true
+                if verbosePipelineLogging {
+                    NSLog("[ViewLayer] Anime4K output texture: %dx%d, format=%@",
+                          processedTexture.width,
+                          processedTexture.height,
+                          String(describing: processedTexture.pixelFormat))
+                }
 
-                // Capture frames for quality comparison if enabled
+                // Capture frames for quality comparison if enabled (async to avoid blocking)
                 if frameCaptureEnabled {
-                    captureFrame(sourceTexture: videoTexture, outputTexture: processedTexture)
+                    DispatchQueue.global(qos: .background).async { [weak self] in
+                        self?.captureFrame(sourceTexture: videoTexture, outputTexture: processedTexture)
+                    }
                 }
             } else {
-                NSLog("[ViewLayer] Anime4K processFrame returned nil!")
+                NSLog("[ViewLayer] ERROR: Anime4K processFrame returned nil!")
             }
-        } else {
-            if anime4KPipeline != nil {
-                NSLog("[ViewLayer] Anime4K pipeline exists but not active")
-            } else {
-                NSLog("[ViewLayer] Anime4K pipeline not initialized")
-            }
+        } else if anime4KPipeline != nil, verbosePipelineLogging {
+            NSLog("[ViewLayer] Anime4K pipeline exists but NOT active (may be initializing)")
         }
+
+        // Acquire drawable as late as possible to avoid holding scarce drawable
+        // resources while compute work is still being encoded.
+        guard let drawable = nextDrawable() else { return }
+
+        // Match Anime4KMetal display architecture: center-resize Anime4K output
+        // into a drawable-sized presentation texture before fragment sampling.
+        if centerResizeEnabled,
+           computeWorkSubmitted,
+           let presentationTexture = ensurePresentationTexture(width: drawable.texture.width,
+                                                               height: drawable.texture.height) {
+            encodeCenterResize(input: finalTexture,
+                               output: presentationTexture,
+                               commandBuffer: cmdBuf)
+            finalTexture = presentationTexture
+        }
+
+        runAutoOutputVerificationIfNeeded(sourceTexture: videoTexture,
+                          finalTexture: finalTexture,
+                          commandBuffer: cmdBuf)
+
+        maybeScheduleRenderedCapture(texture: finalTexture, commandBuffer: cmdBuf)
 
         // ── Configure render pass descriptor ──
         // .loadAction = .clear replaces glClear(GL_COLOR_BUFFER_BIT)
@@ -716,8 +845,10 @@ class ViewLayer: CAMetalLayer {
         guard let encoder = cmdBuf.makeRenderCommandEncoder(descriptor: passDesc) else { return }
         encoder.label = "Video Display Pass"
 
-        if let computeToRenderFence, anime4KPipeline?.isActive == true {
-            encoder.waitForFence(computeToRenderFence, before: .fragment)
+        // Only wait for compute work if it was actually submitted
+        // This prevents unnecessary stalls when Anime4K is not active
+        if computeWorkSubmitted, let fence = computeToRenderFence {
+            encoder.waitForFence(fence, before: .fragment)
         }
 
         // Bind statically compiled pipeline state
@@ -737,6 +868,278 @@ class ViewLayer: CAMetalLayer {
         // Present drawable (replaces OpenGL buffer swap / CAOpenGLLayer display)
         cmdBuf.present(drawable)
         cmdBuf.commit()
+    }
+
+    private func maybeScheduleRenderedCapture(texture: MTLTexture,
+                                              commandBuffer: MTLCommandBuffer) {
+        guard let outputPath = pendingRenderedCapturePath else { return }
+        let callback = pendingRenderedCaptureCallback
+        pendingRenderedCapturePath = nil
+        pendingRenderedCaptureCallback = nil
+
+        commandBuffer.addCompletedHandler { [weak self] _ in
+            guard let self = self else {
+                callback?(false)
+                return
+            }
+
+            self.renderedCaptureQueue.async {
+                let success = self.saveTexture(texture, toPNGAtPath: outputPath)
+                callback?(success)
+            }
+        }
+    }
+
+    private func runAutoOutputVerificationIfNeeded(sourceTexture: MTLTexture,
+                                                   finalTexture: MTLTexture,
+                                                   commandBuffer: MTLCommandBuffer) {
+        guard autoOutputVerificationEnabled,
+              !autoOutputVerificationCompleted else { return }
+
+        autoOutputVerificationFramesSeen += 1
+        guard autoOutputVerificationFramesSeen >= autoOutputVerificationTriggerFrame else { return }
+        autoOutputVerificationCompleted = true
+
+        scheduleAutoOutputVerification(texture: sourceTexture,
+                                       textureLabel: "Source",
+                                       sourceStaging: true,
+                                       commandBuffer: commandBuffer)
+        scheduleAutoOutputVerification(texture: finalTexture,
+                                       textureLabel: "Final",
+                                       sourceStaging: false,
+                                       commandBuffer: commandBuffer)
+    }
+
+    private func scheduleAutoOutputVerification(texture: MTLTexture,
+                                                textureLabel: String,
+                                                sourceStaging: Bool,
+                                                commandBuffer: MTLCommandBuffer) {
+        guard let stagingTexture = ensureAutoOutputVerificationStagingTexture(width: texture.width,
+                                                                              height: texture.height,
+                                                                              pixelFormat: texture.pixelFormat,
+                                                                              sourceStaging: sourceStaging) else {
+            NSLog("[AutoVerify] FAIL: Unable to create %@ staging texture", textureLabel)
+            return
+        }
+
+        guard let blitEncoder = commandBuffer.makeBlitCommandEncoder() else {
+            NSLog("[AutoVerify] FAIL: Unable to create blit encoder for %@ verification", textureLabel)
+            return
+        }
+
+        blitEncoder.label = "Auto Verify \(textureLabel) Copy"
+        blitEncoder.copy(from: texture,
+                         sourceSlice: 0,
+                         sourceLevel: 0,
+                         sourceOrigin: MTLOrigin(x: 0, y: 0, z: 0),
+                         sourceSize: MTLSize(width: texture.width, height: texture.height, depth: 1),
+                         to: stagingTexture,
+                         destinationSlice: 0,
+                         destinationLevel: 0,
+                         destinationOrigin: MTLOrigin(x: 0, y: 0, z: 0))
+        blitEncoder.endEncoding()
+
+        let width = texture.width
+        let height = texture.height
+        let pixelFormat = texture.pixelFormat
+        commandBuffer.addCompletedHandler { [weak self] _ in
+            guard let self = self else { return }
+            self.autoOutputVerificationQueue.async {
+                self.evaluateAutoOutputVerification(texture: stagingTexture,
+                                                    textureLabel: textureLabel,
+                                                    width: width,
+                                                    height: height,
+                                                    pixelFormat: pixelFormat)
+            }
+        }
+    }
+
+    private func ensureAutoOutputVerificationStagingTexture(width: Int,
+                                                            height: Int,
+                                                            pixelFormat: MTLPixelFormat,
+                                                            sourceStaging: Bool) -> MTLTexture? {
+        guard pixelFormat == .bgra8Unorm ||
+              pixelFormat == .rgba8Unorm ||
+              pixelFormat == .rgba16Float else {
+            NSLog("[AutoVerify] FAIL: Unsupported pixel format %@",
+                  String(describing: pixelFormat))
+            return nil
+        }
+
+        let existingTexture = sourceStaging ?
+            autoOutputVerificationSourceStagingTexture : autoOutputVerificationFinalStagingTexture
+        if let existing = existingTexture,
+           existing.width == width,
+           existing.height == height,
+           existing.pixelFormat == pixelFormat {
+            return existing
+        }
+
+        let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: pixelFormat,
+                                                                  width: width,
+                                                                  height: height,
+                                                                  mipmapped: false)
+        descriptor.storageMode = .shared
+        descriptor.usage = [.shaderRead, .shaderWrite]
+
+        let texture = mtlDevice.makeTexture(descriptor: descriptor)
+        texture?.label = sourceStaging ?
+            "Auto Output Verification Source Staging" :
+            "Auto Output Verification Final Staging"
+        if sourceStaging {
+            autoOutputVerificationSourceStagingTexture = texture
+        } else {
+            autoOutputVerificationFinalStagingTexture = texture
+        }
+        return texture
+    }
+
+    private func evaluateAutoOutputVerification(texture: MTLTexture,
+                                                textureLabel: String,
+                                                width: Int,
+                                                height: Int,
+                                                pixelFormat: MTLPixelFormat) {
+        let bytesPerPixel: Int
+        switch pixelFormat {
+        case .bgra8Unorm, .rgba8Unorm:
+            bytesPerPixel = 4
+        case .rgba16Float:
+            bytesPerPixel = 8
+        default:
+            NSLog("[AutoVerify] FAIL: %@ unsupported format %@",
+                textureLabel, String(describing: pixelFormat))
+            return
+        }
+
+        let bytesPerRow = width * bytesPerPixel
+        let bytesPerImage = bytesPerRow * height
+        let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: bytesPerImage)
+        defer { buffer.deallocate() }
+
+        let region = MTLRegion(origin: MTLOrigin(x: 0, y: 0, z: 0),
+                               size: MTLSize(width: width, height: height, depth: 1))
+        texture.getBytes(buffer,
+                         bytesPerRow: bytesPerRow,
+                         bytesPerImage: bytesPerImage,
+                         from: region,
+                         mipmapLevel: 0,
+                         slice: 0)
+
+        let sampleGrid = 64
+        let stepX = max(1, width / sampleGrid)
+        let stepY = max(1, height / sampleGrid)
+
+        var sampleCount: Int = 0
+        var nonZeroCount: Int = 0
+        var luminanceSum: Float = 0
+        var luminanceMax: Float = 0
+
+        func halfFloat(_ lo: UInt8, _ hi: UInt8) -> Float {
+            let bits = UInt16(lo) | (UInt16(hi) << 8)
+            return Float(Float16(bitPattern: bits))
+        }
+
+        for y in stride(from: 0, to: height, by: stepY) {
+            for x in stride(from: 0, to: width, by: stepX) {
+                let i = y * bytesPerRow + x * bytesPerPixel
+
+                let r: Float
+                let g: Float
+                let b: Float
+
+                switch pixelFormat {
+                case .bgra8Unorm:
+                    b = Float(buffer[i]) / 255.0
+                    g = Float(buffer[i + 1]) / 255.0
+                    r = Float(buffer[i + 2]) / 255.0
+                case .rgba8Unorm:
+                    r = Float(buffer[i]) / 255.0
+                    g = Float(buffer[i + 1]) / 255.0
+                    b = Float(buffer[i + 2]) / 255.0
+                case .rgba16Float:
+                    r = halfFloat(buffer[i], buffer[i + 1])
+                    g = halfFloat(buffer[i + 2], buffer[i + 3])
+                    b = halfFloat(buffer[i + 4], buffer[i + 5])
+                default:
+                    continue
+                }
+
+                let luminance = max(0, 0.2126 * r + 0.7152 * g + 0.0722 * b)
+                luminanceSum += luminance
+                luminanceMax = max(luminanceMax, luminance)
+                sampleCount += 1
+                if luminance > 0.002 { nonZeroCount += 1 }
+            }
+        }
+
+        guard sampleCount > 0 else {
+            NSLog("[AutoVerify] FAIL: %@ no samples collected", textureLabel)
+            return
+        }
+
+        let mean = luminanceSum / Float(sampleCount)
+        let nonZeroRatio = Float(nonZeroCount) / Float(sampleCount)
+        let passed = luminanceMax > 0.02 && nonZeroRatio > 0.01
+
+        NSLog("[AutoVerify] %@ stats: mean=%.6f max=%.6f nonZero=%.4f dims=%dx%d format=%@",
+              textureLabel, mean, luminanceMax, nonZeroRatio, width, height, String(describing: pixelFormat))
+
+        if passed {
+            NSLog("[AutoVerify] PASS: %@ contains visible non-black content", textureLabel)
+        } else {
+            NSLog("[AutoVerify] FAIL: %@ appears black or near-black", textureLabel)
+        }
+    }
+
+    private func ensurePresentationTexture(width: Int, height: Int) -> MTLTexture? {
+        if let existing = anime4KPresentationTexture,
+           existing.width == width,
+           existing.height == height,
+           existing.pixelFormat == .rgba16Float {
+            return existing
+        }
+
+        let descriptor = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: .rgba16Float,
+            width: width,
+            height: height,
+            mipmapped: false
+        )
+        descriptor.usage = [.shaderRead, .shaderWrite]
+        descriptor.storageMode = .private
+
+        anime4KPresentationTexture = mtlDevice.makeTexture(descriptor: descriptor)
+        anime4KPresentationTexture?.label = "Anime4K Presentation Texture"
+        return anime4KPresentationTexture
+    }
+
+    private func encodeCenterResize(input: MTLTexture,
+                                    output: MTLTexture,
+                                    commandBuffer: MTLCommandBuffer) {
+        guard let computeEncoder = commandBuffer.makeComputeCommandEncoder() else { return }
+        computeEncoder.label = "Anime4K CenterResize"
+        computeEncoder.setComputePipelineState(centerResizePipelineState)
+        computeEncoder.setTexture(input, index: 0)
+        computeEncoder.setTexture(output, index: 1)
+
+        let threadsPerThreadgroup = recommendedThreadgroupSize(for: centerResizePipelineState)
+        let threadgroupsPerGrid = MTLSize(
+            width: (output.width + threadsPerThreadgroup.width - 1) / threadsPerThreadgroup.width,
+            height: (output.height + threadsPerThreadgroup.height - 1) / threadsPerThreadgroup.height,
+            depth: 1
+        )
+        computeEncoder.dispatchThreadgroups(threadgroupsPerGrid,
+                                            threadsPerThreadgroup: threadsPerThreadgroup)
+        computeEncoder.endEncoding()
+    }
+
+    private func recommendedThreadgroupSize(for pipeline: MTLComputePipelineState) -> MTLSize {
+        let width = max(1, pipeline.threadExecutionWidth)
+        let maxHeight = max(1, pipeline.maxTotalThreadsPerThreadgroup / width)
+        let targetThreads = 256
+        let preferredHeight = max(1, targetThreads / width)
+        let height = min(maxHeight, preferredHeight)
+        return MTLSize(width: width, height: height, depth: 1)
     }
 
     /// Skip an mpv frame to prevent renderer stall when display isn't possible.
@@ -765,6 +1168,20 @@ class ViewLayer: CAMetalLayer {
     /// Extension to convert MTLTexture to CGImage for frame capture
     /// This is a duplicate of the FrameCapture utility - included here for integration
     private func textureToCGImage(_ texture: MTLTexture) -> CGImage? {
+        if texture.pixelFormat == .bgra8Unorm || texture.pixelFormat == .rgba8Unorm {
+            return textureToCGImage8Bit(texture)
+        }
+
+        if texture.pixelFormat == .rgba16Float {
+            return textureToCGImageRGBA16Float(texture)
+        }
+
+        NSLog("[FrameCapture] Unsupported pixel format for capture: %@", String(describing: texture.pixelFormat))
+        return nil
+    }
+
+    private func textureToCGImage8Bit(_ texture: MTLTexture) -> CGImage? {
+
         // Copy to staging texture for CPU read
         let descriptor = MTLTextureDescriptor.texture2DDescriptor(
             pixelFormat: texture.pixelFormat,
@@ -776,6 +1193,7 @@ class ViewLayer: CAMetalLayer {
         descriptor.usage = [.shaderRead, .shaderWrite]
 
         guard let stagingTexture = mtlDevice.makeTexture(descriptor: descriptor) else {
+            NSLog("[FrameCapture] Failed to create staging texture")
             return nil
         }
 
@@ -783,6 +1201,7 @@ class ViewLayer: CAMetalLayer {
         guard let commandQueue = mtlDevice.makeCommandQueue(),
               let commandBuffer = commandQueue.makeCommandBuffer(),
               let encoder = commandBuffer.makeBlitCommandEncoder() else {
+            NSLog("[FrameCapture] Failed to create blit encoder")
             return nil
         }
 
@@ -790,11 +1209,6 @@ class ViewLayer: CAMetalLayer {
         encoder.endEncoding()
         commandBuffer.commit()
         commandBuffer.waitUntilCompleted()
-
-        // Convert staging texture to CGImage
-        guard texture.pixelFormat == .bgra8Unorm || texture.pixelFormat == .rgba8Unorm else {
-            return nil
-        }
 
         let bytesPerPixel = 4
         let bytesPerRow = texture.width * bytesPerPixel
@@ -829,10 +1243,125 @@ class ViewLayer: CAMetalLayer {
                     CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue :
                     CGImageAlphaInfo.premultipliedLast.rawValue
               ) else {
+            NSLog("[FrameCapture] Failed to create CGContext")
             return nil
         }
 
         return context.makeImage()
+    }
+
+    private func textureToCGImageRGBA16Float(_ texture: MTLTexture) -> CGImage? {
+        let descriptor = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: .rgba16Float,
+            width: texture.width,
+            height: texture.height,
+            mipmapped: false
+        )
+        descriptor.storageMode = .shared
+        descriptor.usage = [.shaderRead, .shaderWrite]
+
+        guard let stagingTexture = mtlDevice.makeTexture(descriptor: descriptor) else {
+            NSLog("[FrameCapture] Failed to create rgba16 staging texture")
+            return nil
+        }
+
+        guard let commandQueue = mtlDevice.makeCommandQueue(),
+              let commandBuffer = commandQueue.makeCommandBuffer(),
+              let encoder = commandBuffer.makeBlitCommandEncoder() else {
+            NSLog("[FrameCapture] Failed to create rgba16 blit encoder")
+            return nil
+        }
+
+        encoder.copy(from: texture, to: stagingTexture)
+        encoder.endEncoding()
+        commandBuffer.commit()
+        commandBuffer.waitUntilCompleted()
+
+        let halfBytesPerPixel = 8
+        let halfBytesPerRow = texture.width * halfBytesPerPixel
+        let halfBytesPerImage = halfBytesPerRow * texture.height
+
+        let halfBuffer = UnsafeMutablePointer<UInt8>.allocate(capacity: halfBytesPerImage)
+        defer { halfBuffer.deallocate() }
+
+        let region = MTLRegion(
+            origin: MTLOrigin(x: 0, y: 0, z: 0),
+            size: MTLSize(width: texture.width, height: texture.height, depth: 1)
+        )
+
+        stagingTexture.getBytes(
+            halfBuffer,
+            bytesPerRow: halfBytesPerRow,
+            bytesPerImage: halfBytesPerImage,
+            from: region,
+            mipmapLevel: 0,
+            slice: 0
+        )
+
+        let outBytesPerPixel = 4
+        let outBytesPerRow = texture.width * outBytesPerPixel
+        let outBytesPerImage = outBytesPerRow * texture.height
+        let outBuffer = UnsafeMutablePointer<UInt8>.allocate(capacity: outBytesPerImage)
+        defer { outBuffer.deallocate() }
+
+        @inline(__always)
+        func decodeHalf(_ lo: UInt8, _ hi: UInt8) -> Float {
+            let bits = UInt16(lo) | (UInt16(hi) << 8)
+            return Float(Float16(bitPattern: bits))
+        }
+
+        for y in 0..<texture.height {
+            for x in 0..<texture.width {
+                let src = y * halfBytesPerRow + x * halfBytesPerPixel
+                let dst = y * outBytesPerRow + x * outBytesPerPixel
+
+                let r = max(0, min(1, decodeHalf(halfBuffer[src], halfBuffer[src + 1])))
+                let g = max(0, min(1, decodeHalf(halfBuffer[src + 2], halfBuffer[src + 3])))
+                let b = max(0, min(1, decodeHalf(halfBuffer[src + 4], halfBuffer[src + 5])))
+                let a = max(0, min(1, decodeHalf(halfBuffer[src + 6], halfBuffer[src + 7])))
+
+                outBuffer[dst] = UInt8((r * 255).rounded())
+                outBuffer[dst + 1] = UInt8((g * 255).rounded())
+                outBuffer[dst + 2] = UInt8((b * 255).rounded())
+                outBuffer[dst + 3] = UInt8((a * 255).rounded())
+            }
+        }
+
+        guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB),
+              let context = CGContext(
+                data: outBuffer,
+                width: texture.width,
+                height: texture.height,
+                bitsPerComponent: 8,
+                bytesPerRow: outBytesPerRow,
+                space: colorSpace,
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+              ) else {
+            NSLog("[FrameCapture] Failed to create rgba16 CGContext")
+            return nil
+        }
+
+        return context.makeImage()
+    }
+
+    private func saveTexture(_ texture: MTLTexture, toPNGAtPath path: String) -> Bool {
+        guard let cgImage = textureToCGImage(texture),
+              let pngData = cgImageToPNG(cgImage) else {
+            NSLog("[CLICapture] Failed to convert rendered texture to PNG: %@", path)
+            return false
+        }
+
+        do {
+            let url = URL(fileURLWithPath: path)
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(),
+                                                    withIntermediateDirectories: true)
+            try pngData.write(to: url, options: .atomic)
+            NSLog("[CLICapture] Saved rendered Metal frame: %@", path)
+            return true
+        } catch {
+            NSLog("[CLICapture] Failed writing rendered frame %@: %@", path, String(describing: error))
+            return false
+        }
     }
 
     /// Converts CGImage to PNG data representation

@@ -1,17 +1,17 @@
-// Auto-generated from GLSL using translate_anime4k_shaders.py
-// Texture binding: BINDS=[0..N-1], MAIN=[N if applicable], OUTPUT=[last]
+// Auto-generated using Anime4KMetal Shared/MPVShader.swift
 // Source: Anime4K_Upscale_CNN_x2_VL.glsl
-// Shaders: 18
+// Pass count: 18
 
 // Shader: Anime4K-v3.2-Upscale-CNN-x2-(VL)-Conv-4x3x3x3
 // Function: Anime4Kv32UpscaleCNNx2VLConv4x3x3x3
-// BINDS: ['MAIN']
+// BINDS: ["MAIN"]
 // HOOK: MAIN
 // SAVE: conv2d_tf
-// Input textures: ['MAIN']
-// Output texture: conv2d_tf
-// Texture indices: BINDS=0..0, OUTPUT=1
-
+// META_WIDTH_BASE: MAIN
+// META_WIDTH_SCALE: 1.0
+// META_HEIGHT_BASE: MAIN
+// META_HEIGHT_SCALE: 1.0
+// META_WHEN: WHEN OUTPUT.w MAIN.w / 1.200 > OUTPUT.h MAIN.h / 1.200 > *
 #include <metal_stdlib>
 using namespace metal;
 
@@ -20,21 +20,18 @@ using vec3 = float3;
 using vec4 = float4;
 using ivec2 = int2;
 using mat4 = float4x4;
-
 #define MAIN_pos mtlPos
-#define MAIN_pt (float2(1, 1) / float2(MAIN.get_width(), MAIN.get_height()))
 #define MAIN_size float2(MAIN.get_width(), MAIN.get_height())
+#define MAIN_pt (vec2(1, 1) / MAIN_size)
 #define MAIN_tex(pos) MAIN.sample(textureSampler, pos)
-#define MAIN_texOff(off) MAIN_tex(MAIN_pos + MAIN_pt * float2(off))
-
-#define HOOKED_pos MAIN_pos
-#define HOOKED_size MAIN_size
-#define HOOKED_pt MAIN_pt
-#define HOOKED_tex(pos) MAIN_tex(pos)
-#define HOOKED_texOff(off) MAIN_texOff(off)
-
+#define MAIN_texOff(off) MAIN_tex(MAIN_pos + MAIN_pt * vec2(off))
+#define MAIN_pos mtlPos
+#define MAIN_pt (vec2(1, 1) / vec2(MAIN.get_width(), MAIN.get_height()))
+#define MAIN_size vec2(MAIN.get_width(), MAIN.get_height())
+#define MAIN_tex(pos) MAIN.sample(textureSampler, pos)
+#define MAIN_texOff(off) MAIN_tex(MAIN_pos + MAIN_pt * vec2(off))
 #define go_0(x_off, y_off) (MAIN_texOff(vec2(x_off, y_off)))
-static vec4 hook(float2 mtlPos, texture2d<float, access::sample> MAIN, sampler textureSampler) {
+static vec4 hook(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> MAIN) {
 vec4 result = mat4(0.3053028, -0.037464816, 0.113983095, 0.12537485, -0.18630321, 0.084269725, -0.01351514, -0.20190673, -0.12298384, -0.037622184, -0.070214555, -0.19367279, 0.0, 0.0, 0.0, 0.0) * go_0(-1.0, -1.0);
 result += mat4(-0.41849324, 0.099702746, -0.04276645, -0.047299717, 0.20074473, 0.14217933, 0.15571699, 0.19553481, 0.21868695, -0.053848714, 0.016413521, 0.14117444, 0.0, 0.0, 0.0, 0.0) * go_0(-1.0, 0.0);
 result += mat4(0.030540446, -0.052293833, 0.0715466, -0.31160545, 0.07808315, -0.16860045, 0.032828577, -0.2955024, -0.110374965, 0.04043687, -0.014024628, 0.058699366, 0.0, 0.0, 0.0, 0.0) * go_0(-1.0, 1.0);
@@ -47,22 +44,24 @@ result += mat4(0.0787417, -0.0483673, 0.07621572, -0.060169693, -0.013465177, -0
 result += vec4(0.0072128535, -0.05658625, 0.052939568, -0.1760861);
 return result;
 }
-kernel void Anime4Kv32UpscaleCNNx2VLConv4x3x3x3(
-    texture2d<float, access::sample> MAIN [[texture(0)]], texture2d<float, access::write> output [[texture(1)]], uint2 gid [[thread_position_in_grid]], sampler textureSampler [[sampler(0)]]) {
-    float2 mtlPos = float2(gid) / (float2(output.get_width(), output.get_height()) - float2(1, 1));
-    output.write(hook(mtlPos, MAIN, textureSampler), gid);
+kernel void Anime4Kv32UpscaleCNNx2VLConv4x3x3x3(texture2d<float, access::sample> MAIN [[texture(0)]], texture2d<float, access::write> output [[texture(1)]], uint2 gid [[thread_position_in_grid]], sampler textureSampler [[sampler(0)]]) {
+    float2 outSize = float2(output.get_width(), output.get_height());
+    float2 outScale = 1.0 / (outSize - float2(1.0, 1.0));
+    float2 mtlPos = float2(gid) * outScale;
+    output.write(hook(mtlPos, textureSampler, MAIN), gid);
 }
 
 
 // Shader: Anime4K-v3.2-Upscale-CNN-x2-(VL)-Conv-4x3x3x3
 // Function: Anime4Kv32UpscaleCNNx2VLConv4x3x3x3_pass1
-// BINDS: ['MAIN']
+// BINDS: ["MAIN"]
 // HOOK: MAIN
 // SAVE: conv2d_tf1
-// Input textures: ['MAIN']
-// Output texture: conv2d_tf1
-// Texture indices: BINDS=0..0, OUTPUT=1
-
+// META_WIDTH_BASE: MAIN
+// META_WIDTH_SCALE: 1.0
+// META_HEIGHT_BASE: MAIN
+// META_HEIGHT_SCALE: 1.0
+// META_WHEN: WHEN OUTPUT.w MAIN.w / 1.200 > OUTPUT.h MAIN.h / 1.200 > *
 #include <metal_stdlib>
 using namespace metal;
 
@@ -71,21 +70,18 @@ using vec3 = float3;
 using vec4 = float4;
 using ivec2 = int2;
 using mat4 = float4x4;
-
 #define MAIN_pos mtlPos
-#define MAIN_pt (float2(1, 1) / float2(MAIN.get_width(), MAIN.get_height()))
 #define MAIN_size float2(MAIN.get_width(), MAIN.get_height())
+#define MAIN_pt (vec2(1, 1) / MAIN_size)
 #define MAIN_tex(pos) MAIN.sample(textureSampler, pos)
-#define MAIN_texOff(off) MAIN_tex(MAIN_pos + MAIN_pt * float2(off))
-
-#define HOOKED_pos MAIN_pos
-#define HOOKED_size MAIN_size
-#define HOOKED_pt MAIN_pt
-#define HOOKED_tex(pos) MAIN_tex(pos)
-#define HOOKED_texOff(off) MAIN_texOff(off)
-
+#define MAIN_texOff(off) MAIN_tex(MAIN_pos + MAIN_pt * vec2(off))
+#define MAIN_pos mtlPos
+#define MAIN_pt (vec2(1, 1) / vec2(MAIN.get_width(), MAIN.get_height()))
+#define MAIN_size vec2(MAIN.get_width(), MAIN.get_height())
+#define MAIN_tex(pos) MAIN.sample(textureSampler, pos)
+#define MAIN_texOff(off) MAIN_tex(MAIN_pos + MAIN_pt * vec2(off))
 #define go_0(x_off, y_off) (MAIN_texOff(vec2(x_off, y_off)))
-static vec4 hook_pass1(float2 mtlPos, texture2d<float, access::sample> MAIN, sampler textureSampler) {
+static vec4 hook_pass1(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> MAIN) {
 vec4 result = mat4(-0.112743355, 0.0422517, 0.21350034, -0.0967133, 0.16265953, 0.0022497, 0.015078242, 0.08204187, 0.035236806, -0.0468228, -0.09464228, -0.001864949, 0.0, 0.0, 0.0, 0.0) * go_0(-1.0, -1.0);
 result += mat4(0.25631642, -0.41485596, -0.16662048, 0.13201024, 0.057921384, 0.2240005, -0.30038536, -0.08305622, 0.2228756, 0.32263795, 0.10608189, -0.18616734, 0.0, 0.0, 0.0, 0.0) * go_0(-1.0, 0.0);
 result += mat4(0.08997524, 0.11516871, 0.19212262, -0.035154644, 0.11612274, -0.04056247, 0.14974374, 0.029173585, -0.07629641, -0.14353512, 0.041081246, 0.20230265, 0.0, 0.0, 0.0, 0.0) * go_0(-1.0, 1.0);
@@ -98,22 +94,24 @@ result += mat4(-0.16037206, 0.21326372, 0.020099448, 0.018666709, 0.122083254, -
 result += vec4(0.007717166, -0.027800834, 0.0795002, 0.0053199283);
 return result;
 }
-kernel void Anime4Kv32UpscaleCNNx2VLConv4x3x3x3_pass1(
-    texture2d<float, access::sample> MAIN [[texture(0)]], texture2d<float, access::write> output [[texture(1)]], uint2 gid [[thread_position_in_grid]], sampler textureSampler [[sampler(0)]]) {
-    float2 mtlPos = float2(gid) / (float2(output.get_width(), output.get_height()) - float2(1, 1));
-    output.write(hook_pass1(mtlPos, MAIN, textureSampler), gid);
+kernel void Anime4Kv32UpscaleCNNx2VLConv4x3x3x3_pass1(texture2d<float, access::sample> MAIN [[texture(0)]], texture2d<float, access::write> output [[texture(1)]], uint2 gid [[thread_position_in_grid]], sampler textureSampler [[sampler(0)]]) {
+    float2 outSize = float2(output.get_width(), output.get_height());
+    float2 outScale = 1.0 / (outSize - float2(1.0, 1.0));
+    float2 mtlPos = float2(gid) * outScale;
+    output.write(hook_pass1(mtlPos, textureSampler, MAIN), gid);
 }
 
 
 // Shader: Anime4K-v3.2-Upscale-CNN-x2-(VL)-Conv-4x3x3x16
 // Function: Anime4Kv32UpscaleCNNx2VLConv4x3x3x16_pass2
-// BINDS: ['conv2d_tf', 'conv2d_tf1']
+// BINDS: ["conv2d_tf", "conv2d_tf1"]
 // HOOK: MAIN
 // SAVE: conv2d_1_tf
-// Input textures: ['conv2d_tf', 'conv2d_tf1', 'MAIN']
-// Output texture: conv2d_1_tf
-// Texture indices: BINDS=0..1, MAIN=2, OUTPUT=3
-
+// META_WIDTH_BASE: conv2d_tf
+// META_WIDTH_SCALE: 1.0
+// META_HEIGHT_BASE: conv2d_tf
+// META_HEIGHT_SCALE: 1.0
+// META_WHEN: WHEN OUTPUT.w MAIN.w / 1.200 > OUTPUT.h MAIN.h / 1.200 > *
 #include <metal_stdlib>
 using namespace metal;
 
@@ -122,36 +120,26 @@ using vec3 = float3;
 using vec4 = float4;
 using ivec2 = int2;
 using mat4 = float4x4;
-
-#define MAIN_pos mtlPos
-#define MAIN_pt (float2(1, 1) / float2(MAIN.get_width(), MAIN.get_height()))
-#define MAIN_size float2(MAIN.get_width(), MAIN.get_height())
-#define MAIN_tex(pos) MAIN.sample(textureSampler, pos)
-#define MAIN_texOff(off) MAIN_tex(MAIN_pos + MAIN_pt * float2(off))
-
-#define HOOKED_pos MAIN_pos
-#define HOOKED_size MAIN_size
-#define HOOKED_pt MAIN_pt
-#define HOOKED_tex(pos) MAIN_tex(pos)
-#define HOOKED_texOff(off) MAIN_texOff(off)
-
 #define conv2d_tf_pos mtlPos
 #define conv2d_tf_size float2(conv2d_tf.get_width(), conv2d_tf.get_height())
-#define conv2d_tf_pt (float2(1, 1) / conv2d_tf_size)
+#define conv2d_tf_pt (vec2(1, 1) / conv2d_tf_size)
 #define conv2d_tf_tex(pos) conv2d_tf.sample(textureSampler, pos)
-#define conv2d_tf_texOff(off) conv2d_tf_tex(conv2d_tf_pos + conv2d_tf_pt * float2(off))
-
+#define conv2d_tf_texOff(off) conv2d_tf_tex(conv2d_tf_pos + conv2d_tf_pt * vec2(off))
 #define conv2d_tf1_pos mtlPos
 #define conv2d_tf1_size float2(conv2d_tf1.get_width(), conv2d_tf1.get_height())
-#define conv2d_tf1_pt (float2(1, 1) / conv2d_tf1_size)
+#define conv2d_tf1_pt (vec2(1, 1) / conv2d_tf1_size)
 #define conv2d_tf1_tex(pos) conv2d_tf1.sample(textureSampler, pos)
-#define conv2d_tf1_texOff(off) conv2d_tf1_tex(conv2d_tf1_pos + conv2d_tf1_pt * float2(off))
-
+#define conv2d_tf1_texOff(off) conv2d_tf1_tex(conv2d_tf1_pos + conv2d_tf1_pt * vec2(off))
+#define MAIN_pos mtlPos
+#define MAIN_pt (vec2(1, 1) / vec2(MAIN.get_width(), MAIN.get_height()))
+#define MAIN_size vec2(MAIN.get_width(), MAIN.get_height())
+#define MAIN_tex(pos) MAIN.sample(textureSampler, pos)
+#define MAIN_texOff(off) MAIN_tex(MAIN_pos + MAIN_pt * vec2(off))
 #define go_0(x_off, y_off) (max((conv2d_tf_texOff(vec2(x_off, y_off))), 0.0))
 #define go_1(x_off, y_off) (max((conv2d_tf1_texOff(vec2(x_off, y_off))), 0.0))
 #define go_2(x_off, y_off) (max(-(conv2d_tf_texOff(vec2(x_off, y_off))), 0.0))
 #define go_3(x_off, y_off) (max(-(conv2d_tf1_texOff(vec2(x_off, y_off))), 0.0))
-static vec4 hook_pass2(float2 mtlPos, texture2d<float, access::sample> conv2d_tf, texture2d<float, access::sample> conv2d_tf1, texture2d<float, access::sample> MAIN, sampler textureSampler) {
+static vec4 hook_pass2(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> conv2d_tf, texture2d<float, access::sample> conv2d_tf1, texture2d<float, access::sample> MAIN) {
 vec4 result = mat4(-0.0056740534, -0.21186607, -0.18014967, 0.118979976, -0.0015611284, -0.07708486, 0.060131397, 0.11653345, 0.027150517, 0.10837246, 0.08583816, -0.14032431, 0.017552888, 0.0035846964, 0.03980114, 0.064649396) * go_0(-1.0, -1.0);
 result += mat4(-0.03289318, -0.12004539, 0.26514888, -0.15079662, 0.04214227, -0.027273783, -0.027950313, 0.19614808, 0.18510003, -0.10346252, -0.029836183, 0.09174428, -0.0088710375, -0.18273513, 0.06601674, 0.009983851) * go_0(-1.0, 0.0);
 result += mat4(0.08476211, 0.043996535, 0.056711517, 0.009976895, 0.07039107, -0.024862664, -0.059921104, 0.046850603, 0.04983447, 0.04863198, 0.21777405, -0.0576961, 0.045321796, -0.0060038245, 0.096396215, -0.10842004) * go_0(-1.0, 1.0);
@@ -191,22 +179,24 @@ result += mat4(0.020512339, 0.026349569, -0.06666101, 0.05554806, -0.03044066, 0
 result += vec4(-0.0216415, 0.09015036, -0.030761974, -0.26541537);
 return result;
 }
-kernel void Anime4Kv32UpscaleCNNx2VLConv4x3x3x16_pass2(
-    texture2d<float, access::sample> conv2d_tf [[texture(0)]], texture2d<float, access::sample> conv2d_tf1 [[texture(1)]], texture2d<float, access::sample> MAIN [[texture(2)]], texture2d<float, access::write> output [[texture(3)]], uint2 gid [[thread_position_in_grid]], sampler textureSampler [[sampler(0)]]) {
-    float2 mtlPos = float2(gid) / (float2(output.get_width(), output.get_height()) - float2(1, 1));
-    output.write(hook_pass2(mtlPos, conv2d_tf, conv2d_tf1, MAIN, textureSampler), gid);
+kernel void Anime4Kv32UpscaleCNNx2VLConv4x3x3x16_pass2(texture2d<float, access::sample> conv2d_tf [[texture(0)]], texture2d<float, access::sample> conv2d_tf1 [[texture(1)]], texture2d<float, access::sample> MAIN [[texture(2)]], texture2d<float, access::write> output [[texture(3)]], uint2 gid [[thread_position_in_grid]], sampler textureSampler [[sampler(0)]]) {
+    float2 outSize = float2(output.get_width(), output.get_height());
+    float2 outScale = 1.0 / (outSize - float2(1.0, 1.0));
+    float2 mtlPos = float2(gid) * outScale;
+    output.write(hook_pass2(mtlPos, textureSampler, conv2d_tf, conv2d_tf1, MAIN), gid);
 }
 
 
 // Shader: Anime4K-v3.2-Upscale-CNN-x2-(VL)-Conv-4x3x3x16
 // Function: Anime4Kv32UpscaleCNNx2VLConv4x3x3x16_pass3
-// BINDS: ['conv2d_tf', 'conv2d_tf1']
+// BINDS: ["conv2d_tf", "conv2d_tf1"]
 // HOOK: MAIN
 // SAVE: conv2d_1_tf1
-// Input textures: ['conv2d_tf', 'conv2d_tf1', 'MAIN']
-// Output texture: conv2d_1_tf1
-// Texture indices: BINDS=0..1, MAIN=2, OUTPUT=3
-
+// META_WIDTH_BASE: conv2d_tf
+// META_WIDTH_SCALE: 1.0
+// META_HEIGHT_BASE: conv2d_tf
+// META_HEIGHT_SCALE: 1.0
+// META_WHEN: WHEN OUTPUT.w MAIN.w / 1.200 > OUTPUT.h MAIN.h / 1.200 > *
 #include <metal_stdlib>
 using namespace metal;
 
@@ -215,36 +205,26 @@ using vec3 = float3;
 using vec4 = float4;
 using ivec2 = int2;
 using mat4 = float4x4;
-
-#define MAIN_pos mtlPos
-#define MAIN_pt (float2(1, 1) / float2(MAIN.get_width(), MAIN.get_height()))
-#define MAIN_size float2(MAIN.get_width(), MAIN.get_height())
-#define MAIN_tex(pos) MAIN.sample(textureSampler, pos)
-#define MAIN_texOff(off) MAIN_tex(MAIN_pos + MAIN_pt * float2(off))
-
-#define HOOKED_pos MAIN_pos
-#define HOOKED_size MAIN_size
-#define HOOKED_pt MAIN_pt
-#define HOOKED_tex(pos) MAIN_tex(pos)
-#define HOOKED_texOff(off) MAIN_texOff(off)
-
 #define conv2d_tf_pos mtlPos
 #define conv2d_tf_size float2(conv2d_tf.get_width(), conv2d_tf.get_height())
-#define conv2d_tf_pt (float2(1, 1) / conv2d_tf_size)
+#define conv2d_tf_pt (vec2(1, 1) / conv2d_tf_size)
 #define conv2d_tf_tex(pos) conv2d_tf.sample(textureSampler, pos)
-#define conv2d_tf_texOff(off) conv2d_tf_tex(conv2d_tf_pos + conv2d_tf_pt * float2(off))
-
+#define conv2d_tf_texOff(off) conv2d_tf_tex(conv2d_tf_pos + conv2d_tf_pt * vec2(off))
 #define conv2d_tf1_pos mtlPos
 #define conv2d_tf1_size float2(conv2d_tf1.get_width(), conv2d_tf1.get_height())
-#define conv2d_tf1_pt (float2(1, 1) / conv2d_tf1_size)
+#define conv2d_tf1_pt (vec2(1, 1) / conv2d_tf1_size)
 #define conv2d_tf1_tex(pos) conv2d_tf1.sample(textureSampler, pos)
-#define conv2d_tf1_texOff(off) conv2d_tf1_tex(conv2d_tf1_pos + conv2d_tf1_pt * float2(off))
-
+#define conv2d_tf1_texOff(off) conv2d_tf1_tex(conv2d_tf1_pos + conv2d_tf1_pt * vec2(off))
+#define MAIN_pos mtlPos
+#define MAIN_pt (vec2(1, 1) / vec2(MAIN.get_width(), MAIN.get_height()))
+#define MAIN_size vec2(MAIN.get_width(), MAIN.get_height())
+#define MAIN_tex(pos) MAIN.sample(textureSampler, pos)
+#define MAIN_texOff(off) MAIN_tex(MAIN_pos + MAIN_pt * vec2(off))
 #define go_0(x_off, y_off) (max((conv2d_tf_texOff(vec2(x_off, y_off))), 0.0))
 #define go_1(x_off, y_off) (max((conv2d_tf1_texOff(vec2(x_off, y_off))), 0.0))
 #define go_2(x_off, y_off) (max(-(conv2d_tf_texOff(vec2(x_off, y_off))), 0.0))
 #define go_3(x_off, y_off) (max(-(conv2d_tf1_texOff(vec2(x_off, y_off))), 0.0))
-static vec4 hook_pass3(float2 mtlPos, texture2d<float, access::sample> conv2d_tf, texture2d<float, access::sample> conv2d_tf1, texture2d<float, access::sample> MAIN, sampler textureSampler) {
+static vec4 hook_pass3(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> conv2d_tf, texture2d<float, access::sample> conv2d_tf1, texture2d<float, access::sample> MAIN) {
 vec4 result = mat4(0.04688368, 0.13853125, 0.1714716, -0.03034447, -0.08090605, 0.1225867, 0.17535992, 0.012508419, -0.0010665918, -0.07481546, -0.15541986, 0.0671128, -0.029307734, -0.076674186, 0.03925896, -0.07140553) * go_0(-1.0, -1.0);
 result += mat4(-0.13273083, 0.062933214, 0.04200143, -0.0080243945, -0.120439716, -0.090192355, -0.022639645, 0.00020024918, -0.11211478, -0.12949537, 0.025783822, 0.009155746, 0.01004339, -0.0661901, 0.10630156, 0.053137038) * go_0(-1.0, 0.0);
 result += mat4(0.07113487, -0.16011865, -0.10838903, -0.0034704183, 0.110606894, -0.14915739, 0.036511585, -0.003103608, -0.0551775, -0.13140677, 0.05270299, 0.12139221, 0.02226174, 0.008415268, -0.06647426, 0.118130066) * go_0(-1.0, 1.0);
@@ -284,22 +264,24 @@ result += mat4(-0.21555941, -0.016813517, -0.084676236, -0.07545412, -0.14518794
 result += vec4(-0.060742114, -0.037577342, 0.055704296, 0.03134311);
 return result;
 }
-kernel void Anime4Kv32UpscaleCNNx2VLConv4x3x3x16_pass3(
-    texture2d<float, access::sample> conv2d_tf [[texture(0)]], texture2d<float, access::sample> conv2d_tf1 [[texture(1)]], texture2d<float, access::sample> MAIN [[texture(2)]], texture2d<float, access::write> output [[texture(3)]], uint2 gid [[thread_position_in_grid]], sampler textureSampler [[sampler(0)]]) {
-    float2 mtlPos = float2(gid) / (float2(output.get_width(), output.get_height()) - float2(1, 1));
-    output.write(hook_pass3(mtlPos, conv2d_tf, conv2d_tf1, MAIN, textureSampler), gid);
+kernel void Anime4Kv32UpscaleCNNx2VLConv4x3x3x16_pass3(texture2d<float, access::sample> conv2d_tf [[texture(0)]], texture2d<float, access::sample> conv2d_tf1 [[texture(1)]], texture2d<float, access::sample> MAIN [[texture(2)]], texture2d<float, access::write> output [[texture(3)]], uint2 gid [[thread_position_in_grid]], sampler textureSampler [[sampler(0)]]) {
+    float2 outSize = float2(output.get_width(), output.get_height());
+    float2 outScale = 1.0 / (outSize - float2(1.0, 1.0));
+    float2 mtlPos = float2(gid) * outScale;
+    output.write(hook_pass3(mtlPos, textureSampler, conv2d_tf, conv2d_tf1, MAIN), gid);
 }
 
 
 // Shader: Anime4K-v3.2-Upscale-CNN-x2-(VL)-Conv-4x3x3x16
 // Function: Anime4Kv32UpscaleCNNx2VLConv4x3x3x16_pass4
-// BINDS: ['conv2d_1_tf', 'conv2d_1_tf1']
+// BINDS: ["conv2d_1_tf", "conv2d_1_tf1"]
 // HOOK: MAIN
 // SAVE: conv2d_2_tf
-// Input textures: ['conv2d_1_tf', 'conv2d_1_tf1', 'MAIN']
-// Output texture: conv2d_2_tf
-// Texture indices: BINDS=0..1, MAIN=2, OUTPUT=3
-
+// META_WIDTH_BASE: conv2d_1_tf
+// META_WIDTH_SCALE: 1.0
+// META_HEIGHT_BASE: conv2d_1_tf
+// META_HEIGHT_SCALE: 1.0
+// META_WHEN: WHEN OUTPUT.w MAIN.w / 1.200 > OUTPUT.h MAIN.h / 1.200 > *
 #include <metal_stdlib>
 using namespace metal;
 
@@ -308,36 +290,26 @@ using vec3 = float3;
 using vec4 = float4;
 using ivec2 = int2;
 using mat4 = float4x4;
-
-#define MAIN_pos mtlPos
-#define MAIN_pt (float2(1, 1) / float2(MAIN.get_width(), MAIN.get_height()))
-#define MAIN_size float2(MAIN.get_width(), MAIN.get_height())
-#define MAIN_tex(pos) MAIN.sample(textureSampler, pos)
-#define MAIN_texOff(off) MAIN_tex(MAIN_pos + MAIN_pt * float2(off))
-
-#define HOOKED_pos MAIN_pos
-#define HOOKED_size MAIN_size
-#define HOOKED_pt MAIN_pt
-#define HOOKED_tex(pos) MAIN_tex(pos)
-#define HOOKED_texOff(off) MAIN_texOff(off)
-
 #define conv2d_1_tf_pos mtlPos
 #define conv2d_1_tf_size float2(conv2d_1_tf.get_width(), conv2d_1_tf.get_height())
-#define conv2d_1_tf_pt (float2(1, 1) / conv2d_1_tf_size)
+#define conv2d_1_tf_pt (vec2(1, 1) / conv2d_1_tf_size)
 #define conv2d_1_tf_tex(pos) conv2d_1_tf.sample(textureSampler, pos)
-#define conv2d_1_tf_texOff(off) conv2d_1_tf_tex(conv2d_1_tf_pos + conv2d_1_tf_pt * float2(off))
-
+#define conv2d_1_tf_texOff(off) conv2d_1_tf_tex(conv2d_1_tf_pos + conv2d_1_tf_pt * vec2(off))
 #define conv2d_1_tf1_pos mtlPos
 #define conv2d_1_tf1_size float2(conv2d_1_tf1.get_width(), conv2d_1_tf1.get_height())
-#define conv2d_1_tf1_pt (float2(1, 1) / conv2d_1_tf1_size)
+#define conv2d_1_tf1_pt (vec2(1, 1) / conv2d_1_tf1_size)
 #define conv2d_1_tf1_tex(pos) conv2d_1_tf1.sample(textureSampler, pos)
-#define conv2d_1_tf1_texOff(off) conv2d_1_tf1_tex(conv2d_1_tf1_pos + conv2d_1_tf1_pt * float2(off))
-
+#define conv2d_1_tf1_texOff(off) conv2d_1_tf1_tex(conv2d_1_tf1_pos + conv2d_1_tf1_pt * vec2(off))
+#define MAIN_pos mtlPos
+#define MAIN_pt (vec2(1, 1) / vec2(MAIN.get_width(), MAIN.get_height()))
+#define MAIN_size vec2(MAIN.get_width(), MAIN.get_height())
+#define MAIN_tex(pos) MAIN.sample(textureSampler, pos)
+#define MAIN_texOff(off) MAIN_tex(MAIN_pos + MAIN_pt * vec2(off))
 #define go_0(x_off, y_off) (max((conv2d_1_tf_texOff(vec2(x_off, y_off))), 0.0))
 #define go_1(x_off, y_off) (max((conv2d_1_tf1_texOff(vec2(x_off, y_off))), 0.0))
 #define go_2(x_off, y_off) (max(-(conv2d_1_tf_texOff(vec2(x_off, y_off))), 0.0))
 #define go_3(x_off, y_off) (max(-(conv2d_1_tf1_texOff(vec2(x_off, y_off))), 0.0))
-static vec4 hook_pass4(float2 mtlPos, texture2d<float, access::sample> conv2d_1_tf, texture2d<float, access::sample> conv2d_1_tf1, texture2d<float, access::sample> MAIN, sampler textureSampler) {
+static vec4 hook_pass4(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> conv2d_1_tf, texture2d<float, access::sample> conv2d_1_tf1, texture2d<float, access::sample> MAIN) {
 vec4 result = mat4(0.13129333, -0.022117995, -0.009753253, 0.020439912, 0.044090994, -0.0916335, 0.0036765633, -0.11719207, -0.06413809, 0.04079378, -0.00085516454, -0.06306388, -0.12660664, -0.054126263, -0.005513979, 0.06364538) * go_0(-1.0, -1.0);
 result += mat4(-0.028422508, 0.23270117, -0.28674677, -0.10820166, 0.024321957, -0.0811145, -0.07290707, -0.02125165, -0.064260505, 0.052076746, -0.009654081, 0.08363882, -0.02037171, 0.15006389, 0.121593125, -0.011237004) * go_0(-1.0, 0.0);
 result += mat4(-0.14672333, 0.015381624, 0.1028172, -0.041823238, 0.0072677187, -0.042953942, 0.06426537, -0.0938381, -0.05990813, -0.04599802, -0.11264726, -0.027826328, -0.058160868, 0.10747306, -0.07327458, 0.07998872) * go_0(-1.0, 1.0);
@@ -377,22 +349,24 @@ result += mat4(0.0038071256, 0.19454515, -0.01222965, -0.07390379, -0.0532754, 0
 result += vec4(-0.06427697, -0.00039365015, 0.011889719, 0.060232002);
 return result;
 }
-kernel void Anime4Kv32UpscaleCNNx2VLConv4x3x3x16_pass4(
-    texture2d<float, access::sample> conv2d_1_tf [[texture(0)]], texture2d<float, access::sample> conv2d_1_tf1 [[texture(1)]], texture2d<float, access::sample> MAIN [[texture(2)]], texture2d<float, access::write> output [[texture(3)]], uint2 gid [[thread_position_in_grid]], sampler textureSampler [[sampler(0)]]) {
-    float2 mtlPos = float2(gid) / (float2(output.get_width(), output.get_height()) - float2(1, 1));
-    output.write(hook_pass4(mtlPos, conv2d_1_tf, conv2d_1_tf1, MAIN, textureSampler), gid);
+kernel void Anime4Kv32UpscaleCNNx2VLConv4x3x3x16_pass4(texture2d<float, access::sample> conv2d_1_tf [[texture(0)]], texture2d<float, access::sample> conv2d_1_tf1 [[texture(1)]], texture2d<float, access::sample> MAIN [[texture(2)]], texture2d<float, access::write> output [[texture(3)]], uint2 gid [[thread_position_in_grid]], sampler textureSampler [[sampler(0)]]) {
+    float2 outSize = float2(output.get_width(), output.get_height());
+    float2 outScale = 1.0 / (outSize - float2(1.0, 1.0));
+    float2 mtlPos = float2(gid) * outScale;
+    output.write(hook_pass4(mtlPos, textureSampler, conv2d_1_tf, conv2d_1_tf1, MAIN), gid);
 }
 
 
 // Shader: Anime4K-v3.2-Upscale-CNN-x2-(VL)-Conv-4x3x3x16
 // Function: Anime4Kv32UpscaleCNNx2VLConv4x3x3x16_pass5
-// BINDS: ['conv2d_1_tf', 'conv2d_1_tf1']
+// BINDS: ["conv2d_1_tf", "conv2d_1_tf1"]
 // HOOK: MAIN
 // SAVE: conv2d_2_tf1
-// Input textures: ['conv2d_1_tf', 'conv2d_1_tf1', 'MAIN']
-// Output texture: conv2d_2_tf1
-// Texture indices: BINDS=0..1, MAIN=2, OUTPUT=3
-
+// META_WIDTH_BASE: conv2d_1_tf
+// META_WIDTH_SCALE: 1.0
+// META_HEIGHT_BASE: conv2d_1_tf
+// META_HEIGHT_SCALE: 1.0
+// META_WHEN: WHEN OUTPUT.w MAIN.w / 1.200 > OUTPUT.h MAIN.h / 1.200 > *
 #include <metal_stdlib>
 using namespace metal;
 
@@ -401,36 +375,26 @@ using vec3 = float3;
 using vec4 = float4;
 using ivec2 = int2;
 using mat4 = float4x4;
-
-#define MAIN_pos mtlPos
-#define MAIN_pt (float2(1, 1) / float2(MAIN.get_width(), MAIN.get_height()))
-#define MAIN_size float2(MAIN.get_width(), MAIN.get_height())
-#define MAIN_tex(pos) MAIN.sample(textureSampler, pos)
-#define MAIN_texOff(off) MAIN_tex(MAIN_pos + MAIN_pt * float2(off))
-
-#define HOOKED_pos MAIN_pos
-#define HOOKED_size MAIN_size
-#define HOOKED_pt MAIN_pt
-#define HOOKED_tex(pos) MAIN_tex(pos)
-#define HOOKED_texOff(off) MAIN_texOff(off)
-
 #define conv2d_1_tf_pos mtlPos
 #define conv2d_1_tf_size float2(conv2d_1_tf.get_width(), conv2d_1_tf.get_height())
-#define conv2d_1_tf_pt (float2(1, 1) / conv2d_1_tf_size)
+#define conv2d_1_tf_pt (vec2(1, 1) / conv2d_1_tf_size)
 #define conv2d_1_tf_tex(pos) conv2d_1_tf.sample(textureSampler, pos)
-#define conv2d_1_tf_texOff(off) conv2d_1_tf_tex(conv2d_1_tf_pos + conv2d_1_tf_pt * float2(off))
-
+#define conv2d_1_tf_texOff(off) conv2d_1_tf_tex(conv2d_1_tf_pos + conv2d_1_tf_pt * vec2(off))
 #define conv2d_1_tf1_pos mtlPos
 #define conv2d_1_tf1_size float2(conv2d_1_tf1.get_width(), conv2d_1_tf1.get_height())
-#define conv2d_1_tf1_pt (float2(1, 1) / conv2d_1_tf1_size)
+#define conv2d_1_tf1_pt (vec2(1, 1) / conv2d_1_tf1_size)
 #define conv2d_1_tf1_tex(pos) conv2d_1_tf1.sample(textureSampler, pos)
-#define conv2d_1_tf1_texOff(off) conv2d_1_tf1_tex(conv2d_1_tf1_pos + conv2d_1_tf1_pt * float2(off))
-
+#define conv2d_1_tf1_texOff(off) conv2d_1_tf1_tex(conv2d_1_tf1_pos + conv2d_1_tf1_pt * vec2(off))
+#define MAIN_pos mtlPos
+#define MAIN_pt (vec2(1, 1) / vec2(MAIN.get_width(), MAIN.get_height()))
+#define MAIN_size vec2(MAIN.get_width(), MAIN.get_height())
+#define MAIN_tex(pos) MAIN.sample(textureSampler, pos)
+#define MAIN_texOff(off) MAIN_tex(MAIN_pos + MAIN_pt * vec2(off))
 #define go_0(x_off, y_off) (max((conv2d_1_tf_texOff(vec2(x_off, y_off))), 0.0))
 #define go_1(x_off, y_off) (max((conv2d_1_tf1_texOff(vec2(x_off, y_off))), 0.0))
 #define go_2(x_off, y_off) (max(-(conv2d_1_tf_texOff(vec2(x_off, y_off))), 0.0))
 #define go_3(x_off, y_off) (max(-(conv2d_1_tf1_texOff(vec2(x_off, y_off))), 0.0))
-static vec4 hook_pass5(float2 mtlPos, texture2d<float, access::sample> conv2d_1_tf, texture2d<float, access::sample> conv2d_1_tf1, texture2d<float, access::sample> MAIN, sampler textureSampler) {
+static vec4 hook_pass5(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> conv2d_1_tf, texture2d<float, access::sample> conv2d_1_tf1, texture2d<float, access::sample> MAIN) {
 vec4 result = mat4(-0.012110923, 0.07818654, 0.07964548, 0.11885079, -0.07694473, -0.01378252, 0.006632789, -0.12876098, 0.0069211307, 0.022278586, 0.069553085, 0.16569804, -0.11123615, 0.06125189, -0.11232848, 0.1559266) * go_0(-1.0, -1.0);
 result += mat4(-0.3261174, -0.25586754, 0.21129315, 0.3135101, 0.1509055, 0.0044283345, 0.024674175, -0.08000473, 0.01213029, 0.09093019, 0.04942677, 0.09806723, -0.16454464, -0.14433062, -0.058094524, -0.060819894) * go_0(-1.0, 0.0);
 result += mat4(0.023174008, 0.02858724, 0.07685972, 0.036857616, -0.10415571, 0.10241035, -0.01893166, 0.02065923, 0.058356714, 0.096426114, -0.03772327, -0.1529002, 0.13740575, -0.048291504, -0.06152548, -0.15199897) * go_0(-1.0, 1.0);
@@ -470,22 +434,24 @@ result += mat4(-0.023440497, -0.021479638, 0.0036277648, 0.004972212, 0.02416659
 result += vec4(-0.0063728676, -0.029053684, -0.052831043, 0.006475641);
 return result;
 }
-kernel void Anime4Kv32UpscaleCNNx2VLConv4x3x3x16_pass5(
-    texture2d<float, access::sample> conv2d_1_tf [[texture(0)]], texture2d<float, access::sample> conv2d_1_tf1 [[texture(1)]], texture2d<float, access::sample> MAIN [[texture(2)]], texture2d<float, access::write> output [[texture(3)]], uint2 gid [[thread_position_in_grid]], sampler textureSampler [[sampler(0)]]) {
-    float2 mtlPos = float2(gid) / (float2(output.get_width(), output.get_height()) - float2(1, 1));
-    output.write(hook_pass5(mtlPos, conv2d_1_tf, conv2d_1_tf1, MAIN, textureSampler), gid);
+kernel void Anime4Kv32UpscaleCNNx2VLConv4x3x3x16_pass5(texture2d<float, access::sample> conv2d_1_tf [[texture(0)]], texture2d<float, access::sample> conv2d_1_tf1 [[texture(1)]], texture2d<float, access::sample> MAIN [[texture(2)]], texture2d<float, access::write> output [[texture(3)]], uint2 gid [[thread_position_in_grid]], sampler textureSampler [[sampler(0)]]) {
+    float2 outSize = float2(output.get_width(), output.get_height());
+    float2 outScale = 1.0 / (outSize - float2(1.0, 1.0));
+    float2 mtlPos = float2(gid) * outScale;
+    output.write(hook_pass5(mtlPos, textureSampler, conv2d_1_tf, conv2d_1_tf1, MAIN), gid);
 }
 
 
 // Shader: Anime4K-v3.2-Upscale-CNN-x2-(VL)-Conv-4x3x3x16
 // Function: Anime4Kv32UpscaleCNNx2VLConv4x3x3x16_pass6
-// BINDS: ['conv2d_2_tf', 'conv2d_2_tf1']
+// BINDS: ["conv2d_2_tf", "conv2d_2_tf1"]
 // HOOK: MAIN
 // SAVE: conv2d_3_tf
-// Input textures: ['conv2d_2_tf', 'conv2d_2_tf1', 'MAIN']
-// Output texture: conv2d_3_tf
-// Texture indices: BINDS=0..1, MAIN=2, OUTPUT=3
-
+// META_WIDTH_BASE: conv2d_2_tf
+// META_WIDTH_SCALE: 1.0
+// META_HEIGHT_BASE: conv2d_2_tf
+// META_HEIGHT_SCALE: 1.0
+// META_WHEN: WHEN OUTPUT.w MAIN.w / 1.200 > OUTPUT.h MAIN.h / 1.200 > *
 #include <metal_stdlib>
 using namespace metal;
 
@@ -494,36 +460,26 @@ using vec3 = float3;
 using vec4 = float4;
 using ivec2 = int2;
 using mat4 = float4x4;
-
-#define MAIN_pos mtlPos
-#define MAIN_pt (float2(1, 1) / float2(MAIN.get_width(), MAIN.get_height()))
-#define MAIN_size float2(MAIN.get_width(), MAIN.get_height())
-#define MAIN_tex(pos) MAIN.sample(textureSampler, pos)
-#define MAIN_texOff(off) MAIN_tex(MAIN_pos + MAIN_pt * float2(off))
-
-#define HOOKED_pos MAIN_pos
-#define HOOKED_size MAIN_size
-#define HOOKED_pt MAIN_pt
-#define HOOKED_tex(pos) MAIN_tex(pos)
-#define HOOKED_texOff(off) MAIN_texOff(off)
-
 #define conv2d_2_tf_pos mtlPos
 #define conv2d_2_tf_size float2(conv2d_2_tf.get_width(), conv2d_2_tf.get_height())
-#define conv2d_2_tf_pt (float2(1, 1) / conv2d_2_tf_size)
+#define conv2d_2_tf_pt (vec2(1, 1) / conv2d_2_tf_size)
 #define conv2d_2_tf_tex(pos) conv2d_2_tf.sample(textureSampler, pos)
-#define conv2d_2_tf_texOff(off) conv2d_2_tf_tex(conv2d_2_tf_pos + conv2d_2_tf_pt * float2(off))
-
+#define conv2d_2_tf_texOff(off) conv2d_2_tf_tex(conv2d_2_tf_pos + conv2d_2_tf_pt * vec2(off))
 #define conv2d_2_tf1_pos mtlPos
 #define conv2d_2_tf1_size float2(conv2d_2_tf1.get_width(), conv2d_2_tf1.get_height())
-#define conv2d_2_tf1_pt (float2(1, 1) / conv2d_2_tf1_size)
+#define conv2d_2_tf1_pt (vec2(1, 1) / conv2d_2_tf1_size)
 #define conv2d_2_tf1_tex(pos) conv2d_2_tf1.sample(textureSampler, pos)
-#define conv2d_2_tf1_texOff(off) conv2d_2_tf1_tex(conv2d_2_tf1_pos + conv2d_2_tf1_pt * float2(off))
-
+#define conv2d_2_tf1_texOff(off) conv2d_2_tf1_tex(conv2d_2_tf1_pos + conv2d_2_tf1_pt * vec2(off))
+#define MAIN_pos mtlPos
+#define MAIN_pt (vec2(1, 1) / vec2(MAIN.get_width(), MAIN.get_height()))
+#define MAIN_size vec2(MAIN.get_width(), MAIN.get_height())
+#define MAIN_tex(pos) MAIN.sample(textureSampler, pos)
+#define MAIN_texOff(off) MAIN_tex(MAIN_pos + MAIN_pt * vec2(off))
 #define go_0(x_off, y_off) (max((conv2d_2_tf_texOff(vec2(x_off, y_off))), 0.0))
 #define go_1(x_off, y_off) (max((conv2d_2_tf1_texOff(vec2(x_off, y_off))), 0.0))
 #define go_2(x_off, y_off) (max(-(conv2d_2_tf_texOff(vec2(x_off, y_off))), 0.0))
 #define go_3(x_off, y_off) (max(-(conv2d_2_tf1_texOff(vec2(x_off, y_off))), 0.0))
-static vec4 hook_pass6(float2 mtlPos, texture2d<float, access::sample> conv2d_2_tf, texture2d<float, access::sample> conv2d_2_tf1, texture2d<float, access::sample> MAIN, sampler textureSampler) {
+static vec4 hook_pass6(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> conv2d_2_tf, texture2d<float, access::sample> conv2d_2_tf1, texture2d<float, access::sample> MAIN) {
 vec4 result = mat4(-0.0431447, 0.047972627, 0.09522898, 0.19048582, 0.0015511789, 0.1182684, -0.065335006, 0.061233886, -0.02451869, 0.065670215, -0.015341636, 0.06836347, 0.10215459, 0.17516296, 0.0857072, 0.072732896) * go_0(-1.0, -1.0);
 result += mat4(0.10117189, 0.049022958, -0.016017418, -0.12119866, 0.089112304, 0.016286526, -0.025251161, 0.03239003, -0.0783818, -0.086096615, -0.13673106, -0.15934734, -0.51308054, -0.061430074, -0.16208844, 0.2227776) * go_0(-1.0, 0.0);
 result += mat4(-0.011567444, 0.025550444, -0.018439503, -0.015003767, 0.11606929, -0.11613111, -0.040906087, -0.015202219, 0.03932618, -0.1106059, 0.03703376, 0.018548314, -0.12761284, -0.038109995, -0.23577367, 0.20272344) * go_0(-1.0, 1.0);
@@ -563,22 +519,24 @@ result += mat4(-0.008962513, 0.13044207, 0.04964221, 0.012250417, 0.012129821, 0
 result += vec4(0.056541316, 0.041788545, -0.036094554, -0.021763096);
 return result;
 }
-kernel void Anime4Kv32UpscaleCNNx2VLConv4x3x3x16_pass6(
-    texture2d<float, access::sample> conv2d_2_tf [[texture(0)]], texture2d<float, access::sample> conv2d_2_tf1 [[texture(1)]], texture2d<float, access::sample> MAIN [[texture(2)]], texture2d<float, access::write> output [[texture(3)]], uint2 gid [[thread_position_in_grid]], sampler textureSampler [[sampler(0)]]) {
-    float2 mtlPos = float2(gid) / (float2(output.get_width(), output.get_height()) - float2(1, 1));
-    output.write(hook_pass6(mtlPos, conv2d_2_tf, conv2d_2_tf1, MAIN, textureSampler), gid);
+kernel void Anime4Kv32UpscaleCNNx2VLConv4x3x3x16_pass6(texture2d<float, access::sample> conv2d_2_tf [[texture(0)]], texture2d<float, access::sample> conv2d_2_tf1 [[texture(1)]], texture2d<float, access::sample> MAIN [[texture(2)]], texture2d<float, access::write> output [[texture(3)]], uint2 gid [[thread_position_in_grid]], sampler textureSampler [[sampler(0)]]) {
+    float2 outSize = float2(output.get_width(), output.get_height());
+    float2 outScale = 1.0 / (outSize - float2(1.0, 1.0));
+    float2 mtlPos = float2(gid) * outScale;
+    output.write(hook_pass6(mtlPos, textureSampler, conv2d_2_tf, conv2d_2_tf1, MAIN), gid);
 }
 
 
 // Shader: Anime4K-v3.2-Upscale-CNN-x2-(VL)-Conv-4x3x3x16
 // Function: Anime4Kv32UpscaleCNNx2VLConv4x3x3x16_pass7
-// BINDS: ['conv2d_2_tf', 'conv2d_2_tf1']
+// BINDS: ["conv2d_2_tf", "conv2d_2_tf1"]
 // HOOK: MAIN
 // SAVE: conv2d_3_tf1
-// Input textures: ['conv2d_2_tf', 'conv2d_2_tf1', 'MAIN']
-// Output texture: conv2d_3_tf1
-// Texture indices: BINDS=0..1, MAIN=2, OUTPUT=3
-
+// META_WIDTH_BASE: conv2d_2_tf
+// META_WIDTH_SCALE: 1.0
+// META_HEIGHT_BASE: conv2d_2_tf
+// META_HEIGHT_SCALE: 1.0
+// META_WHEN: WHEN OUTPUT.w MAIN.w / 1.200 > OUTPUT.h MAIN.h / 1.200 > *
 #include <metal_stdlib>
 using namespace metal;
 
@@ -587,36 +545,26 @@ using vec3 = float3;
 using vec4 = float4;
 using ivec2 = int2;
 using mat4 = float4x4;
-
-#define MAIN_pos mtlPos
-#define MAIN_pt (float2(1, 1) / float2(MAIN.get_width(), MAIN.get_height()))
-#define MAIN_size float2(MAIN.get_width(), MAIN.get_height())
-#define MAIN_tex(pos) MAIN.sample(textureSampler, pos)
-#define MAIN_texOff(off) MAIN_tex(MAIN_pos + MAIN_pt * float2(off))
-
-#define HOOKED_pos MAIN_pos
-#define HOOKED_size MAIN_size
-#define HOOKED_pt MAIN_pt
-#define HOOKED_tex(pos) MAIN_tex(pos)
-#define HOOKED_texOff(off) MAIN_texOff(off)
-
 #define conv2d_2_tf_pos mtlPos
 #define conv2d_2_tf_size float2(conv2d_2_tf.get_width(), conv2d_2_tf.get_height())
-#define conv2d_2_tf_pt (float2(1, 1) / conv2d_2_tf_size)
+#define conv2d_2_tf_pt (vec2(1, 1) / conv2d_2_tf_size)
 #define conv2d_2_tf_tex(pos) conv2d_2_tf.sample(textureSampler, pos)
-#define conv2d_2_tf_texOff(off) conv2d_2_tf_tex(conv2d_2_tf_pos + conv2d_2_tf_pt * float2(off))
-
+#define conv2d_2_tf_texOff(off) conv2d_2_tf_tex(conv2d_2_tf_pos + conv2d_2_tf_pt * vec2(off))
 #define conv2d_2_tf1_pos mtlPos
 #define conv2d_2_tf1_size float2(conv2d_2_tf1.get_width(), conv2d_2_tf1.get_height())
-#define conv2d_2_tf1_pt (float2(1, 1) / conv2d_2_tf1_size)
+#define conv2d_2_tf1_pt (vec2(1, 1) / conv2d_2_tf1_size)
 #define conv2d_2_tf1_tex(pos) conv2d_2_tf1.sample(textureSampler, pos)
-#define conv2d_2_tf1_texOff(off) conv2d_2_tf1_tex(conv2d_2_tf1_pos + conv2d_2_tf1_pt * float2(off))
-
+#define conv2d_2_tf1_texOff(off) conv2d_2_tf1_tex(conv2d_2_tf1_pos + conv2d_2_tf1_pt * vec2(off))
+#define MAIN_pos mtlPos
+#define MAIN_pt (vec2(1, 1) / vec2(MAIN.get_width(), MAIN.get_height()))
+#define MAIN_size vec2(MAIN.get_width(), MAIN.get_height())
+#define MAIN_tex(pos) MAIN.sample(textureSampler, pos)
+#define MAIN_texOff(off) MAIN_tex(MAIN_pos + MAIN_pt * vec2(off))
 #define go_0(x_off, y_off) (max((conv2d_2_tf_texOff(vec2(x_off, y_off))), 0.0))
 #define go_1(x_off, y_off) (max((conv2d_2_tf1_texOff(vec2(x_off, y_off))), 0.0))
 #define go_2(x_off, y_off) (max(-(conv2d_2_tf_texOff(vec2(x_off, y_off))), 0.0))
 #define go_3(x_off, y_off) (max(-(conv2d_2_tf1_texOff(vec2(x_off, y_off))), 0.0))
-static vec4 hook_pass7(float2 mtlPos, texture2d<float, access::sample> conv2d_2_tf, texture2d<float, access::sample> conv2d_2_tf1, texture2d<float, access::sample> MAIN, sampler textureSampler) {
+static vec4 hook_pass7(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> conv2d_2_tf, texture2d<float, access::sample> conv2d_2_tf1, texture2d<float, access::sample> MAIN) {
 vec4 result = mat4(0.0647927, 0.053666476, -0.14723225, 0.027874574, -0.0003166473, 0.07337155, -0.061972085, -0.012667777, -0.17071614, 0.091927536, -0.051160213, 0.21336353, 0.13854574, 0.09582817, 0.032316446, 0.13838023) * go_0(-1.0, -1.0);
 result += mat4(-0.0398984, 0.108049214, 0.093780346, -0.022015186, -0.15188989, -0.1381083, 0.2998843, 0.21623154, -0.08862326, 0.025862623, 0.06895634, 0.13529755, 0.06957801, -0.0011681129, 0.105972745, -0.04722446) * go_0(-1.0, 0.0);
 result += mat4(-0.026321493, -0.04828038, -0.012545767, -0.005490858, -0.054038163, 0.075943105, -0.11526662, 0.022242405, -0.03543104, -0.12451852, -0.14911178, 0.013503498, 0.08773292, 0.09695139, -0.013498657, -0.27424073) * go_0(-1.0, 1.0);
@@ -656,22 +604,24 @@ result += mat4(0.041937463, 0.072631165, 0.045366894, -0.0046993676, 0.03946691,
 result += vec4(0.07722432, -0.025165567, 0.034291282, -0.09902708);
 return result;
 }
-kernel void Anime4Kv32UpscaleCNNx2VLConv4x3x3x16_pass7(
-    texture2d<float, access::sample> conv2d_2_tf [[texture(0)]], texture2d<float, access::sample> conv2d_2_tf1 [[texture(1)]], texture2d<float, access::sample> MAIN [[texture(2)]], texture2d<float, access::write> output [[texture(3)]], uint2 gid [[thread_position_in_grid]], sampler textureSampler [[sampler(0)]]) {
-    float2 mtlPos = float2(gid) / (float2(output.get_width(), output.get_height()) - float2(1, 1));
-    output.write(hook_pass7(mtlPos, conv2d_2_tf, conv2d_2_tf1, MAIN, textureSampler), gid);
+kernel void Anime4Kv32UpscaleCNNx2VLConv4x3x3x16_pass7(texture2d<float, access::sample> conv2d_2_tf [[texture(0)]], texture2d<float, access::sample> conv2d_2_tf1 [[texture(1)]], texture2d<float, access::sample> MAIN [[texture(2)]], texture2d<float, access::write> output [[texture(3)]], uint2 gid [[thread_position_in_grid]], sampler textureSampler [[sampler(0)]]) {
+    float2 outSize = float2(output.get_width(), output.get_height());
+    float2 outScale = 1.0 / (outSize - float2(1.0, 1.0));
+    float2 mtlPos = float2(gid) * outScale;
+    output.write(hook_pass7(mtlPos, textureSampler, conv2d_2_tf, conv2d_2_tf1, MAIN), gid);
 }
 
 
 // Shader: Anime4K-v3.2-Upscale-CNN-x2-(VL)-Conv-4x3x3x16
 // Function: Anime4Kv32UpscaleCNNx2VLConv4x3x3x16_pass8
-// BINDS: ['conv2d_3_tf', 'conv2d_3_tf1']
+// BINDS: ["conv2d_3_tf", "conv2d_3_tf1"]
 // HOOK: MAIN
 // SAVE: conv2d_4_tf
-// Input textures: ['conv2d_3_tf', 'conv2d_3_tf1', 'MAIN']
-// Output texture: conv2d_4_tf
-// Texture indices: BINDS=0..1, MAIN=2, OUTPUT=3
-
+// META_WIDTH_BASE: conv2d_3_tf
+// META_WIDTH_SCALE: 1.0
+// META_HEIGHT_BASE: conv2d_3_tf
+// META_HEIGHT_SCALE: 1.0
+// META_WHEN: WHEN OUTPUT.w MAIN.w / 1.200 > OUTPUT.h MAIN.h / 1.200 > *
 #include <metal_stdlib>
 using namespace metal;
 
@@ -680,36 +630,26 @@ using vec3 = float3;
 using vec4 = float4;
 using ivec2 = int2;
 using mat4 = float4x4;
-
-#define MAIN_pos mtlPos
-#define MAIN_pt (float2(1, 1) / float2(MAIN.get_width(), MAIN.get_height()))
-#define MAIN_size float2(MAIN.get_width(), MAIN.get_height())
-#define MAIN_tex(pos) MAIN.sample(textureSampler, pos)
-#define MAIN_texOff(off) MAIN_tex(MAIN_pos + MAIN_pt * float2(off))
-
-#define HOOKED_pos MAIN_pos
-#define HOOKED_size MAIN_size
-#define HOOKED_pt MAIN_pt
-#define HOOKED_tex(pos) MAIN_tex(pos)
-#define HOOKED_texOff(off) MAIN_texOff(off)
-
 #define conv2d_3_tf_pos mtlPos
 #define conv2d_3_tf_size float2(conv2d_3_tf.get_width(), conv2d_3_tf.get_height())
-#define conv2d_3_tf_pt (float2(1, 1) / conv2d_3_tf_size)
+#define conv2d_3_tf_pt (vec2(1, 1) / conv2d_3_tf_size)
 #define conv2d_3_tf_tex(pos) conv2d_3_tf.sample(textureSampler, pos)
-#define conv2d_3_tf_texOff(off) conv2d_3_tf_tex(conv2d_3_tf_pos + conv2d_3_tf_pt * float2(off))
-
+#define conv2d_3_tf_texOff(off) conv2d_3_tf_tex(conv2d_3_tf_pos + conv2d_3_tf_pt * vec2(off))
 #define conv2d_3_tf1_pos mtlPos
 #define conv2d_3_tf1_size float2(conv2d_3_tf1.get_width(), conv2d_3_tf1.get_height())
-#define conv2d_3_tf1_pt (float2(1, 1) / conv2d_3_tf1_size)
+#define conv2d_3_tf1_pt (vec2(1, 1) / conv2d_3_tf1_size)
 #define conv2d_3_tf1_tex(pos) conv2d_3_tf1.sample(textureSampler, pos)
-#define conv2d_3_tf1_texOff(off) conv2d_3_tf1_tex(conv2d_3_tf1_pos + conv2d_3_tf1_pt * float2(off))
-
+#define conv2d_3_tf1_texOff(off) conv2d_3_tf1_tex(conv2d_3_tf1_pos + conv2d_3_tf1_pt * vec2(off))
+#define MAIN_pos mtlPos
+#define MAIN_pt (vec2(1, 1) / vec2(MAIN.get_width(), MAIN.get_height()))
+#define MAIN_size vec2(MAIN.get_width(), MAIN.get_height())
+#define MAIN_tex(pos) MAIN.sample(textureSampler, pos)
+#define MAIN_texOff(off) MAIN_tex(MAIN_pos + MAIN_pt * vec2(off))
 #define go_0(x_off, y_off) (max((conv2d_3_tf_texOff(vec2(x_off, y_off))), 0.0))
 #define go_1(x_off, y_off) (max((conv2d_3_tf1_texOff(vec2(x_off, y_off))), 0.0))
 #define go_2(x_off, y_off) (max(-(conv2d_3_tf_texOff(vec2(x_off, y_off))), 0.0))
 #define go_3(x_off, y_off) (max(-(conv2d_3_tf1_texOff(vec2(x_off, y_off))), 0.0))
-static vec4 hook_pass8(float2 mtlPos, texture2d<float, access::sample> conv2d_3_tf, texture2d<float, access::sample> conv2d_3_tf1, texture2d<float, access::sample> MAIN, sampler textureSampler) {
+static vec4 hook_pass8(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> conv2d_3_tf, texture2d<float, access::sample> conv2d_3_tf1, texture2d<float, access::sample> MAIN) {
 vec4 result = mat4(-0.004729794, -0.0124398535, -0.08538641, -0.058604605, 0.008671952, 0.25604513, 0.020800482, 0.24144122, -0.028920606, -0.04705229, 0.030192787, 0.0010597534, 0.017666103, 0.0041322373, 0.20027764, 0.08919112) * go_0(-1.0, -1.0);
 result += mat4(0.0001626656, 0.05816014, -0.0060765734, 0.08811165, 0.35835367, -0.016291425, -0.56892496, 0.083845764, 0.15026698, -0.15916558, 0.08069463, -0.3931291, -0.0123534845, -0.111639686, -0.14637001, -0.08171439) * go_0(-1.0, 0.0);
 result += mat4(-0.114976816, 0.023376396, 0.13855027, 0.07438716, -0.069991484, 0.20377779, 0.23929878, -0.040769435, 0.018832395, 0.005638609, -0.091848075, 0.027843866, 0.023744943, -0.06620523, -0.11678267, 0.0844119) * go_0(-1.0, 1.0);
@@ -749,22 +689,24 @@ result += mat4(-0.18612787, -0.00027517386, -0.17136407, -0.06413671, 0.02562947
 result += vec4(0.04244928, -0.014280219, 0.017129054, -0.08807801);
 return result;
 }
-kernel void Anime4Kv32UpscaleCNNx2VLConv4x3x3x16_pass8(
-    texture2d<float, access::sample> conv2d_3_tf [[texture(0)]], texture2d<float, access::sample> conv2d_3_tf1 [[texture(1)]], texture2d<float, access::sample> MAIN [[texture(2)]], texture2d<float, access::write> output [[texture(3)]], uint2 gid [[thread_position_in_grid]], sampler textureSampler [[sampler(0)]]) {
-    float2 mtlPos = float2(gid) / (float2(output.get_width(), output.get_height()) - float2(1, 1));
-    output.write(hook_pass8(mtlPos, conv2d_3_tf, conv2d_3_tf1, MAIN, textureSampler), gid);
+kernel void Anime4Kv32UpscaleCNNx2VLConv4x3x3x16_pass8(texture2d<float, access::sample> conv2d_3_tf [[texture(0)]], texture2d<float, access::sample> conv2d_3_tf1 [[texture(1)]], texture2d<float, access::sample> MAIN [[texture(2)]], texture2d<float, access::write> output [[texture(3)]], uint2 gid [[thread_position_in_grid]], sampler textureSampler [[sampler(0)]]) {
+    float2 outSize = float2(output.get_width(), output.get_height());
+    float2 outScale = 1.0 / (outSize - float2(1.0, 1.0));
+    float2 mtlPos = float2(gid) * outScale;
+    output.write(hook_pass8(mtlPos, textureSampler, conv2d_3_tf, conv2d_3_tf1, MAIN), gid);
 }
 
 
 // Shader: Anime4K-v3.2-Upscale-CNN-x2-(VL)-Conv-4x3x3x16
 // Function: Anime4Kv32UpscaleCNNx2VLConv4x3x3x16_pass9
-// BINDS: ['conv2d_3_tf', 'conv2d_3_tf1']
+// BINDS: ["conv2d_3_tf", "conv2d_3_tf1"]
 // HOOK: MAIN
 // SAVE: conv2d_4_tf1
-// Input textures: ['conv2d_3_tf', 'conv2d_3_tf1', 'MAIN']
-// Output texture: conv2d_4_tf1
-// Texture indices: BINDS=0..1, MAIN=2, OUTPUT=3
-
+// META_WIDTH_BASE: conv2d_3_tf
+// META_WIDTH_SCALE: 1.0
+// META_HEIGHT_BASE: conv2d_3_tf
+// META_HEIGHT_SCALE: 1.0
+// META_WHEN: WHEN OUTPUT.w MAIN.w / 1.200 > OUTPUT.h MAIN.h / 1.200 > *
 #include <metal_stdlib>
 using namespace metal;
 
@@ -773,36 +715,26 @@ using vec3 = float3;
 using vec4 = float4;
 using ivec2 = int2;
 using mat4 = float4x4;
-
-#define MAIN_pos mtlPos
-#define MAIN_pt (float2(1, 1) / float2(MAIN.get_width(), MAIN.get_height()))
-#define MAIN_size float2(MAIN.get_width(), MAIN.get_height())
-#define MAIN_tex(pos) MAIN.sample(textureSampler, pos)
-#define MAIN_texOff(off) MAIN_tex(MAIN_pos + MAIN_pt * float2(off))
-
-#define HOOKED_pos MAIN_pos
-#define HOOKED_size MAIN_size
-#define HOOKED_pt MAIN_pt
-#define HOOKED_tex(pos) MAIN_tex(pos)
-#define HOOKED_texOff(off) MAIN_texOff(off)
-
 #define conv2d_3_tf_pos mtlPos
 #define conv2d_3_tf_size float2(conv2d_3_tf.get_width(), conv2d_3_tf.get_height())
-#define conv2d_3_tf_pt (float2(1, 1) / conv2d_3_tf_size)
+#define conv2d_3_tf_pt (vec2(1, 1) / conv2d_3_tf_size)
 #define conv2d_3_tf_tex(pos) conv2d_3_tf.sample(textureSampler, pos)
-#define conv2d_3_tf_texOff(off) conv2d_3_tf_tex(conv2d_3_tf_pos + conv2d_3_tf_pt * float2(off))
-
+#define conv2d_3_tf_texOff(off) conv2d_3_tf_tex(conv2d_3_tf_pos + conv2d_3_tf_pt * vec2(off))
 #define conv2d_3_tf1_pos mtlPos
 #define conv2d_3_tf1_size float2(conv2d_3_tf1.get_width(), conv2d_3_tf1.get_height())
-#define conv2d_3_tf1_pt (float2(1, 1) / conv2d_3_tf1_size)
+#define conv2d_3_tf1_pt (vec2(1, 1) / conv2d_3_tf1_size)
 #define conv2d_3_tf1_tex(pos) conv2d_3_tf1.sample(textureSampler, pos)
-#define conv2d_3_tf1_texOff(off) conv2d_3_tf1_tex(conv2d_3_tf1_pos + conv2d_3_tf1_pt * float2(off))
-
+#define conv2d_3_tf1_texOff(off) conv2d_3_tf1_tex(conv2d_3_tf1_pos + conv2d_3_tf1_pt * vec2(off))
+#define MAIN_pos mtlPos
+#define MAIN_pt (vec2(1, 1) / vec2(MAIN.get_width(), MAIN.get_height()))
+#define MAIN_size vec2(MAIN.get_width(), MAIN.get_height())
+#define MAIN_tex(pos) MAIN.sample(textureSampler, pos)
+#define MAIN_texOff(off) MAIN_tex(MAIN_pos + MAIN_pt * vec2(off))
 #define go_0(x_off, y_off) (max((conv2d_3_tf_texOff(vec2(x_off, y_off))), 0.0))
 #define go_1(x_off, y_off) (max((conv2d_3_tf1_texOff(vec2(x_off, y_off))), 0.0))
 #define go_2(x_off, y_off) (max(-(conv2d_3_tf_texOff(vec2(x_off, y_off))), 0.0))
 #define go_3(x_off, y_off) (max(-(conv2d_3_tf1_texOff(vec2(x_off, y_off))), 0.0))
-static vec4 hook_pass9(float2 mtlPos, texture2d<float, access::sample> conv2d_3_tf, texture2d<float, access::sample> conv2d_3_tf1, texture2d<float, access::sample> MAIN, sampler textureSampler) {
+static vec4 hook_pass9(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> conv2d_3_tf, texture2d<float, access::sample> conv2d_3_tf1, texture2d<float, access::sample> MAIN) {
 vec4 result = mat4(0.01973856, -0.05053795, 0.015545361, 0.10867395, 0.33441806, 0.14731607, 0.6793983, -0.21394718, -0.00846322, 0.09146322, -0.07427475, -0.078477465, -0.090998545, 0.133366, 0.105515696, -0.13784988) * go_0(-1.0, -1.0);
 result += mat4(-0.05404873, 0.09784018, -0.1337389, -0.18082313, 0.13461179, -0.3816801, 0.12209786, 0.08176651, 0.10461896, -0.43315184, 0.017470734, 0.20423968, -0.03941875, -0.101959296, -0.09440259, 0.09154717) * go_0(-1.0, 0.0);
 result += mat4(0.17229515, -0.06907825, -0.008382803, -0.16671611, -0.01576541, 0.03985307, 0.08209482, -0.11707446, -0.11793074, 0.13702396, -0.02013158, 0.07302033, -0.022301994, -0.11464677, 0.036753565, -0.093276784) * go_0(-1.0, 1.0);
@@ -842,22 +774,24 @@ result += mat4(0.069167465, 0.2699947, -0.11137602, -0.05888806, -0.107324794, -
 result += vec4(-0.14375664, -0.0056876075, 0.052177623, 0.07152566);
 return result;
 }
-kernel void Anime4Kv32UpscaleCNNx2VLConv4x3x3x16_pass9(
-    texture2d<float, access::sample> conv2d_3_tf [[texture(0)]], texture2d<float, access::sample> conv2d_3_tf1 [[texture(1)]], texture2d<float, access::sample> MAIN [[texture(2)]], texture2d<float, access::write> output [[texture(3)]], uint2 gid [[thread_position_in_grid]], sampler textureSampler [[sampler(0)]]) {
-    float2 mtlPos = float2(gid) / (float2(output.get_width(), output.get_height()) - float2(1, 1));
-    output.write(hook_pass9(mtlPos, conv2d_3_tf, conv2d_3_tf1, MAIN, textureSampler), gid);
+kernel void Anime4Kv32UpscaleCNNx2VLConv4x3x3x16_pass9(texture2d<float, access::sample> conv2d_3_tf [[texture(0)]], texture2d<float, access::sample> conv2d_3_tf1 [[texture(1)]], texture2d<float, access::sample> MAIN [[texture(2)]], texture2d<float, access::write> output [[texture(3)]], uint2 gid [[thread_position_in_grid]], sampler textureSampler [[sampler(0)]]) {
+    float2 outSize = float2(output.get_width(), output.get_height());
+    float2 outScale = 1.0 / (outSize - float2(1.0, 1.0));
+    float2 mtlPos = float2(gid) * outScale;
+    output.write(hook_pass9(mtlPos, textureSampler, conv2d_3_tf, conv2d_3_tf1, MAIN), gid);
 }
 
 
 // Shader: Anime4K-v3.2-Upscale-CNN-x2-(VL)-Conv-4x3x3x16
 // Function: Anime4Kv32UpscaleCNNx2VLConv4x3x3x16_pass10
-// BINDS: ['conv2d_4_tf', 'conv2d_4_tf1']
+// BINDS: ["conv2d_4_tf", "conv2d_4_tf1"]
 // HOOK: MAIN
 // SAVE: conv2d_5_tf
-// Input textures: ['conv2d_4_tf', 'conv2d_4_tf1', 'MAIN']
-// Output texture: conv2d_5_tf
-// Texture indices: BINDS=0..1, MAIN=2, OUTPUT=3
-
+// META_WIDTH_BASE: conv2d_4_tf
+// META_WIDTH_SCALE: 1.0
+// META_HEIGHT_BASE: conv2d_4_tf
+// META_HEIGHT_SCALE: 1.0
+// META_WHEN: WHEN OUTPUT.w MAIN.w / 1.200 > OUTPUT.h MAIN.h / 1.200 > *
 #include <metal_stdlib>
 using namespace metal;
 
@@ -866,36 +800,26 @@ using vec3 = float3;
 using vec4 = float4;
 using ivec2 = int2;
 using mat4 = float4x4;
-
-#define MAIN_pos mtlPos
-#define MAIN_pt (float2(1, 1) / float2(MAIN.get_width(), MAIN.get_height()))
-#define MAIN_size float2(MAIN.get_width(), MAIN.get_height())
-#define MAIN_tex(pos) MAIN.sample(textureSampler, pos)
-#define MAIN_texOff(off) MAIN_tex(MAIN_pos + MAIN_pt * float2(off))
-
-#define HOOKED_pos MAIN_pos
-#define HOOKED_size MAIN_size
-#define HOOKED_pt MAIN_pt
-#define HOOKED_tex(pos) MAIN_tex(pos)
-#define HOOKED_texOff(off) MAIN_texOff(off)
-
 #define conv2d_4_tf_pos mtlPos
 #define conv2d_4_tf_size float2(conv2d_4_tf.get_width(), conv2d_4_tf.get_height())
-#define conv2d_4_tf_pt (float2(1, 1) / conv2d_4_tf_size)
+#define conv2d_4_tf_pt (vec2(1, 1) / conv2d_4_tf_size)
 #define conv2d_4_tf_tex(pos) conv2d_4_tf.sample(textureSampler, pos)
-#define conv2d_4_tf_texOff(off) conv2d_4_tf_tex(conv2d_4_tf_pos + conv2d_4_tf_pt * float2(off))
-
+#define conv2d_4_tf_texOff(off) conv2d_4_tf_tex(conv2d_4_tf_pos + conv2d_4_tf_pt * vec2(off))
 #define conv2d_4_tf1_pos mtlPos
 #define conv2d_4_tf1_size float2(conv2d_4_tf1.get_width(), conv2d_4_tf1.get_height())
-#define conv2d_4_tf1_pt (float2(1, 1) / conv2d_4_tf1_size)
+#define conv2d_4_tf1_pt (vec2(1, 1) / conv2d_4_tf1_size)
 #define conv2d_4_tf1_tex(pos) conv2d_4_tf1.sample(textureSampler, pos)
-#define conv2d_4_tf1_texOff(off) conv2d_4_tf1_tex(conv2d_4_tf1_pos + conv2d_4_tf1_pt * float2(off))
-
+#define conv2d_4_tf1_texOff(off) conv2d_4_tf1_tex(conv2d_4_tf1_pos + conv2d_4_tf1_pt * vec2(off))
+#define MAIN_pos mtlPos
+#define MAIN_pt (vec2(1, 1) / vec2(MAIN.get_width(), MAIN.get_height()))
+#define MAIN_size vec2(MAIN.get_width(), MAIN.get_height())
+#define MAIN_tex(pos) MAIN.sample(textureSampler, pos)
+#define MAIN_texOff(off) MAIN_tex(MAIN_pos + MAIN_pt * vec2(off))
 #define go_0(x_off, y_off) (max((conv2d_4_tf_texOff(vec2(x_off, y_off))), 0.0))
 #define go_1(x_off, y_off) (max((conv2d_4_tf1_texOff(vec2(x_off, y_off))), 0.0))
 #define go_2(x_off, y_off) (max(-(conv2d_4_tf_texOff(vec2(x_off, y_off))), 0.0))
 #define go_3(x_off, y_off) (max(-(conv2d_4_tf1_texOff(vec2(x_off, y_off))), 0.0))
-static vec4 hook_pass10(float2 mtlPos, texture2d<float, access::sample> conv2d_4_tf, texture2d<float, access::sample> conv2d_4_tf1, texture2d<float, access::sample> MAIN, sampler textureSampler) {
+static vec4 hook_pass10(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> conv2d_4_tf, texture2d<float, access::sample> conv2d_4_tf1, texture2d<float, access::sample> MAIN) {
 vec4 result = mat4(-0.15667982, -0.31441393, 0.29112124, -0.15737213, 0.022372838, 0.10690639, -0.12019085, -0.051941186, -0.30367845, 0.02612279, 0.2372532, 0.2021648, -0.20481086, -0.003770439, 0.14981231, 0.066780254) * go_0(-1.0, -1.0);
 result += mat4(0.03270688, -0.42270073, 0.044317324, 0.15907793, 0.14681059, -0.2934784, 0.24933252, -0.067273855, 0.07752533, -0.23194817, 0.0686707, 0.08999225, 0.121678345, -0.12916678, 0.012397381, 0.012315053) * go_0(-1.0, 0.0);
 result += mat4(-0.10090412, -0.20792678, 0.11076032, -0.02938975, -0.1944187, -0.2003259, 0.04438032, 0.36946484, -0.019868722, -0.15830222, 0.042811528, 0.015641417, 0.113098525, 0.080257006, 0.011135628, -0.2877629) * go_0(-1.0, 1.0);
@@ -935,22 +859,24 @@ result += mat4(-0.026589906, 0.0930502, 0.05195435, 0.06301585, -0.01107014, -0.
 result += vec4(0.024455175, 0.01669877, -0.066231176, 0.036848705);
 return result;
 }
-kernel void Anime4Kv32UpscaleCNNx2VLConv4x3x3x16_pass10(
-    texture2d<float, access::sample> conv2d_4_tf [[texture(0)]], texture2d<float, access::sample> conv2d_4_tf1 [[texture(1)]], texture2d<float, access::sample> MAIN [[texture(2)]], texture2d<float, access::write> output [[texture(3)]], uint2 gid [[thread_position_in_grid]], sampler textureSampler [[sampler(0)]]) {
-    float2 mtlPos = float2(gid) / (float2(output.get_width(), output.get_height()) - float2(1, 1));
-    output.write(hook_pass10(mtlPos, conv2d_4_tf, conv2d_4_tf1, MAIN, textureSampler), gid);
+kernel void Anime4Kv32UpscaleCNNx2VLConv4x3x3x16_pass10(texture2d<float, access::sample> conv2d_4_tf [[texture(0)]], texture2d<float, access::sample> conv2d_4_tf1 [[texture(1)]], texture2d<float, access::sample> MAIN [[texture(2)]], texture2d<float, access::write> output [[texture(3)]], uint2 gid [[thread_position_in_grid]], sampler textureSampler [[sampler(0)]]) {
+    float2 outSize = float2(output.get_width(), output.get_height());
+    float2 outScale = 1.0 / (outSize - float2(1.0, 1.0));
+    float2 mtlPos = float2(gid) * outScale;
+    output.write(hook_pass10(mtlPos, textureSampler, conv2d_4_tf, conv2d_4_tf1, MAIN), gid);
 }
 
 
 // Shader: Anime4K-v3.2-Upscale-CNN-x2-(VL)-Conv-4x3x3x16
 // Function: Anime4Kv32UpscaleCNNx2VLConv4x3x3x16_pass11
-// BINDS: ['conv2d_4_tf', 'conv2d_4_tf1']
+// BINDS: ["conv2d_4_tf", "conv2d_4_tf1"]
 // HOOK: MAIN
 // SAVE: conv2d_5_tf1
-// Input textures: ['conv2d_4_tf', 'conv2d_4_tf1', 'MAIN']
-// Output texture: conv2d_5_tf1
-// Texture indices: BINDS=0..1, MAIN=2, OUTPUT=3
-
+// META_WIDTH_BASE: conv2d_4_tf
+// META_WIDTH_SCALE: 1.0
+// META_HEIGHT_BASE: conv2d_4_tf
+// META_HEIGHT_SCALE: 1.0
+// META_WHEN: WHEN OUTPUT.w MAIN.w / 1.200 > OUTPUT.h MAIN.h / 1.200 > *
 #include <metal_stdlib>
 using namespace metal;
 
@@ -959,36 +885,26 @@ using vec3 = float3;
 using vec4 = float4;
 using ivec2 = int2;
 using mat4 = float4x4;
-
-#define MAIN_pos mtlPos
-#define MAIN_pt (float2(1, 1) / float2(MAIN.get_width(), MAIN.get_height()))
-#define MAIN_size float2(MAIN.get_width(), MAIN.get_height())
-#define MAIN_tex(pos) MAIN.sample(textureSampler, pos)
-#define MAIN_texOff(off) MAIN_tex(MAIN_pos + MAIN_pt * float2(off))
-
-#define HOOKED_pos MAIN_pos
-#define HOOKED_size MAIN_size
-#define HOOKED_pt MAIN_pt
-#define HOOKED_tex(pos) MAIN_tex(pos)
-#define HOOKED_texOff(off) MAIN_texOff(off)
-
 #define conv2d_4_tf_pos mtlPos
 #define conv2d_4_tf_size float2(conv2d_4_tf.get_width(), conv2d_4_tf.get_height())
-#define conv2d_4_tf_pt (float2(1, 1) / conv2d_4_tf_size)
+#define conv2d_4_tf_pt (vec2(1, 1) / conv2d_4_tf_size)
 #define conv2d_4_tf_tex(pos) conv2d_4_tf.sample(textureSampler, pos)
-#define conv2d_4_tf_texOff(off) conv2d_4_tf_tex(conv2d_4_tf_pos + conv2d_4_tf_pt * float2(off))
-
+#define conv2d_4_tf_texOff(off) conv2d_4_tf_tex(conv2d_4_tf_pos + conv2d_4_tf_pt * vec2(off))
 #define conv2d_4_tf1_pos mtlPos
 #define conv2d_4_tf1_size float2(conv2d_4_tf1.get_width(), conv2d_4_tf1.get_height())
-#define conv2d_4_tf1_pt (float2(1, 1) / conv2d_4_tf1_size)
+#define conv2d_4_tf1_pt (vec2(1, 1) / conv2d_4_tf1_size)
 #define conv2d_4_tf1_tex(pos) conv2d_4_tf1.sample(textureSampler, pos)
-#define conv2d_4_tf1_texOff(off) conv2d_4_tf1_tex(conv2d_4_tf1_pos + conv2d_4_tf1_pt * float2(off))
-
+#define conv2d_4_tf1_texOff(off) conv2d_4_tf1_tex(conv2d_4_tf1_pos + conv2d_4_tf1_pt * vec2(off))
+#define MAIN_pos mtlPos
+#define MAIN_pt (vec2(1, 1) / vec2(MAIN.get_width(), MAIN.get_height()))
+#define MAIN_size vec2(MAIN.get_width(), MAIN.get_height())
+#define MAIN_tex(pos) MAIN.sample(textureSampler, pos)
+#define MAIN_texOff(off) MAIN_tex(MAIN_pos + MAIN_pt * vec2(off))
 #define go_0(x_off, y_off) (max((conv2d_4_tf_texOff(vec2(x_off, y_off))), 0.0))
 #define go_1(x_off, y_off) (max((conv2d_4_tf1_texOff(vec2(x_off, y_off))), 0.0))
 #define go_2(x_off, y_off) (max(-(conv2d_4_tf_texOff(vec2(x_off, y_off))), 0.0))
 #define go_3(x_off, y_off) (max(-(conv2d_4_tf1_texOff(vec2(x_off, y_off))), 0.0))
-static vec4 hook_pass11(float2 mtlPos, texture2d<float, access::sample> conv2d_4_tf, texture2d<float, access::sample> conv2d_4_tf1, texture2d<float, access::sample> MAIN, sampler textureSampler) {
+static vec4 hook_pass11(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> conv2d_4_tf, texture2d<float, access::sample> conv2d_4_tf1, texture2d<float, access::sample> MAIN) {
 vec4 result = mat4(0.01763509, -0.17156707, -0.06841296, -0.026132878, -0.10600523, 0.11245994, 0.121395074, -0.09331501, 0.12764473, 0.0428028, -0.11837395, 0.2092563, -0.04357652, -0.0490096, 0.024701532, 0.10518723) * go_0(-1.0, -1.0);
 result += mat4(-0.17130826, -0.31987694, -0.07639005, 0.21362033, 0.058639023, 0.066175915, -0.25344703, -0.07923442, -0.14766373, 0.040518284, -0.031103026, -0.040075514, -0.051108997, -0.28214613, -0.18504949, 0.27544948) * go_0(-1.0, 0.0);
 result += mat4(0.030991005, -0.011353306, 0.15237464, 0.15458584, 0.1250524, 0.19959912, 0.14049476, 0.38410887, 0.07378578, -0.017728366, 0.0963528, -0.043756213, -0.039577194, -0.11800575, -0.08392266, -0.07599512) * go_0(-1.0, 1.0);
@@ -1028,22 +944,24 @@ result += mat4(-0.061806213, -0.020037206, 0.003183183, -0.029844081, -0.0395539
 result += vec4(-0.023832673, 0.03702965, -0.04749135, -0.10982549);
 return result;
 }
-kernel void Anime4Kv32UpscaleCNNx2VLConv4x3x3x16_pass11(
-    texture2d<float, access::sample> conv2d_4_tf [[texture(0)]], texture2d<float, access::sample> conv2d_4_tf1 [[texture(1)]], texture2d<float, access::sample> MAIN [[texture(2)]], texture2d<float, access::write> output [[texture(3)]], uint2 gid [[thread_position_in_grid]], sampler textureSampler [[sampler(0)]]) {
-    float2 mtlPos = float2(gid) / (float2(output.get_width(), output.get_height()) - float2(1, 1));
-    output.write(hook_pass11(mtlPos, conv2d_4_tf, conv2d_4_tf1, MAIN, textureSampler), gid);
+kernel void Anime4Kv32UpscaleCNNx2VLConv4x3x3x16_pass11(texture2d<float, access::sample> conv2d_4_tf [[texture(0)]], texture2d<float, access::sample> conv2d_4_tf1 [[texture(1)]], texture2d<float, access::sample> MAIN [[texture(2)]], texture2d<float, access::write> output [[texture(3)]], uint2 gid [[thread_position_in_grid]], sampler textureSampler [[sampler(0)]]) {
+    float2 outSize = float2(output.get_width(), output.get_height());
+    float2 outScale = 1.0 / (outSize - float2(1.0, 1.0));
+    float2 mtlPos = float2(gid) * outScale;
+    output.write(hook_pass11(mtlPos, textureSampler, conv2d_4_tf, conv2d_4_tf1, MAIN), gid);
 }
 
 
 // Shader: Anime4K-v3.2-Upscale-CNN-x2-(VL)-Conv-4x3x3x16
 // Function: Anime4Kv32UpscaleCNNx2VLConv4x3x3x16_pass12
-// BINDS: ['conv2d_5_tf', 'conv2d_5_tf1']
+// BINDS: ["conv2d_5_tf", "conv2d_5_tf1"]
 // HOOK: MAIN
 // SAVE: conv2d_6_tf
-// Input textures: ['conv2d_5_tf', 'conv2d_5_tf1', 'MAIN']
-// Output texture: conv2d_6_tf
-// Texture indices: BINDS=0..1, MAIN=2, OUTPUT=3
-
+// META_WIDTH_BASE: conv2d_5_tf
+// META_WIDTH_SCALE: 1.0
+// META_HEIGHT_BASE: conv2d_5_tf
+// META_HEIGHT_SCALE: 1.0
+// META_WHEN: WHEN OUTPUT.w MAIN.w / 1.200 > OUTPUT.h MAIN.h / 1.200 > *
 #include <metal_stdlib>
 using namespace metal;
 
@@ -1052,36 +970,26 @@ using vec3 = float3;
 using vec4 = float4;
 using ivec2 = int2;
 using mat4 = float4x4;
-
-#define MAIN_pos mtlPos
-#define MAIN_pt (float2(1, 1) / float2(MAIN.get_width(), MAIN.get_height()))
-#define MAIN_size float2(MAIN.get_width(), MAIN.get_height())
-#define MAIN_tex(pos) MAIN.sample(textureSampler, pos)
-#define MAIN_texOff(off) MAIN_tex(MAIN_pos + MAIN_pt * float2(off))
-
-#define HOOKED_pos MAIN_pos
-#define HOOKED_size MAIN_size
-#define HOOKED_pt MAIN_pt
-#define HOOKED_tex(pos) MAIN_tex(pos)
-#define HOOKED_texOff(off) MAIN_texOff(off)
-
 #define conv2d_5_tf_pos mtlPos
 #define conv2d_5_tf_size float2(conv2d_5_tf.get_width(), conv2d_5_tf.get_height())
-#define conv2d_5_tf_pt (float2(1, 1) / conv2d_5_tf_size)
+#define conv2d_5_tf_pt (vec2(1, 1) / conv2d_5_tf_size)
 #define conv2d_5_tf_tex(pos) conv2d_5_tf.sample(textureSampler, pos)
-#define conv2d_5_tf_texOff(off) conv2d_5_tf_tex(conv2d_5_tf_pos + conv2d_5_tf_pt * float2(off))
-
+#define conv2d_5_tf_texOff(off) conv2d_5_tf_tex(conv2d_5_tf_pos + conv2d_5_tf_pt * vec2(off))
 #define conv2d_5_tf1_pos mtlPos
 #define conv2d_5_tf1_size float2(conv2d_5_tf1.get_width(), conv2d_5_tf1.get_height())
-#define conv2d_5_tf1_pt (float2(1, 1) / conv2d_5_tf1_size)
+#define conv2d_5_tf1_pt (vec2(1, 1) / conv2d_5_tf1_size)
 #define conv2d_5_tf1_tex(pos) conv2d_5_tf1.sample(textureSampler, pos)
-#define conv2d_5_tf1_texOff(off) conv2d_5_tf1_tex(conv2d_5_tf1_pos + conv2d_5_tf1_pt * float2(off))
-
+#define conv2d_5_tf1_texOff(off) conv2d_5_tf1_tex(conv2d_5_tf1_pos + conv2d_5_tf1_pt * vec2(off))
+#define MAIN_pos mtlPos
+#define MAIN_pt (vec2(1, 1) / vec2(MAIN.get_width(), MAIN.get_height()))
+#define MAIN_size vec2(MAIN.get_width(), MAIN.get_height())
+#define MAIN_tex(pos) MAIN.sample(textureSampler, pos)
+#define MAIN_texOff(off) MAIN_tex(MAIN_pos + MAIN_pt * vec2(off))
 #define go_0(x_off, y_off) (max((conv2d_5_tf_texOff(vec2(x_off, y_off))), 0.0))
 #define go_1(x_off, y_off) (max((conv2d_5_tf1_texOff(vec2(x_off, y_off))), 0.0))
 #define go_2(x_off, y_off) (max(-(conv2d_5_tf_texOff(vec2(x_off, y_off))), 0.0))
 #define go_3(x_off, y_off) (max(-(conv2d_5_tf1_texOff(vec2(x_off, y_off))), 0.0))
-static vec4 hook_pass12(float2 mtlPos, texture2d<float, access::sample> conv2d_5_tf, texture2d<float, access::sample> conv2d_5_tf1, texture2d<float, access::sample> MAIN, sampler textureSampler) {
+static vec4 hook_pass12(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> conv2d_5_tf, texture2d<float, access::sample> conv2d_5_tf1, texture2d<float, access::sample> MAIN) {
 vec4 result = mat4(0.030931145, 0.013683292, -0.0650242, -0.028732346, 0.120067924, -0.029404473, 0.0038229884, -0.14631765, 0.041900825, -0.076596744, -0.11096378, -0.27100095, 0.0052598766, -0.05929686, -0.06816563, -0.086864315) * go_0(-1.0, -1.0);
 result += mat4(-0.043620087, -0.16360405, 0.006527374, 0.15706524, 0.08338088, -0.19027525, 0.22595987, -0.054963548, 0.01825031, -0.03149212, 0.025471251, 0.06429379, -0.011633275, -0.079389006, -0.0030728737, 0.17345747) * go_0(-1.0, 0.0);
 result += mat4(-0.011275288, -0.10668036, 0.05718997, 0.010336089, 0.33393976, -0.2029354, 0.075444475, -0.092244044, 0.07605498, 0.20125951, 0.10493973, -0.12306946, 0.03658231, 0.08233366, -0.12205888, -0.116969004) * go_0(-1.0, 1.0);
@@ -1121,22 +1029,24 @@ result += mat4(0.04419582, 0.039152585, 0.06222691, 0.05757103, 0.012084537, 0.0
 result += vec4(0.00590038, 0.03082865, 0.002111702, -0.03330112);
 return result;
 }
-kernel void Anime4Kv32UpscaleCNNx2VLConv4x3x3x16_pass12(
-    texture2d<float, access::sample> conv2d_5_tf [[texture(0)]], texture2d<float, access::sample> conv2d_5_tf1 [[texture(1)]], texture2d<float, access::sample> MAIN [[texture(2)]], texture2d<float, access::write> output [[texture(3)]], uint2 gid [[thread_position_in_grid]], sampler textureSampler [[sampler(0)]]) {
-    float2 mtlPos = float2(gid) / (float2(output.get_width(), output.get_height()) - float2(1, 1));
-    output.write(hook_pass12(mtlPos, conv2d_5_tf, conv2d_5_tf1, MAIN, textureSampler), gid);
+kernel void Anime4Kv32UpscaleCNNx2VLConv4x3x3x16_pass12(texture2d<float, access::sample> conv2d_5_tf [[texture(0)]], texture2d<float, access::sample> conv2d_5_tf1 [[texture(1)]], texture2d<float, access::sample> MAIN [[texture(2)]], texture2d<float, access::write> output [[texture(3)]], uint2 gid [[thread_position_in_grid]], sampler textureSampler [[sampler(0)]]) {
+    float2 outSize = float2(output.get_width(), output.get_height());
+    float2 outScale = 1.0 / (outSize - float2(1.0, 1.0));
+    float2 mtlPos = float2(gid) * outScale;
+    output.write(hook_pass12(mtlPos, textureSampler, conv2d_5_tf, conv2d_5_tf1, MAIN), gid);
 }
 
 
 // Shader: Anime4K-v3.2-Upscale-CNN-x2-(VL)-Conv-4x3x3x16
 // Function: Anime4Kv32UpscaleCNNx2VLConv4x3x3x16_pass13
-// BINDS: ['conv2d_5_tf', 'conv2d_5_tf1']
+// BINDS: ["conv2d_5_tf", "conv2d_5_tf1"]
 // HOOK: MAIN
 // SAVE: conv2d_6_tf1
-// Input textures: ['conv2d_5_tf', 'conv2d_5_tf1', 'MAIN']
-// Output texture: conv2d_6_tf1
-// Texture indices: BINDS=0..1, MAIN=2, OUTPUT=3
-
+// META_WIDTH_BASE: conv2d_5_tf
+// META_WIDTH_SCALE: 1.0
+// META_HEIGHT_BASE: conv2d_5_tf
+// META_HEIGHT_SCALE: 1.0
+// META_WHEN: WHEN OUTPUT.w MAIN.w / 1.200 > OUTPUT.h MAIN.h / 1.200 > *
 #include <metal_stdlib>
 using namespace metal;
 
@@ -1145,36 +1055,26 @@ using vec3 = float3;
 using vec4 = float4;
 using ivec2 = int2;
 using mat4 = float4x4;
-
-#define MAIN_pos mtlPos
-#define MAIN_pt (float2(1, 1) / float2(MAIN.get_width(), MAIN.get_height()))
-#define MAIN_size float2(MAIN.get_width(), MAIN.get_height())
-#define MAIN_tex(pos) MAIN.sample(textureSampler, pos)
-#define MAIN_texOff(off) MAIN_tex(MAIN_pos + MAIN_pt * float2(off))
-
-#define HOOKED_pos MAIN_pos
-#define HOOKED_size MAIN_size
-#define HOOKED_pt MAIN_pt
-#define HOOKED_tex(pos) MAIN_tex(pos)
-#define HOOKED_texOff(off) MAIN_texOff(off)
-
 #define conv2d_5_tf_pos mtlPos
 #define conv2d_5_tf_size float2(conv2d_5_tf.get_width(), conv2d_5_tf.get_height())
-#define conv2d_5_tf_pt (float2(1, 1) / conv2d_5_tf_size)
+#define conv2d_5_tf_pt (vec2(1, 1) / conv2d_5_tf_size)
 #define conv2d_5_tf_tex(pos) conv2d_5_tf.sample(textureSampler, pos)
-#define conv2d_5_tf_texOff(off) conv2d_5_tf_tex(conv2d_5_tf_pos + conv2d_5_tf_pt * float2(off))
-
+#define conv2d_5_tf_texOff(off) conv2d_5_tf_tex(conv2d_5_tf_pos + conv2d_5_tf_pt * vec2(off))
 #define conv2d_5_tf1_pos mtlPos
 #define conv2d_5_tf1_size float2(conv2d_5_tf1.get_width(), conv2d_5_tf1.get_height())
-#define conv2d_5_tf1_pt (float2(1, 1) / conv2d_5_tf1_size)
+#define conv2d_5_tf1_pt (vec2(1, 1) / conv2d_5_tf1_size)
 #define conv2d_5_tf1_tex(pos) conv2d_5_tf1.sample(textureSampler, pos)
-#define conv2d_5_tf1_texOff(off) conv2d_5_tf1_tex(conv2d_5_tf1_pos + conv2d_5_tf1_pt * float2(off))
-
+#define conv2d_5_tf1_texOff(off) conv2d_5_tf1_tex(conv2d_5_tf1_pos + conv2d_5_tf1_pt * vec2(off))
+#define MAIN_pos mtlPos
+#define MAIN_pt (vec2(1, 1) / vec2(MAIN.get_width(), MAIN.get_height()))
+#define MAIN_size vec2(MAIN.get_width(), MAIN.get_height())
+#define MAIN_tex(pos) MAIN.sample(textureSampler, pos)
+#define MAIN_texOff(off) MAIN_tex(MAIN_pos + MAIN_pt * vec2(off))
 #define go_0(x_off, y_off) (max((conv2d_5_tf_texOff(vec2(x_off, y_off))), 0.0))
 #define go_1(x_off, y_off) (max((conv2d_5_tf1_texOff(vec2(x_off, y_off))), 0.0))
 #define go_2(x_off, y_off) (max(-(conv2d_5_tf_texOff(vec2(x_off, y_off))), 0.0))
 #define go_3(x_off, y_off) (max(-(conv2d_5_tf1_texOff(vec2(x_off, y_off))), 0.0))
-static vec4 hook_pass13(float2 mtlPos, texture2d<float, access::sample> conv2d_5_tf, texture2d<float, access::sample> conv2d_5_tf1, texture2d<float, access::sample> MAIN, sampler textureSampler) {
+static vec4 hook_pass13(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> conv2d_5_tf, texture2d<float, access::sample> conv2d_5_tf1, texture2d<float, access::sample> MAIN) {
 vec4 result = mat4(0.009029573, 0.029218858, 0.029705316, -0.019268971, -0.0023235187, -0.072589695, 0.1424836, 0.09049359, 0.04342995, 0.18134294, 0.018145641, 0.14789368, 0.050923645, 0.06524081, 0.036812488, 0.11108108) * go_0(-1.0, -1.0);
 result += mat4(-0.026506428, 0.016968496, 0.015961196, 0.010030791, -0.3141888, -0.06769598, -0.23920257, -0.031002127, -0.07351358, -0.19290134, -0.24282931, -0.18831016, -0.0928966, 0.075177215, -0.19699521, -0.05810917) * go_0(-1.0, 0.0);
 result += mat4(-0.017991852, -0.079427645, 0.035970494, -0.017095685, -0.27197137, -0.20046075, 0.2616644, 0.021876303, -0.077394076, -0.04978692, 0.20363241, -0.013741705, -0.032103598, 0.14403099, 0.01442474, 0.048115995) * go_0(-1.0, 1.0);
@@ -1214,22 +1114,24 @@ result += mat4(0.03375426, -0.059815384, 0.11632834, -0.12411481, 0.022583738, 0
 result += vec4(-0.03573331, 0.032919675, 0.011109369, 0.008329268);
 return result;
 }
-kernel void Anime4Kv32UpscaleCNNx2VLConv4x3x3x16_pass13(
-    texture2d<float, access::sample> conv2d_5_tf [[texture(0)]], texture2d<float, access::sample> conv2d_5_tf1 [[texture(1)]], texture2d<float, access::sample> MAIN [[texture(2)]], texture2d<float, access::write> output [[texture(3)]], uint2 gid [[thread_position_in_grid]], sampler textureSampler [[sampler(0)]]) {
-    float2 mtlPos = float2(gid) / (float2(output.get_width(), output.get_height()) - float2(1, 1));
-    output.write(hook_pass13(mtlPos, conv2d_5_tf, conv2d_5_tf1, MAIN, textureSampler), gid);
+kernel void Anime4Kv32UpscaleCNNx2VLConv4x3x3x16_pass13(texture2d<float, access::sample> conv2d_5_tf [[texture(0)]], texture2d<float, access::sample> conv2d_5_tf1 [[texture(1)]], texture2d<float, access::sample> MAIN [[texture(2)]], texture2d<float, access::write> output [[texture(3)]], uint2 gid [[thread_position_in_grid]], sampler textureSampler [[sampler(0)]]) {
+    float2 outSize = float2(output.get_width(), output.get_height());
+    float2 outScale = 1.0 / (outSize - float2(1.0, 1.0));
+    float2 mtlPos = float2(gid) * outScale;
+    output.write(hook_pass13(mtlPos, textureSampler, conv2d_5_tf, conv2d_5_tf1, MAIN), gid);
 }
 
 
 // Shader: Anime4K-v3.2-Upscale-CNN-x2-(VL)-Conv-4x1x1x112
 // Function: Anime4Kv32UpscaleCNNx2VLConv4x1x1x112_pass14
-// BINDS: ['conv2d_tf', 'conv2d_tf1', 'conv2d_1_tf', 'conv2d_1_tf1', 'conv2d_2_tf', 'conv2d_2_tf1', 'conv2d_3_tf', 'conv2d_3_tf1', 'conv2d_4_tf', 'conv2d_4_tf1', 'conv2d_5_tf', 'conv2d_5_tf1', 'conv2d_6_tf', 'conv2d_6_tf1']
+// BINDS: ["conv2d_tf", "conv2d_tf1", "conv2d_1_tf", "conv2d_1_tf1", "conv2d_2_tf", "conv2d_2_tf1", "conv2d_3_tf", "conv2d_3_tf1", "conv2d_4_tf", "conv2d_4_tf1", "conv2d_5_tf", "conv2d_5_tf1", "conv2d_6_tf", "conv2d_6_tf1"]
 // HOOK: MAIN
 // SAVE: conv2d_last_tf
-// Input textures: ['conv2d_tf', 'conv2d_tf1', 'conv2d_1_tf', 'conv2d_1_tf1', 'conv2d_2_tf', 'conv2d_2_tf1', 'conv2d_3_tf', 'conv2d_3_tf1', 'conv2d_4_tf', 'conv2d_4_tf1', 'conv2d_5_tf', 'conv2d_5_tf1', 'conv2d_6_tf', 'conv2d_6_tf1', 'MAIN']
-// Output texture: conv2d_last_tf
-// Texture indices: BINDS=0..13, MAIN=14, OUTPUT=15
-
+// META_WIDTH_BASE: conv2d_tf
+// META_WIDTH_SCALE: 1.0
+// META_HEIGHT_BASE: conv2d_tf
+// META_HEIGHT_SCALE: 1.0
+// META_WHEN: WHEN OUTPUT.w MAIN.w / 1.200 > OUTPUT.h MAIN.h / 1.200 > *
 #include <metal_stdlib>
 using namespace metal;
 
@@ -1238,103 +1140,81 @@ using vec3 = float3;
 using vec4 = float4;
 using ivec2 = int2;
 using mat4 = float4x4;
-
-#define MAIN_pos mtlPos
-#define MAIN_pt (float2(1, 1) / float2(MAIN.get_width(), MAIN.get_height()))
-#define MAIN_size float2(MAIN.get_width(), MAIN.get_height())
-#define MAIN_tex(pos) MAIN.sample(textureSampler, pos)
-#define MAIN_texOff(off) MAIN_tex(MAIN_pos + MAIN_pt * float2(off))
-
-#define HOOKED_pos MAIN_pos
-#define HOOKED_size MAIN_size
-#define HOOKED_pt MAIN_pt
-#define HOOKED_tex(pos) MAIN_tex(pos)
-#define HOOKED_texOff(off) MAIN_texOff(off)
-
 #define conv2d_tf_pos mtlPos
 #define conv2d_tf_size float2(conv2d_tf.get_width(), conv2d_tf.get_height())
-#define conv2d_tf_pt (float2(1, 1) / conv2d_tf_size)
+#define conv2d_tf_pt (vec2(1, 1) / conv2d_tf_size)
 #define conv2d_tf_tex(pos) conv2d_tf.sample(textureSampler, pos)
-#define conv2d_tf_texOff(off) conv2d_tf_tex(conv2d_tf_pos + conv2d_tf_pt * float2(off))
-
+#define conv2d_tf_texOff(off) conv2d_tf_tex(conv2d_tf_pos + conv2d_tf_pt * vec2(off))
 #define conv2d_tf1_pos mtlPos
 #define conv2d_tf1_size float2(conv2d_tf1.get_width(), conv2d_tf1.get_height())
-#define conv2d_tf1_pt (float2(1, 1) / conv2d_tf1_size)
+#define conv2d_tf1_pt (vec2(1, 1) / conv2d_tf1_size)
 #define conv2d_tf1_tex(pos) conv2d_tf1.sample(textureSampler, pos)
-#define conv2d_tf1_texOff(off) conv2d_tf1_tex(conv2d_tf1_pos + conv2d_tf1_pt * float2(off))
-
+#define conv2d_tf1_texOff(off) conv2d_tf1_tex(conv2d_tf1_pos + conv2d_tf1_pt * vec2(off))
 #define conv2d_1_tf_pos mtlPos
 #define conv2d_1_tf_size float2(conv2d_1_tf.get_width(), conv2d_1_tf.get_height())
-#define conv2d_1_tf_pt (float2(1, 1) / conv2d_1_tf_size)
+#define conv2d_1_tf_pt (vec2(1, 1) / conv2d_1_tf_size)
 #define conv2d_1_tf_tex(pos) conv2d_1_tf.sample(textureSampler, pos)
-#define conv2d_1_tf_texOff(off) conv2d_1_tf_tex(conv2d_1_tf_pos + conv2d_1_tf_pt * float2(off))
-
+#define conv2d_1_tf_texOff(off) conv2d_1_tf_tex(conv2d_1_tf_pos + conv2d_1_tf_pt * vec2(off))
 #define conv2d_1_tf1_pos mtlPos
 #define conv2d_1_tf1_size float2(conv2d_1_tf1.get_width(), conv2d_1_tf1.get_height())
-#define conv2d_1_tf1_pt (float2(1, 1) / conv2d_1_tf1_size)
+#define conv2d_1_tf1_pt (vec2(1, 1) / conv2d_1_tf1_size)
 #define conv2d_1_tf1_tex(pos) conv2d_1_tf1.sample(textureSampler, pos)
-#define conv2d_1_tf1_texOff(off) conv2d_1_tf1_tex(conv2d_1_tf1_pos + conv2d_1_tf1_pt * float2(off))
-
+#define conv2d_1_tf1_texOff(off) conv2d_1_tf1_tex(conv2d_1_tf1_pos + conv2d_1_tf1_pt * vec2(off))
 #define conv2d_2_tf_pos mtlPos
 #define conv2d_2_tf_size float2(conv2d_2_tf.get_width(), conv2d_2_tf.get_height())
-#define conv2d_2_tf_pt (float2(1, 1) / conv2d_2_tf_size)
+#define conv2d_2_tf_pt (vec2(1, 1) / conv2d_2_tf_size)
 #define conv2d_2_tf_tex(pos) conv2d_2_tf.sample(textureSampler, pos)
-#define conv2d_2_tf_texOff(off) conv2d_2_tf_tex(conv2d_2_tf_pos + conv2d_2_tf_pt * float2(off))
-
+#define conv2d_2_tf_texOff(off) conv2d_2_tf_tex(conv2d_2_tf_pos + conv2d_2_tf_pt * vec2(off))
 #define conv2d_2_tf1_pos mtlPos
 #define conv2d_2_tf1_size float2(conv2d_2_tf1.get_width(), conv2d_2_tf1.get_height())
-#define conv2d_2_tf1_pt (float2(1, 1) / conv2d_2_tf1_size)
+#define conv2d_2_tf1_pt (vec2(1, 1) / conv2d_2_tf1_size)
 #define conv2d_2_tf1_tex(pos) conv2d_2_tf1.sample(textureSampler, pos)
-#define conv2d_2_tf1_texOff(off) conv2d_2_tf1_tex(conv2d_2_tf1_pos + conv2d_2_tf1_pt * float2(off))
-
+#define conv2d_2_tf1_texOff(off) conv2d_2_tf1_tex(conv2d_2_tf1_pos + conv2d_2_tf1_pt * vec2(off))
 #define conv2d_3_tf_pos mtlPos
 #define conv2d_3_tf_size float2(conv2d_3_tf.get_width(), conv2d_3_tf.get_height())
-#define conv2d_3_tf_pt (float2(1, 1) / conv2d_3_tf_size)
+#define conv2d_3_tf_pt (vec2(1, 1) / conv2d_3_tf_size)
 #define conv2d_3_tf_tex(pos) conv2d_3_tf.sample(textureSampler, pos)
-#define conv2d_3_tf_texOff(off) conv2d_3_tf_tex(conv2d_3_tf_pos + conv2d_3_tf_pt * float2(off))
-
+#define conv2d_3_tf_texOff(off) conv2d_3_tf_tex(conv2d_3_tf_pos + conv2d_3_tf_pt * vec2(off))
 #define conv2d_3_tf1_pos mtlPos
 #define conv2d_3_tf1_size float2(conv2d_3_tf1.get_width(), conv2d_3_tf1.get_height())
-#define conv2d_3_tf1_pt (float2(1, 1) / conv2d_3_tf1_size)
+#define conv2d_3_tf1_pt (vec2(1, 1) / conv2d_3_tf1_size)
 #define conv2d_3_tf1_tex(pos) conv2d_3_tf1.sample(textureSampler, pos)
-#define conv2d_3_tf1_texOff(off) conv2d_3_tf1_tex(conv2d_3_tf1_pos + conv2d_3_tf1_pt * float2(off))
-
+#define conv2d_3_tf1_texOff(off) conv2d_3_tf1_tex(conv2d_3_tf1_pos + conv2d_3_tf1_pt * vec2(off))
 #define conv2d_4_tf_pos mtlPos
 #define conv2d_4_tf_size float2(conv2d_4_tf.get_width(), conv2d_4_tf.get_height())
-#define conv2d_4_tf_pt (float2(1, 1) / conv2d_4_tf_size)
+#define conv2d_4_tf_pt (vec2(1, 1) / conv2d_4_tf_size)
 #define conv2d_4_tf_tex(pos) conv2d_4_tf.sample(textureSampler, pos)
-#define conv2d_4_tf_texOff(off) conv2d_4_tf_tex(conv2d_4_tf_pos + conv2d_4_tf_pt * float2(off))
-
+#define conv2d_4_tf_texOff(off) conv2d_4_tf_tex(conv2d_4_tf_pos + conv2d_4_tf_pt * vec2(off))
 #define conv2d_4_tf1_pos mtlPos
 #define conv2d_4_tf1_size float2(conv2d_4_tf1.get_width(), conv2d_4_tf1.get_height())
-#define conv2d_4_tf1_pt (float2(1, 1) / conv2d_4_tf1_size)
+#define conv2d_4_tf1_pt (vec2(1, 1) / conv2d_4_tf1_size)
 #define conv2d_4_tf1_tex(pos) conv2d_4_tf1.sample(textureSampler, pos)
-#define conv2d_4_tf1_texOff(off) conv2d_4_tf1_tex(conv2d_4_tf1_pos + conv2d_4_tf1_pt * float2(off))
-
+#define conv2d_4_tf1_texOff(off) conv2d_4_tf1_tex(conv2d_4_tf1_pos + conv2d_4_tf1_pt * vec2(off))
 #define conv2d_5_tf_pos mtlPos
 #define conv2d_5_tf_size float2(conv2d_5_tf.get_width(), conv2d_5_tf.get_height())
-#define conv2d_5_tf_pt (float2(1, 1) / conv2d_5_tf_size)
+#define conv2d_5_tf_pt (vec2(1, 1) / conv2d_5_tf_size)
 #define conv2d_5_tf_tex(pos) conv2d_5_tf.sample(textureSampler, pos)
-#define conv2d_5_tf_texOff(off) conv2d_5_tf_tex(conv2d_5_tf_pos + conv2d_5_tf_pt * float2(off))
-
+#define conv2d_5_tf_texOff(off) conv2d_5_tf_tex(conv2d_5_tf_pos + conv2d_5_tf_pt * vec2(off))
 #define conv2d_5_tf1_pos mtlPos
 #define conv2d_5_tf1_size float2(conv2d_5_tf1.get_width(), conv2d_5_tf1.get_height())
-#define conv2d_5_tf1_pt (float2(1, 1) / conv2d_5_tf1_size)
+#define conv2d_5_tf1_pt (vec2(1, 1) / conv2d_5_tf1_size)
 #define conv2d_5_tf1_tex(pos) conv2d_5_tf1.sample(textureSampler, pos)
-#define conv2d_5_tf1_texOff(off) conv2d_5_tf1_tex(conv2d_5_tf1_pos + conv2d_5_tf1_pt * float2(off))
-
+#define conv2d_5_tf1_texOff(off) conv2d_5_tf1_tex(conv2d_5_tf1_pos + conv2d_5_tf1_pt * vec2(off))
 #define conv2d_6_tf_pos mtlPos
 #define conv2d_6_tf_size float2(conv2d_6_tf.get_width(), conv2d_6_tf.get_height())
-#define conv2d_6_tf_pt (float2(1, 1) / conv2d_6_tf_size)
+#define conv2d_6_tf_pt (vec2(1, 1) / conv2d_6_tf_size)
 #define conv2d_6_tf_tex(pos) conv2d_6_tf.sample(textureSampler, pos)
-#define conv2d_6_tf_texOff(off) conv2d_6_tf_tex(conv2d_6_tf_pos + conv2d_6_tf_pt * float2(off))
-
+#define conv2d_6_tf_texOff(off) conv2d_6_tf_tex(conv2d_6_tf_pos + conv2d_6_tf_pt * vec2(off))
 #define conv2d_6_tf1_pos mtlPos
 #define conv2d_6_tf1_size float2(conv2d_6_tf1.get_width(), conv2d_6_tf1.get_height())
-#define conv2d_6_tf1_pt (float2(1, 1) / conv2d_6_tf1_size)
+#define conv2d_6_tf1_pt (vec2(1, 1) / conv2d_6_tf1_size)
 #define conv2d_6_tf1_tex(pos) conv2d_6_tf1.sample(textureSampler, pos)
-#define conv2d_6_tf1_texOff(off) conv2d_6_tf1_tex(conv2d_6_tf1_pos + conv2d_6_tf1_pt * float2(off))
-
+#define conv2d_6_tf1_texOff(off) conv2d_6_tf1_tex(conv2d_6_tf1_pos + conv2d_6_tf1_pt * vec2(off))
+#define MAIN_pos mtlPos
+#define MAIN_pt (vec2(1, 1) / vec2(MAIN.get_width(), MAIN.get_height()))
+#define MAIN_size vec2(MAIN.get_width(), MAIN.get_height())
+#define MAIN_tex(pos) MAIN.sample(textureSampler, pos)
+#define MAIN_texOff(off) MAIN_tex(MAIN_pos + MAIN_pt * vec2(off))
 #define g_0 (max((conv2d_tf_tex(conv2d_tf_pos)), 0.0))
 #define g_1 (max((conv2d_tf1_tex(conv2d_tf1_pos)), 0.0))
 #define g_2 (max(-(conv2d_tf_tex(conv2d_tf_pos)), 0.0))
@@ -1363,7 +1243,7 @@ using mat4 = float4x4;
 #define g_25 (max((conv2d_6_tf1_tex(conv2d_6_tf1_pos)), 0.0))
 #define g_26 (max(-(conv2d_6_tf_tex(conv2d_6_tf_pos)), 0.0))
 #define g_27 (max(-(conv2d_6_tf1_tex(conv2d_6_tf1_pos)), 0.0))
-static vec4 hook_pass14(float2 mtlPos, texture2d<float, access::sample> conv2d_tf, texture2d<float, access::sample> conv2d_tf1, texture2d<float, access::sample> conv2d_1_tf, texture2d<float, access::sample> conv2d_1_tf1, texture2d<float, access::sample> conv2d_2_tf, texture2d<float, access::sample> conv2d_2_tf1, texture2d<float, access::sample> conv2d_3_tf, texture2d<float, access::sample> conv2d_3_tf1, texture2d<float, access::sample> conv2d_4_tf, texture2d<float, access::sample> conv2d_4_tf1, texture2d<float, access::sample> conv2d_5_tf, texture2d<float, access::sample> conv2d_5_tf1, texture2d<float, access::sample> conv2d_6_tf, texture2d<float, access::sample> conv2d_6_tf1, texture2d<float, access::sample> MAIN, sampler textureSampler) {
+static vec4 hook_pass14(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> conv2d_tf, texture2d<float, access::sample> conv2d_tf1, texture2d<float, access::sample> conv2d_1_tf, texture2d<float, access::sample> conv2d_1_tf1, texture2d<float, access::sample> conv2d_2_tf, texture2d<float, access::sample> conv2d_2_tf1, texture2d<float, access::sample> conv2d_3_tf, texture2d<float, access::sample> conv2d_3_tf1, texture2d<float, access::sample> conv2d_4_tf, texture2d<float, access::sample> conv2d_4_tf1, texture2d<float, access::sample> conv2d_5_tf, texture2d<float, access::sample> conv2d_5_tf1, texture2d<float, access::sample> conv2d_6_tf, texture2d<float, access::sample> conv2d_6_tf1, texture2d<float, access::sample> MAIN) {
 vec4 result = mat4(-0.11498094, -0.053904895, -0.11520678, -0.05479549, 0.028396055, 0.032767884, 0.052479446, 0.05257866, -0.25706592, -0.3454966, -0.24713765, -0.2854201, -0.10287636, 0.0023146886, -0.09190338, -0.011193905) * g_0;
 result += mat4(-0.05461422, 0.008780496, -0.07738697, -0.032230727, -0.047554165, -0.025061952, -0.051897213, -0.009545297, -0.14548294, -0.15184018, -0.01313442, -0.015299784, -0.0007883845, -0.12866738, -0.15260352, -0.27081275) * g_1;
 result += mat4(0.11007706, 0.035344437, 0.11020841, 0.0425353, 0.1613199, 0.18417408, 0.09274313, 0.11943135, 0.106862, 0.079875536, 0.0937752, 0.068030775, 0.029093558, -0.06441164, 0.06467169, -0.021989612) * g_2;
@@ -1395,22 +1275,24 @@ result += mat4(-0.16397473, 0.15785863, -0.06666504, -0.01682913, 0.06070918, 0.
 result += vec4(-0.10795144, -0.09953324, -0.055413827, -0.03875493);
 return result;
 }
-kernel void Anime4Kv32UpscaleCNNx2VLConv4x1x1x112_pass14(
-    texture2d<float, access::sample> conv2d_tf [[texture(0)]], texture2d<float, access::sample> conv2d_tf1 [[texture(1)]], texture2d<float, access::sample> conv2d_1_tf [[texture(2)]], texture2d<float, access::sample> conv2d_1_tf1 [[texture(3)]], texture2d<float, access::sample> conv2d_2_tf [[texture(4)]], texture2d<float, access::sample> conv2d_2_tf1 [[texture(5)]], texture2d<float, access::sample> conv2d_3_tf [[texture(6)]], texture2d<float, access::sample> conv2d_3_tf1 [[texture(7)]], texture2d<float, access::sample> conv2d_4_tf [[texture(8)]], texture2d<float, access::sample> conv2d_4_tf1 [[texture(9)]], texture2d<float, access::sample> conv2d_5_tf [[texture(10)]], texture2d<float, access::sample> conv2d_5_tf1 [[texture(11)]], texture2d<float, access::sample> conv2d_6_tf [[texture(12)]], texture2d<float, access::sample> conv2d_6_tf1 [[texture(13)]], texture2d<float, access::sample> MAIN [[texture(14)]], texture2d<float, access::write> output [[texture(15)]], uint2 gid [[thread_position_in_grid]], sampler textureSampler [[sampler(0)]]) {
-    float2 mtlPos = float2(gid) / (float2(output.get_width(), output.get_height()) - float2(1, 1));
-    output.write(hook_pass14(mtlPos, conv2d_tf, conv2d_tf1, conv2d_1_tf, conv2d_1_tf1, conv2d_2_tf, conv2d_2_tf1, conv2d_3_tf, conv2d_3_tf1, conv2d_4_tf, conv2d_4_tf1, conv2d_5_tf, conv2d_5_tf1, conv2d_6_tf, conv2d_6_tf1, MAIN, textureSampler), gid);
+kernel void Anime4Kv32UpscaleCNNx2VLConv4x1x1x112_pass14(texture2d<float, access::sample> conv2d_tf [[texture(0)]], texture2d<float, access::sample> conv2d_tf1 [[texture(1)]], texture2d<float, access::sample> conv2d_1_tf [[texture(2)]], texture2d<float, access::sample> conv2d_1_tf1 [[texture(3)]], texture2d<float, access::sample> conv2d_2_tf [[texture(4)]], texture2d<float, access::sample> conv2d_2_tf1 [[texture(5)]], texture2d<float, access::sample> conv2d_3_tf [[texture(6)]], texture2d<float, access::sample> conv2d_3_tf1 [[texture(7)]], texture2d<float, access::sample> conv2d_4_tf [[texture(8)]], texture2d<float, access::sample> conv2d_4_tf1 [[texture(9)]], texture2d<float, access::sample> conv2d_5_tf [[texture(10)]], texture2d<float, access::sample> conv2d_5_tf1 [[texture(11)]], texture2d<float, access::sample> conv2d_6_tf [[texture(12)]], texture2d<float, access::sample> conv2d_6_tf1 [[texture(13)]], texture2d<float, access::sample> MAIN [[texture(14)]], texture2d<float, access::write> output [[texture(15)]], uint2 gid [[thread_position_in_grid]], sampler textureSampler [[sampler(0)]]) {
+    float2 outSize = float2(output.get_width(), output.get_height());
+    float2 outScale = 1.0 / (outSize - float2(1.0, 1.0));
+    float2 mtlPos = float2(gid) * outScale;
+    output.write(hook_pass14(mtlPos, textureSampler, conv2d_tf, conv2d_tf1, conv2d_1_tf, conv2d_1_tf1, conv2d_2_tf, conv2d_2_tf1, conv2d_3_tf, conv2d_3_tf1, conv2d_4_tf, conv2d_4_tf1, conv2d_5_tf, conv2d_5_tf1, conv2d_6_tf, conv2d_6_tf1, MAIN), gid);
 }
 
 
 // Shader: Anime4K-v3.2-Upscale-CNN-x2-(VL)-Conv-4x1x1x112
 // Function: Anime4Kv32UpscaleCNNx2VLConv4x1x1x112_pass15
-// BINDS: ['conv2d_tf', 'conv2d_tf1', 'conv2d_1_tf', 'conv2d_1_tf1', 'conv2d_2_tf', 'conv2d_2_tf1', 'conv2d_3_tf', 'conv2d_3_tf1', 'conv2d_4_tf', 'conv2d_4_tf1', 'conv2d_5_tf', 'conv2d_5_tf1', 'conv2d_6_tf', 'conv2d_6_tf1']
+// BINDS: ["conv2d_tf", "conv2d_tf1", "conv2d_1_tf", "conv2d_1_tf1", "conv2d_2_tf", "conv2d_2_tf1", "conv2d_3_tf", "conv2d_3_tf1", "conv2d_4_tf", "conv2d_4_tf1", "conv2d_5_tf", "conv2d_5_tf1", "conv2d_6_tf", "conv2d_6_tf1"]
 // HOOK: MAIN
 // SAVE: conv2d_last_tf1
-// Input textures: ['conv2d_tf', 'conv2d_tf1', 'conv2d_1_tf', 'conv2d_1_tf1', 'conv2d_2_tf', 'conv2d_2_tf1', 'conv2d_3_tf', 'conv2d_3_tf1', 'conv2d_4_tf', 'conv2d_4_tf1', 'conv2d_5_tf', 'conv2d_5_tf1', 'conv2d_6_tf', 'conv2d_6_tf1', 'MAIN']
-// Output texture: conv2d_last_tf1
-// Texture indices: BINDS=0..13, MAIN=14, OUTPUT=15
-
+// META_WIDTH_BASE: conv2d_tf
+// META_WIDTH_SCALE: 1.0
+// META_HEIGHT_BASE: conv2d_tf
+// META_HEIGHT_SCALE: 1.0
+// META_WHEN: WHEN OUTPUT.w MAIN.w / 1.200 > OUTPUT.h MAIN.h / 1.200 > *
 #include <metal_stdlib>
 using namespace metal;
 
@@ -1419,103 +1301,81 @@ using vec3 = float3;
 using vec4 = float4;
 using ivec2 = int2;
 using mat4 = float4x4;
-
-#define MAIN_pos mtlPos
-#define MAIN_pt (float2(1, 1) / float2(MAIN.get_width(), MAIN.get_height()))
-#define MAIN_size float2(MAIN.get_width(), MAIN.get_height())
-#define MAIN_tex(pos) MAIN.sample(textureSampler, pos)
-#define MAIN_texOff(off) MAIN_tex(MAIN_pos + MAIN_pt * float2(off))
-
-#define HOOKED_pos MAIN_pos
-#define HOOKED_size MAIN_size
-#define HOOKED_pt MAIN_pt
-#define HOOKED_tex(pos) MAIN_tex(pos)
-#define HOOKED_texOff(off) MAIN_texOff(off)
-
 #define conv2d_tf_pos mtlPos
 #define conv2d_tf_size float2(conv2d_tf.get_width(), conv2d_tf.get_height())
-#define conv2d_tf_pt (float2(1, 1) / conv2d_tf_size)
+#define conv2d_tf_pt (vec2(1, 1) / conv2d_tf_size)
 #define conv2d_tf_tex(pos) conv2d_tf.sample(textureSampler, pos)
-#define conv2d_tf_texOff(off) conv2d_tf_tex(conv2d_tf_pos + conv2d_tf_pt * float2(off))
-
+#define conv2d_tf_texOff(off) conv2d_tf_tex(conv2d_tf_pos + conv2d_tf_pt * vec2(off))
 #define conv2d_tf1_pos mtlPos
 #define conv2d_tf1_size float2(conv2d_tf1.get_width(), conv2d_tf1.get_height())
-#define conv2d_tf1_pt (float2(1, 1) / conv2d_tf1_size)
+#define conv2d_tf1_pt (vec2(1, 1) / conv2d_tf1_size)
 #define conv2d_tf1_tex(pos) conv2d_tf1.sample(textureSampler, pos)
-#define conv2d_tf1_texOff(off) conv2d_tf1_tex(conv2d_tf1_pos + conv2d_tf1_pt * float2(off))
-
+#define conv2d_tf1_texOff(off) conv2d_tf1_tex(conv2d_tf1_pos + conv2d_tf1_pt * vec2(off))
 #define conv2d_1_tf_pos mtlPos
 #define conv2d_1_tf_size float2(conv2d_1_tf.get_width(), conv2d_1_tf.get_height())
-#define conv2d_1_tf_pt (float2(1, 1) / conv2d_1_tf_size)
+#define conv2d_1_tf_pt (vec2(1, 1) / conv2d_1_tf_size)
 #define conv2d_1_tf_tex(pos) conv2d_1_tf.sample(textureSampler, pos)
-#define conv2d_1_tf_texOff(off) conv2d_1_tf_tex(conv2d_1_tf_pos + conv2d_1_tf_pt * float2(off))
-
+#define conv2d_1_tf_texOff(off) conv2d_1_tf_tex(conv2d_1_tf_pos + conv2d_1_tf_pt * vec2(off))
 #define conv2d_1_tf1_pos mtlPos
 #define conv2d_1_tf1_size float2(conv2d_1_tf1.get_width(), conv2d_1_tf1.get_height())
-#define conv2d_1_tf1_pt (float2(1, 1) / conv2d_1_tf1_size)
+#define conv2d_1_tf1_pt (vec2(1, 1) / conv2d_1_tf1_size)
 #define conv2d_1_tf1_tex(pos) conv2d_1_tf1.sample(textureSampler, pos)
-#define conv2d_1_tf1_texOff(off) conv2d_1_tf1_tex(conv2d_1_tf1_pos + conv2d_1_tf1_pt * float2(off))
-
+#define conv2d_1_tf1_texOff(off) conv2d_1_tf1_tex(conv2d_1_tf1_pos + conv2d_1_tf1_pt * vec2(off))
 #define conv2d_2_tf_pos mtlPos
 #define conv2d_2_tf_size float2(conv2d_2_tf.get_width(), conv2d_2_tf.get_height())
-#define conv2d_2_tf_pt (float2(1, 1) / conv2d_2_tf_size)
+#define conv2d_2_tf_pt (vec2(1, 1) / conv2d_2_tf_size)
 #define conv2d_2_tf_tex(pos) conv2d_2_tf.sample(textureSampler, pos)
-#define conv2d_2_tf_texOff(off) conv2d_2_tf_tex(conv2d_2_tf_pos + conv2d_2_tf_pt * float2(off))
-
+#define conv2d_2_tf_texOff(off) conv2d_2_tf_tex(conv2d_2_tf_pos + conv2d_2_tf_pt * vec2(off))
 #define conv2d_2_tf1_pos mtlPos
 #define conv2d_2_tf1_size float2(conv2d_2_tf1.get_width(), conv2d_2_tf1.get_height())
-#define conv2d_2_tf1_pt (float2(1, 1) / conv2d_2_tf1_size)
+#define conv2d_2_tf1_pt (vec2(1, 1) / conv2d_2_tf1_size)
 #define conv2d_2_tf1_tex(pos) conv2d_2_tf1.sample(textureSampler, pos)
-#define conv2d_2_tf1_texOff(off) conv2d_2_tf1_tex(conv2d_2_tf1_pos + conv2d_2_tf1_pt * float2(off))
-
+#define conv2d_2_tf1_texOff(off) conv2d_2_tf1_tex(conv2d_2_tf1_pos + conv2d_2_tf1_pt * vec2(off))
 #define conv2d_3_tf_pos mtlPos
 #define conv2d_3_tf_size float2(conv2d_3_tf.get_width(), conv2d_3_tf.get_height())
-#define conv2d_3_tf_pt (float2(1, 1) / conv2d_3_tf_size)
+#define conv2d_3_tf_pt (vec2(1, 1) / conv2d_3_tf_size)
 #define conv2d_3_tf_tex(pos) conv2d_3_tf.sample(textureSampler, pos)
-#define conv2d_3_tf_texOff(off) conv2d_3_tf_tex(conv2d_3_tf_pos + conv2d_3_tf_pt * float2(off))
-
+#define conv2d_3_tf_texOff(off) conv2d_3_tf_tex(conv2d_3_tf_pos + conv2d_3_tf_pt * vec2(off))
 #define conv2d_3_tf1_pos mtlPos
 #define conv2d_3_tf1_size float2(conv2d_3_tf1.get_width(), conv2d_3_tf1.get_height())
-#define conv2d_3_tf1_pt (float2(1, 1) / conv2d_3_tf1_size)
+#define conv2d_3_tf1_pt (vec2(1, 1) / conv2d_3_tf1_size)
 #define conv2d_3_tf1_tex(pos) conv2d_3_tf1.sample(textureSampler, pos)
-#define conv2d_3_tf1_texOff(off) conv2d_3_tf1_tex(conv2d_3_tf1_pos + conv2d_3_tf1_pt * float2(off))
-
+#define conv2d_3_tf1_texOff(off) conv2d_3_tf1_tex(conv2d_3_tf1_pos + conv2d_3_tf1_pt * vec2(off))
 #define conv2d_4_tf_pos mtlPos
 #define conv2d_4_tf_size float2(conv2d_4_tf.get_width(), conv2d_4_tf.get_height())
-#define conv2d_4_tf_pt (float2(1, 1) / conv2d_4_tf_size)
+#define conv2d_4_tf_pt (vec2(1, 1) / conv2d_4_tf_size)
 #define conv2d_4_tf_tex(pos) conv2d_4_tf.sample(textureSampler, pos)
-#define conv2d_4_tf_texOff(off) conv2d_4_tf_tex(conv2d_4_tf_pos + conv2d_4_tf_pt * float2(off))
-
+#define conv2d_4_tf_texOff(off) conv2d_4_tf_tex(conv2d_4_tf_pos + conv2d_4_tf_pt * vec2(off))
 #define conv2d_4_tf1_pos mtlPos
 #define conv2d_4_tf1_size float2(conv2d_4_tf1.get_width(), conv2d_4_tf1.get_height())
-#define conv2d_4_tf1_pt (float2(1, 1) / conv2d_4_tf1_size)
+#define conv2d_4_tf1_pt (vec2(1, 1) / conv2d_4_tf1_size)
 #define conv2d_4_tf1_tex(pos) conv2d_4_tf1.sample(textureSampler, pos)
-#define conv2d_4_tf1_texOff(off) conv2d_4_tf1_tex(conv2d_4_tf1_pos + conv2d_4_tf1_pt * float2(off))
-
+#define conv2d_4_tf1_texOff(off) conv2d_4_tf1_tex(conv2d_4_tf1_pos + conv2d_4_tf1_pt * vec2(off))
 #define conv2d_5_tf_pos mtlPos
 #define conv2d_5_tf_size float2(conv2d_5_tf.get_width(), conv2d_5_tf.get_height())
-#define conv2d_5_tf_pt (float2(1, 1) / conv2d_5_tf_size)
+#define conv2d_5_tf_pt (vec2(1, 1) / conv2d_5_tf_size)
 #define conv2d_5_tf_tex(pos) conv2d_5_tf.sample(textureSampler, pos)
-#define conv2d_5_tf_texOff(off) conv2d_5_tf_tex(conv2d_5_tf_pos + conv2d_5_tf_pt * float2(off))
-
+#define conv2d_5_tf_texOff(off) conv2d_5_tf_tex(conv2d_5_tf_pos + conv2d_5_tf_pt * vec2(off))
 #define conv2d_5_tf1_pos mtlPos
 #define conv2d_5_tf1_size float2(conv2d_5_tf1.get_width(), conv2d_5_tf1.get_height())
-#define conv2d_5_tf1_pt (float2(1, 1) / conv2d_5_tf1_size)
+#define conv2d_5_tf1_pt (vec2(1, 1) / conv2d_5_tf1_size)
 #define conv2d_5_tf1_tex(pos) conv2d_5_tf1.sample(textureSampler, pos)
-#define conv2d_5_tf1_texOff(off) conv2d_5_tf1_tex(conv2d_5_tf1_pos + conv2d_5_tf1_pt * float2(off))
-
+#define conv2d_5_tf1_texOff(off) conv2d_5_tf1_tex(conv2d_5_tf1_pos + conv2d_5_tf1_pt * vec2(off))
 #define conv2d_6_tf_pos mtlPos
 #define conv2d_6_tf_size float2(conv2d_6_tf.get_width(), conv2d_6_tf.get_height())
-#define conv2d_6_tf_pt (float2(1, 1) / conv2d_6_tf_size)
+#define conv2d_6_tf_pt (vec2(1, 1) / conv2d_6_tf_size)
 #define conv2d_6_tf_tex(pos) conv2d_6_tf.sample(textureSampler, pos)
-#define conv2d_6_tf_texOff(off) conv2d_6_tf_tex(conv2d_6_tf_pos + conv2d_6_tf_pt * float2(off))
-
+#define conv2d_6_tf_texOff(off) conv2d_6_tf_tex(conv2d_6_tf_pos + conv2d_6_tf_pt * vec2(off))
 #define conv2d_6_tf1_pos mtlPos
 #define conv2d_6_tf1_size float2(conv2d_6_tf1.get_width(), conv2d_6_tf1.get_height())
-#define conv2d_6_tf1_pt (float2(1, 1) / conv2d_6_tf1_size)
+#define conv2d_6_tf1_pt (vec2(1, 1) / conv2d_6_tf1_size)
 #define conv2d_6_tf1_tex(pos) conv2d_6_tf1.sample(textureSampler, pos)
-#define conv2d_6_tf1_texOff(off) conv2d_6_tf1_tex(conv2d_6_tf1_pos + conv2d_6_tf1_pt * float2(off))
-
+#define conv2d_6_tf1_texOff(off) conv2d_6_tf1_tex(conv2d_6_tf1_pos + conv2d_6_tf1_pt * vec2(off))
+#define MAIN_pos mtlPos
+#define MAIN_pt (vec2(1, 1) / vec2(MAIN.get_width(), MAIN.get_height()))
+#define MAIN_size vec2(MAIN.get_width(), MAIN.get_height())
+#define MAIN_tex(pos) MAIN.sample(textureSampler, pos)
+#define MAIN_texOff(off) MAIN_tex(MAIN_pos + MAIN_pt * vec2(off))
 #define g_0 (max((conv2d_tf_tex(conv2d_tf_pos)), 0.0))
 #define g_1 (max((conv2d_tf1_tex(conv2d_tf1_pos)), 0.0))
 #define g_2 (max(-(conv2d_tf_tex(conv2d_tf_pos)), 0.0))
@@ -1544,7 +1404,7 @@ using mat4 = float4x4;
 #define g_25 (max((conv2d_6_tf1_tex(conv2d_6_tf1_pos)), 0.0))
 #define g_26 (max(-(conv2d_6_tf_tex(conv2d_6_tf_pos)), 0.0))
 #define g_27 (max(-(conv2d_6_tf1_tex(conv2d_6_tf1_pos)), 0.0))
-static vec4 hook_pass15(float2 mtlPos, texture2d<float, access::sample> conv2d_tf, texture2d<float, access::sample> conv2d_tf1, texture2d<float, access::sample> conv2d_1_tf, texture2d<float, access::sample> conv2d_1_tf1, texture2d<float, access::sample> conv2d_2_tf, texture2d<float, access::sample> conv2d_2_tf1, texture2d<float, access::sample> conv2d_3_tf, texture2d<float, access::sample> conv2d_3_tf1, texture2d<float, access::sample> conv2d_4_tf, texture2d<float, access::sample> conv2d_4_tf1, texture2d<float, access::sample> conv2d_5_tf, texture2d<float, access::sample> conv2d_5_tf1, texture2d<float, access::sample> conv2d_6_tf, texture2d<float, access::sample> conv2d_6_tf1, texture2d<float, access::sample> MAIN, sampler textureSampler) {
+static vec4 hook_pass15(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> conv2d_tf, texture2d<float, access::sample> conv2d_tf1, texture2d<float, access::sample> conv2d_1_tf, texture2d<float, access::sample> conv2d_1_tf1, texture2d<float, access::sample> conv2d_2_tf, texture2d<float, access::sample> conv2d_2_tf1, texture2d<float, access::sample> conv2d_3_tf, texture2d<float, access::sample> conv2d_3_tf1, texture2d<float, access::sample> conv2d_4_tf, texture2d<float, access::sample> conv2d_4_tf1, texture2d<float, access::sample> conv2d_5_tf, texture2d<float, access::sample> conv2d_5_tf1, texture2d<float, access::sample> conv2d_6_tf, texture2d<float, access::sample> conv2d_6_tf1, texture2d<float, access::sample> MAIN) {
 vec4 result = mat4(0.024905335, -0.0020974763, 0.02695263, 0.00016802056, -0.024053082, -0.02133723, -0.031614035, -0.031826317, 0.120421864, 0.10555479, 0.08609448, 0.116875134, 0.046175968, 0.04224941, 0.059216674, 0.035143953) * g_0;
 result += mat4(0.059397914, 0.016519934, 0.07189327, 0.047407165, 0.04808963, 0.02792908, 0.057017103, 0.034324065, 0.14228246, 0.11275426, 0.088058695, 0.059600517, 0.02063494, 0.052596953, 0.047207687, 0.08789091) * g_1;
 result += mat4(-0.013453174, 0.008474715, -0.017593835, 0.009218917, 0.070580654, 0.040542338, 0.08812338, 0.074653216, -0.016356857, 0.015809007, -0.008739107, 0.0097674895, -0.018381525, -0.007775341, -0.040571664, -0.011188163) * g_2;
@@ -1576,22 +1436,24 @@ result += mat4(-0.17449625, 0.15787153, -0.06711028, -0.023110518, 0.06862914, 0
 result += vec4(0.06026231, 0.040204916, 0.037672628, 0.023496555);
 return result;
 }
-kernel void Anime4Kv32UpscaleCNNx2VLConv4x1x1x112_pass15(
-    texture2d<float, access::sample> conv2d_tf [[texture(0)]], texture2d<float, access::sample> conv2d_tf1 [[texture(1)]], texture2d<float, access::sample> conv2d_1_tf [[texture(2)]], texture2d<float, access::sample> conv2d_1_tf1 [[texture(3)]], texture2d<float, access::sample> conv2d_2_tf [[texture(4)]], texture2d<float, access::sample> conv2d_2_tf1 [[texture(5)]], texture2d<float, access::sample> conv2d_3_tf [[texture(6)]], texture2d<float, access::sample> conv2d_3_tf1 [[texture(7)]], texture2d<float, access::sample> conv2d_4_tf [[texture(8)]], texture2d<float, access::sample> conv2d_4_tf1 [[texture(9)]], texture2d<float, access::sample> conv2d_5_tf [[texture(10)]], texture2d<float, access::sample> conv2d_5_tf1 [[texture(11)]], texture2d<float, access::sample> conv2d_6_tf [[texture(12)]], texture2d<float, access::sample> conv2d_6_tf1 [[texture(13)]], texture2d<float, access::sample> MAIN [[texture(14)]], texture2d<float, access::write> output [[texture(15)]], uint2 gid [[thread_position_in_grid]], sampler textureSampler [[sampler(0)]]) {
-    float2 mtlPos = float2(gid) / (float2(output.get_width(), output.get_height()) - float2(1, 1));
-    output.write(hook_pass15(mtlPos, conv2d_tf, conv2d_tf1, conv2d_1_tf, conv2d_1_tf1, conv2d_2_tf, conv2d_2_tf1, conv2d_3_tf, conv2d_3_tf1, conv2d_4_tf, conv2d_4_tf1, conv2d_5_tf, conv2d_5_tf1, conv2d_6_tf, conv2d_6_tf1, MAIN, textureSampler), gid);
+kernel void Anime4Kv32UpscaleCNNx2VLConv4x1x1x112_pass15(texture2d<float, access::sample> conv2d_tf [[texture(0)]], texture2d<float, access::sample> conv2d_tf1 [[texture(1)]], texture2d<float, access::sample> conv2d_1_tf [[texture(2)]], texture2d<float, access::sample> conv2d_1_tf1 [[texture(3)]], texture2d<float, access::sample> conv2d_2_tf [[texture(4)]], texture2d<float, access::sample> conv2d_2_tf1 [[texture(5)]], texture2d<float, access::sample> conv2d_3_tf [[texture(6)]], texture2d<float, access::sample> conv2d_3_tf1 [[texture(7)]], texture2d<float, access::sample> conv2d_4_tf [[texture(8)]], texture2d<float, access::sample> conv2d_4_tf1 [[texture(9)]], texture2d<float, access::sample> conv2d_5_tf [[texture(10)]], texture2d<float, access::sample> conv2d_5_tf1 [[texture(11)]], texture2d<float, access::sample> conv2d_6_tf [[texture(12)]], texture2d<float, access::sample> conv2d_6_tf1 [[texture(13)]], texture2d<float, access::sample> MAIN [[texture(14)]], texture2d<float, access::write> output [[texture(15)]], uint2 gid [[thread_position_in_grid]], sampler textureSampler [[sampler(0)]]) {
+    float2 outSize = float2(output.get_width(), output.get_height());
+    float2 outScale = 1.0 / (outSize - float2(1.0, 1.0));
+    float2 mtlPos = float2(gid) * outScale;
+    output.write(hook_pass15(mtlPos, textureSampler, conv2d_tf, conv2d_tf1, conv2d_1_tf, conv2d_1_tf1, conv2d_2_tf, conv2d_2_tf1, conv2d_3_tf, conv2d_3_tf1, conv2d_4_tf, conv2d_4_tf1, conv2d_5_tf, conv2d_5_tf1, conv2d_6_tf, conv2d_6_tf1, MAIN), gid);
 }
 
 
 // Shader: Anime4K-v3.2-Upscale-CNN-x2-(VL)-Conv-4x1x1x112
 // Function: Anime4Kv32UpscaleCNNx2VLConv4x1x1x112_pass16
-// BINDS: ['conv2d_tf', 'conv2d_tf1', 'conv2d_1_tf', 'conv2d_1_tf1', 'conv2d_2_tf', 'conv2d_2_tf1', 'conv2d_3_tf', 'conv2d_3_tf1', 'conv2d_4_tf', 'conv2d_4_tf1', 'conv2d_5_tf', 'conv2d_5_tf1', 'conv2d_6_tf', 'conv2d_6_tf1']
+// BINDS: ["conv2d_tf", "conv2d_tf1", "conv2d_1_tf", "conv2d_1_tf1", "conv2d_2_tf", "conv2d_2_tf1", "conv2d_3_tf", "conv2d_3_tf1", "conv2d_4_tf", "conv2d_4_tf1", "conv2d_5_tf", "conv2d_5_tf1", "conv2d_6_tf", "conv2d_6_tf1"]
 // HOOK: MAIN
 // SAVE: conv2d_last_tf2
-// Input textures: ['conv2d_tf', 'conv2d_tf1', 'conv2d_1_tf', 'conv2d_1_tf1', 'conv2d_2_tf', 'conv2d_2_tf1', 'conv2d_3_tf', 'conv2d_3_tf1', 'conv2d_4_tf', 'conv2d_4_tf1', 'conv2d_5_tf', 'conv2d_5_tf1', 'conv2d_6_tf', 'conv2d_6_tf1', 'MAIN']
-// Output texture: conv2d_last_tf2
-// Texture indices: BINDS=0..13, MAIN=14, OUTPUT=15
-
+// META_WIDTH_BASE: conv2d_tf
+// META_WIDTH_SCALE: 1.0
+// META_HEIGHT_BASE: conv2d_tf
+// META_HEIGHT_SCALE: 1.0
+// META_WHEN: WHEN OUTPUT.w MAIN.w / 1.200 > OUTPUT.h MAIN.h / 1.200 > *
 #include <metal_stdlib>
 using namespace metal;
 
@@ -1600,103 +1462,81 @@ using vec3 = float3;
 using vec4 = float4;
 using ivec2 = int2;
 using mat4 = float4x4;
-
-#define MAIN_pos mtlPos
-#define MAIN_pt (float2(1, 1) / float2(MAIN.get_width(), MAIN.get_height()))
-#define MAIN_size float2(MAIN.get_width(), MAIN.get_height())
-#define MAIN_tex(pos) MAIN.sample(textureSampler, pos)
-#define MAIN_texOff(off) MAIN_tex(MAIN_pos + MAIN_pt * float2(off))
-
-#define HOOKED_pos MAIN_pos
-#define HOOKED_size MAIN_size
-#define HOOKED_pt MAIN_pt
-#define HOOKED_tex(pos) MAIN_tex(pos)
-#define HOOKED_texOff(off) MAIN_texOff(off)
-
 #define conv2d_tf_pos mtlPos
 #define conv2d_tf_size float2(conv2d_tf.get_width(), conv2d_tf.get_height())
-#define conv2d_tf_pt (float2(1, 1) / conv2d_tf_size)
+#define conv2d_tf_pt (vec2(1, 1) / conv2d_tf_size)
 #define conv2d_tf_tex(pos) conv2d_tf.sample(textureSampler, pos)
-#define conv2d_tf_texOff(off) conv2d_tf_tex(conv2d_tf_pos + conv2d_tf_pt * float2(off))
-
+#define conv2d_tf_texOff(off) conv2d_tf_tex(conv2d_tf_pos + conv2d_tf_pt * vec2(off))
 #define conv2d_tf1_pos mtlPos
 #define conv2d_tf1_size float2(conv2d_tf1.get_width(), conv2d_tf1.get_height())
-#define conv2d_tf1_pt (float2(1, 1) / conv2d_tf1_size)
+#define conv2d_tf1_pt (vec2(1, 1) / conv2d_tf1_size)
 #define conv2d_tf1_tex(pos) conv2d_tf1.sample(textureSampler, pos)
-#define conv2d_tf1_texOff(off) conv2d_tf1_tex(conv2d_tf1_pos + conv2d_tf1_pt * float2(off))
-
+#define conv2d_tf1_texOff(off) conv2d_tf1_tex(conv2d_tf1_pos + conv2d_tf1_pt * vec2(off))
 #define conv2d_1_tf_pos mtlPos
 #define conv2d_1_tf_size float2(conv2d_1_tf.get_width(), conv2d_1_tf.get_height())
-#define conv2d_1_tf_pt (float2(1, 1) / conv2d_1_tf_size)
+#define conv2d_1_tf_pt (vec2(1, 1) / conv2d_1_tf_size)
 #define conv2d_1_tf_tex(pos) conv2d_1_tf.sample(textureSampler, pos)
-#define conv2d_1_tf_texOff(off) conv2d_1_tf_tex(conv2d_1_tf_pos + conv2d_1_tf_pt * float2(off))
-
+#define conv2d_1_tf_texOff(off) conv2d_1_tf_tex(conv2d_1_tf_pos + conv2d_1_tf_pt * vec2(off))
 #define conv2d_1_tf1_pos mtlPos
 #define conv2d_1_tf1_size float2(conv2d_1_tf1.get_width(), conv2d_1_tf1.get_height())
-#define conv2d_1_tf1_pt (float2(1, 1) / conv2d_1_tf1_size)
+#define conv2d_1_tf1_pt (vec2(1, 1) / conv2d_1_tf1_size)
 #define conv2d_1_tf1_tex(pos) conv2d_1_tf1.sample(textureSampler, pos)
-#define conv2d_1_tf1_texOff(off) conv2d_1_tf1_tex(conv2d_1_tf1_pos + conv2d_1_tf1_pt * float2(off))
-
+#define conv2d_1_tf1_texOff(off) conv2d_1_tf1_tex(conv2d_1_tf1_pos + conv2d_1_tf1_pt * vec2(off))
 #define conv2d_2_tf_pos mtlPos
 #define conv2d_2_tf_size float2(conv2d_2_tf.get_width(), conv2d_2_tf.get_height())
-#define conv2d_2_tf_pt (float2(1, 1) / conv2d_2_tf_size)
+#define conv2d_2_tf_pt (vec2(1, 1) / conv2d_2_tf_size)
 #define conv2d_2_tf_tex(pos) conv2d_2_tf.sample(textureSampler, pos)
-#define conv2d_2_tf_texOff(off) conv2d_2_tf_tex(conv2d_2_tf_pos + conv2d_2_tf_pt * float2(off))
-
+#define conv2d_2_tf_texOff(off) conv2d_2_tf_tex(conv2d_2_tf_pos + conv2d_2_tf_pt * vec2(off))
 #define conv2d_2_tf1_pos mtlPos
 #define conv2d_2_tf1_size float2(conv2d_2_tf1.get_width(), conv2d_2_tf1.get_height())
-#define conv2d_2_tf1_pt (float2(1, 1) / conv2d_2_tf1_size)
+#define conv2d_2_tf1_pt (vec2(1, 1) / conv2d_2_tf1_size)
 #define conv2d_2_tf1_tex(pos) conv2d_2_tf1.sample(textureSampler, pos)
-#define conv2d_2_tf1_texOff(off) conv2d_2_tf1_tex(conv2d_2_tf1_pos + conv2d_2_tf1_pt * float2(off))
-
+#define conv2d_2_tf1_texOff(off) conv2d_2_tf1_tex(conv2d_2_tf1_pos + conv2d_2_tf1_pt * vec2(off))
 #define conv2d_3_tf_pos mtlPos
 #define conv2d_3_tf_size float2(conv2d_3_tf.get_width(), conv2d_3_tf.get_height())
-#define conv2d_3_tf_pt (float2(1, 1) / conv2d_3_tf_size)
+#define conv2d_3_tf_pt (vec2(1, 1) / conv2d_3_tf_size)
 #define conv2d_3_tf_tex(pos) conv2d_3_tf.sample(textureSampler, pos)
-#define conv2d_3_tf_texOff(off) conv2d_3_tf_tex(conv2d_3_tf_pos + conv2d_3_tf_pt * float2(off))
-
+#define conv2d_3_tf_texOff(off) conv2d_3_tf_tex(conv2d_3_tf_pos + conv2d_3_tf_pt * vec2(off))
 #define conv2d_3_tf1_pos mtlPos
 #define conv2d_3_tf1_size float2(conv2d_3_tf1.get_width(), conv2d_3_tf1.get_height())
-#define conv2d_3_tf1_pt (float2(1, 1) / conv2d_3_tf1_size)
+#define conv2d_3_tf1_pt (vec2(1, 1) / conv2d_3_tf1_size)
 #define conv2d_3_tf1_tex(pos) conv2d_3_tf1.sample(textureSampler, pos)
-#define conv2d_3_tf1_texOff(off) conv2d_3_tf1_tex(conv2d_3_tf1_pos + conv2d_3_tf1_pt * float2(off))
-
+#define conv2d_3_tf1_texOff(off) conv2d_3_tf1_tex(conv2d_3_tf1_pos + conv2d_3_tf1_pt * vec2(off))
 #define conv2d_4_tf_pos mtlPos
 #define conv2d_4_tf_size float2(conv2d_4_tf.get_width(), conv2d_4_tf.get_height())
-#define conv2d_4_tf_pt (float2(1, 1) / conv2d_4_tf_size)
+#define conv2d_4_tf_pt (vec2(1, 1) / conv2d_4_tf_size)
 #define conv2d_4_tf_tex(pos) conv2d_4_tf.sample(textureSampler, pos)
-#define conv2d_4_tf_texOff(off) conv2d_4_tf_tex(conv2d_4_tf_pos + conv2d_4_tf_pt * float2(off))
-
+#define conv2d_4_tf_texOff(off) conv2d_4_tf_tex(conv2d_4_tf_pos + conv2d_4_tf_pt * vec2(off))
 #define conv2d_4_tf1_pos mtlPos
 #define conv2d_4_tf1_size float2(conv2d_4_tf1.get_width(), conv2d_4_tf1.get_height())
-#define conv2d_4_tf1_pt (float2(1, 1) / conv2d_4_tf1_size)
+#define conv2d_4_tf1_pt (vec2(1, 1) / conv2d_4_tf1_size)
 #define conv2d_4_tf1_tex(pos) conv2d_4_tf1.sample(textureSampler, pos)
-#define conv2d_4_tf1_texOff(off) conv2d_4_tf1_tex(conv2d_4_tf1_pos + conv2d_4_tf1_pt * float2(off))
-
+#define conv2d_4_tf1_texOff(off) conv2d_4_tf1_tex(conv2d_4_tf1_pos + conv2d_4_tf1_pt * vec2(off))
 #define conv2d_5_tf_pos mtlPos
 #define conv2d_5_tf_size float2(conv2d_5_tf.get_width(), conv2d_5_tf.get_height())
-#define conv2d_5_tf_pt (float2(1, 1) / conv2d_5_tf_size)
+#define conv2d_5_tf_pt (vec2(1, 1) / conv2d_5_tf_size)
 #define conv2d_5_tf_tex(pos) conv2d_5_tf.sample(textureSampler, pos)
-#define conv2d_5_tf_texOff(off) conv2d_5_tf_tex(conv2d_5_tf_pos + conv2d_5_tf_pt * float2(off))
-
+#define conv2d_5_tf_texOff(off) conv2d_5_tf_tex(conv2d_5_tf_pos + conv2d_5_tf_pt * vec2(off))
 #define conv2d_5_tf1_pos mtlPos
 #define conv2d_5_tf1_size float2(conv2d_5_tf1.get_width(), conv2d_5_tf1.get_height())
-#define conv2d_5_tf1_pt (float2(1, 1) / conv2d_5_tf1_size)
+#define conv2d_5_tf1_pt (vec2(1, 1) / conv2d_5_tf1_size)
 #define conv2d_5_tf1_tex(pos) conv2d_5_tf1.sample(textureSampler, pos)
-#define conv2d_5_tf1_texOff(off) conv2d_5_tf1_tex(conv2d_5_tf1_pos + conv2d_5_tf1_pt * float2(off))
-
+#define conv2d_5_tf1_texOff(off) conv2d_5_tf1_tex(conv2d_5_tf1_pos + conv2d_5_tf1_pt * vec2(off))
 #define conv2d_6_tf_pos mtlPos
 #define conv2d_6_tf_size float2(conv2d_6_tf.get_width(), conv2d_6_tf.get_height())
-#define conv2d_6_tf_pt (float2(1, 1) / conv2d_6_tf_size)
+#define conv2d_6_tf_pt (vec2(1, 1) / conv2d_6_tf_size)
 #define conv2d_6_tf_tex(pos) conv2d_6_tf.sample(textureSampler, pos)
-#define conv2d_6_tf_texOff(off) conv2d_6_tf_tex(conv2d_6_tf_pos + conv2d_6_tf_pt * float2(off))
-
+#define conv2d_6_tf_texOff(off) conv2d_6_tf_tex(conv2d_6_tf_pos + conv2d_6_tf_pt * vec2(off))
 #define conv2d_6_tf1_pos mtlPos
 #define conv2d_6_tf1_size float2(conv2d_6_tf1.get_width(), conv2d_6_tf1.get_height())
-#define conv2d_6_tf1_pt (float2(1, 1) / conv2d_6_tf1_size)
+#define conv2d_6_tf1_pt (vec2(1, 1) / conv2d_6_tf1_size)
 #define conv2d_6_tf1_tex(pos) conv2d_6_tf1.sample(textureSampler, pos)
-#define conv2d_6_tf1_texOff(off) conv2d_6_tf1_tex(conv2d_6_tf1_pos + conv2d_6_tf1_pt * float2(off))
-
+#define conv2d_6_tf1_texOff(off) conv2d_6_tf1_tex(conv2d_6_tf1_pos + conv2d_6_tf1_pt * vec2(off))
+#define MAIN_pos mtlPos
+#define MAIN_pt (vec2(1, 1) / vec2(MAIN.get_width(), MAIN.get_height()))
+#define MAIN_size vec2(MAIN.get_width(), MAIN.get_height())
+#define MAIN_tex(pos) MAIN.sample(textureSampler, pos)
+#define MAIN_texOff(off) MAIN_tex(MAIN_pos + MAIN_pt * vec2(off))
 #define g_0 (max((conv2d_tf_tex(conv2d_tf_pos)), 0.0))
 #define g_1 (max((conv2d_tf1_tex(conv2d_tf1_pos)), 0.0))
 #define g_2 (max(-(conv2d_tf_tex(conv2d_tf_pos)), 0.0))
@@ -1725,7 +1565,7 @@ using mat4 = float4x4;
 #define g_25 (max((conv2d_6_tf1_tex(conv2d_6_tf1_pos)), 0.0))
 #define g_26 (max(-(conv2d_6_tf_tex(conv2d_6_tf_pos)), 0.0))
 #define g_27 (max(-(conv2d_6_tf1_tex(conv2d_6_tf1_pos)), 0.0))
-static vec4 hook_pass16(float2 mtlPos, texture2d<float, access::sample> conv2d_tf, texture2d<float, access::sample> conv2d_tf1, texture2d<float, access::sample> conv2d_1_tf, texture2d<float, access::sample> conv2d_1_tf1, texture2d<float, access::sample> conv2d_2_tf, texture2d<float, access::sample> conv2d_2_tf1, texture2d<float, access::sample> conv2d_3_tf, texture2d<float, access::sample> conv2d_3_tf1, texture2d<float, access::sample> conv2d_4_tf, texture2d<float, access::sample> conv2d_4_tf1, texture2d<float, access::sample> conv2d_5_tf, texture2d<float, access::sample> conv2d_5_tf1, texture2d<float, access::sample> conv2d_6_tf, texture2d<float, access::sample> conv2d_6_tf1, texture2d<float, access::sample> MAIN, sampler textureSampler) {
+static vec4 hook_pass16(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> conv2d_tf, texture2d<float, access::sample> conv2d_tf1, texture2d<float, access::sample> conv2d_1_tf, texture2d<float, access::sample> conv2d_1_tf1, texture2d<float, access::sample> conv2d_2_tf, texture2d<float, access::sample> conv2d_2_tf1, texture2d<float, access::sample> conv2d_3_tf, texture2d<float, access::sample> conv2d_3_tf1, texture2d<float, access::sample> conv2d_4_tf, texture2d<float, access::sample> conv2d_4_tf1, texture2d<float, access::sample> conv2d_5_tf, texture2d<float, access::sample> conv2d_5_tf1, texture2d<float, access::sample> conv2d_6_tf, texture2d<float, access::sample> conv2d_6_tf1, texture2d<float, access::sample> MAIN) {
 vec4 result = mat4(0.1765669, 0.14268716, 0.19186598, 0.15799578, 0.016374417, 0.018578433, 0.0039475, 0.0046772263, 0.39840183, 0.36909792, 0.35409746, 0.37422222, -0.108508386, -0.1331279, -0.10336035, -0.14776541) * g_0;
 result += mat4(-0.057757027, -0.14071062, -0.025283009, -0.09397916, -0.09031894, -0.14219165, -0.08299535, -0.13970287, -0.12259208, -0.14382727, -0.22002274, -0.25016093, -0.048906635, 0.06620249, 0.016965045, 0.1295978) * g_1;
 result += mat4(-0.16748372, -0.13718611, -0.18565705, -0.15029612, -0.080749065, -0.09955825, 0.032431383, 0.023855643, -0.2748885, -0.23232168, -0.29121292, -0.26405892, 0.16556135, 0.18657646, 0.1424068, 0.18855052) * g_2;
@@ -1757,22 +1597,24 @@ result += mat4(-0.16819532, 0.141579, -0.062480718, -0.021918943, 0.06348125, 0.
 result += vec4(0.069033325, 0.040207114, 0.027286075, 0.0065334598);
 return result;
 }
-kernel void Anime4Kv32UpscaleCNNx2VLConv4x1x1x112_pass16(
-    texture2d<float, access::sample> conv2d_tf [[texture(0)]], texture2d<float, access::sample> conv2d_tf1 [[texture(1)]], texture2d<float, access::sample> conv2d_1_tf [[texture(2)]], texture2d<float, access::sample> conv2d_1_tf1 [[texture(3)]], texture2d<float, access::sample> conv2d_2_tf [[texture(4)]], texture2d<float, access::sample> conv2d_2_tf1 [[texture(5)]], texture2d<float, access::sample> conv2d_3_tf [[texture(6)]], texture2d<float, access::sample> conv2d_3_tf1 [[texture(7)]], texture2d<float, access::sample> conv2d_4_tf [[texture(8)]], texture2d<float, access::sample> conv2d_4_tf1 [[texture(9)]], texture2d<float, access::sample> conv2d_5_tf [[texture(10)]], texture2d<float, access::sample> conv2d_5_tf1 [[texture(11)]], texture2d<float, access::sample> conv2d_6_tf [[texture(12)]], texture2d<float, access::sample> conv2d_6_tf1 [[texture(13)]], texture2d<float, access::sample> MAIN [[texture(14)]], texture2d<float, access::write> output [[texture(15)]], uint2 gid [[thread_position_in_grid]], sampler textureSampler [[sampler(0)]]) {
-    float2 mtlPos = float2(gid) / (float2(output.get_width(), output.get_height()) - float2(1, 1));
-    output.write(hook_pass16(mtlPos, conv2d_tf, conv2d_tf1, conv2d_1_tf, conv2d_1_tf1, conv2d_2_tf, conv2d_2_tf1, conv2d_3_tf, conv2d_3_tf1, conv2d_4_tf, conv2d_4_tf1, conv2d_5_tf, conv2d_5_tf1, conv2d_6_tf, conv2d_6_tf1, MAIN, textureSampler), gid);
+kernel void Anime4Kv32UpscaleCNNx2VLConv4x1x1x112_pass16(texture2d<float, access::sample> conv2d_tf [[texture(0)]], texture2d<float, access::sample> conv2d_tf1 [[texture(1)]], texture2d<float, access::sample> conv2d_1_tf [[texture(2)]], texture2d<float, access::sample> conv2d_1_tf1 [[texture(3)]], texture2d<float, access::sample> conv2d_2_tf [[texture(4)]], texture2d<float, access::sample> conv2d_2_tf1 [[texture(5)]], texture2d<float, access::sample> conv2d_3_tf [[texture(6)]], texture2d<float, access::sample> conv2d_3_tf1 [[texture(7)]], texture2d<float, access::sample> conv2d_4_tf [[texture(8)]], texture2d<float, access::sample> conv2d_4_tf1 [[texture(9)]], texture2d<float, access::sample> conv2d_5_tf [[texture(10)]], texture2d<float, access::sample> conv2d_5_tf1 [[texture(11)]], texture2d<float, access::sample> conv2d_6_tf [[texture(12)]], texture2d<float, access::sample> conv2d_6_tf1 [[texture(13)]], texture2d<float, access::sample> MAIN [[texture(14)]], texture2d<float, access::write> output [[texture(15)]], uint2 gid [[thread_position_in_grid]], sampler textureSampler [[sampler(0)]]) {
+    float2 outSize = float2(output.get_width(), output.get_height());
+    float2 outScale = 1.0 / (outSize - float2(1.0, 1.0));
+    float2 mtlPos = float2(gid) * outScale;
+    output.write(hook_pass16(mtlPos, textureSampler, conv2d_tf, conv2d_tf1, conv2d_1_tf, conv2d_1_tf1, conv2d_2_tf, conv2d_2_tf1, conv2d_3_tf, conv2d_3_tf1, conv2d_4_tf, conv2d_4_tf1, conv2d_5_tf, conv2d_5_tf1, conv2d_6_tf, conv2d_6_tf1, MAIN), gid);
 }
 
 
 // Shader: Anime4K-v3.2-Upscale-CNN-x2-(VL)-Depth-to-Space
 // Function: Anime4Kv32UpscaleCNNx2VLDepthtoSpace_pass17
-// BINDS: ['MAIN', 'conv2d_last_tf', 'conv2d_last_tf1', 'conv2d_last_tf2']
+// BINDS: ["MAIN", "conv2d_last_tf", "conv2d_last_tf1", "conv2d_last_tf2"]
 // HOOK: MAIN
 // SAVE: MAIN
-// Input textures: ['MAIN', 'conv2d_last_tf', 'conv2d_last_tf1', 'conv2d_last_tf2']
-// Output texture: output
-// Texture indices: BINDS=0..3, OUTPUT=4
-
+// META_WIDTH_BASE: conv2d_last_tf
+// META_WIDTH_SCALE: 2.0
+// META_HEIGHT_BASE: conv2d_last_tf
+// META_HEIGHT_SCALE: 2.0
+// META_WHEN: WHEN OUTPUT.w MAIN.w / 1.200 > OUTPUT.h MAIN.h / 1.200 > *
 #include <metal_stdlib>
 using namespace metal;
 
@@ -1781,38 +1623,32 @@ using vec3 = float3;
 using vec4 = float4;
 using ivec2 = int2;
 using mat4 = float4x4;
-
 #define MAIN_pos mtlPos
-#define MAIN_pt (float2(1, 1) / float2(MAIN.get_width(), MAIN.get_height()))
 #define MAIN_size float2(MAIN.get_width(), MAIN.get_height())
+#define MAIN_pt (vec2(1, 1) / MAIN_size)
 #define MAIN_tex(pos) MAIN.sample(textureSampler, pos)
-#define MAIN_texOff(off) MAIN_tex(MAIN_pos + MAIN_pt * float2(off))
-
-#define HOOKED_pos MAIN_pos
-#define HOOKED_size MAIN_size
-#define HOOKED_pt MAIN_pt
-#define HOOKED_tex(pos) MAIN_tex(pos)
-#define HOOKED_texOff(off) MAIN_texOff(off)
-
+#define MAIN_texOff(off) MAIN_tex(MAIN_pos + MAIN_pt * vec2(off))
 #define conv2d_last_tf_pos mtlPos
 #define conv2d_last_tf_size float2(conv2d_last_tf.get_width(), conv2d_last_tf.get_height())
-#define conv2d_last_tf_pt (float2(1, 1) / conv2d_last_tf_size)
+#define conv2d_last_tf_pt (vec2(1, 1) / conv2d_last_tf_size)
 #define conv2d_last_tf_tex(pos) conv2d_last_tf.sample(textureSampler, pos)
-#define conv2d_last_tf_texOff(off) conv2d_last_tf_tex(conv2d_last_tf_pos + conv2d_last_tf_pt * float2(off))
-
+#define conv2d_last_tf_texOff(off) conv2d_last_tf_tex(conv2d_last_tf_pos + conv2d_last_tf_pt * vec2(off))
 #define conv2d_last_tf1_pos mtlPos
 #define conv2d_last_tf1_size float2(conv2d_last_tf1.get_width(), conv2d_last_tf1.get_height())
-#define conv2d_last_tf1_pt (float2(1, 1) / conv2d_last_tf1_size)
+#define conv2d_last_tf1_pt (vec2(1, 1) / conv2d_last_tf1_size)
 #define conv2d_last_tf1_tex(pos) conv2d_last_tf1.sample(textureSampler, pos)
-#define conv2d_last_tf1_texOff(off) conv2d_last_tf1_tex(conv2d_last_tf1_pos + conv2d_last_tf1_pt * float2(off))
-
+#define conv2d_last_tf1_texOff(off) conv2d_last_tf1_tex(conv2d_last_tf1_pos + conv2d_last_tf1_pt * vec2(off))
 #define conv2d_last_tf2_pos mtlPos
 #define conv2d_last_tf2_size float2(conv2d_last_tf2.get_width(), conv2d_last_tf2.get_height())
-#define conv2d_last_tf2_pt (float2(1, 1) / conv2d_last_tf2_size)
+#define conv2d_last_tf2_pt (vec2(1, 1) / conv2d_last_tf2_size)
 #define conv2d_last_tf2_tex(pos) conv2d_last_tf2.sample(textureSampler, pos)
-#define conv2d_last_tf2_texOff(off) conv2d_last_tf2_tex(conv2d_last_tf2_pos + conv2d_last_tf2_pt * float2(off))
-
-static vec4 hook_pass17(float2 mtlPos, texture2d<float, access::sample> MAIN, texture2d<float, access::sample> conv2d_last_tf, texture2d<float, access::sample> conv2d_last_tf1, texture2d<float, access::sample> conv2d_last_tf2, sampler textureSampler) {
+#define conv2d_last_tf2_texOff(off) conv2d_last_tf2_tex(conv2d_last_tf2_pos + conv2d_last_tf2_pt * vec2(off))
+#define MAIN_pos mtlPos
+#define MAIN_pt (vec2(1, 1) / vec2(MAIN.get_width(), MAIN.get_height()))
+#define MAIN_size vec2(MAIN.get_width(), MAIN.get_height())
+#define MAIN_tex(pos) MAIN.sample(textureSampler, pos)
+#define MAIN_texOff(off) MAIN_tex(MAIN_pos + MAIN_pt * vec2(off))
+static vec4 hook_pass17(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> MAIN, texture2d<float, access::sample> conv2d_last_tf, texture2d<float, access::sample> conv2d_last_tf1, texture2d<float, access::sample> conv2d_last_tf2) {
 vec2 f0 = fract(conv2d_last_tf_pos * conv2d_last_tf_size);
 ivec2 i0 = ivec2(f0 * vec2(2.0));
 float c0 = conv2d_last_tf_tex((vec2(0.5) - f0) * conv2d_last_tf_pt + conv2d_last_tf_pos)[i0.y * 2 + i0.x];
@@ -1825,10 +1661,10 @@ float c2 = conv2d_last_tf2_tex((vec2(0.5) - f2) * conv2d_last_tf2_pt + conv2d_la
 float c3 = c2;
 return vec4(c0, c1, c2, c3) + MAIN_tex(MAIN_pos);
 }
-kernel void Anime4Kv32UpscaleCNNx2VLDepthtoSpace_pass17(
-    texture2d<float, access::sample> MAIN [[texture(0)]], texture2d<float, access::sample> conv2d_last_tf [[texture(1)]], texture2d<float, access::sample> conv2d_last_tf1 [[texture(2)]], texture2d<float, access::sample> conv2d_last_tf2 [[texture(3)]], texture2d<float, access::write> output [[texture(4)]], uint2 gid [[thread_position_in_grid]], sampler textureSampler [[sampler(0)]]) {
-    float2 mtlPos = float2(gid) / (float2(output.get_width(), output.get_height()) - float2(1, 1));
-    output.write(hook_pass17(mtlPos, MAIN, conv2d_last_tf, conv2d_last_tf1, conv2d_last_tf2, textureSampler), gid);
+kernel void Anime4Kv32UpscaleCNNx2VLDepthtoSpace_pass17(texture2d<float, access::sample> MAIN [[texture(0)]], texture2d<float, access::sample> conv2d_last_tf [[texture(1)]], texture2d<float, access::sample> conv2d_last_tf1 [[texture(2)]], texture2d<float, access::sample> conv2d_last_tf2 [[texture(3)]], texture2d<float, access::write> output [[texture(4)]], uint2 gid [[thread_position_in_grid]], sampler textureSampler [[sampler(0)]]) {
+    float2 outSize = float2(output.get_width(), output.get_height());
+    float2 outScale = 1.0 / (outSize - float2(1.0, 1.0));
+    float2 mtlPos = float2(gid) * outScale;
+    output.write(hook_pass17(mtlPos, textureSampler, MAIN, conv2d_last_tf, conv2d_last_tf1, conv2d_last_tf2), gid);
 }
-
 
