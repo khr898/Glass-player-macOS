@@ -65,6 +65,7 @@ class ViewLayer: CAMetalLayer {
     private let mtlDevice: MTLDevice
     private let commandQueue: MTLCommandQueue
     private let pipelineState: MTLRenderPipelineState
+    private let computeToRenderFence: MTLFence?
 
     // ═══════════════════════════════════════════════════════════════════
     // MARK: - mpv Interop: Offscreen CGL Context
@@ -158,6 +159,7 @@ class ViewLayer: CAMetalLayer {
             fatalError("[ViewLayer] Cannot create MTLCommandQueue")
         }
         commandQueue = queue
+        computeToRenderFence = device.makeFence()
 
         // ── 2. Render Pipeline State (compiled once, reused per frame) ──
         // This single MTLRenderPipelineState replaces all OpenGL per-frame
@@ -678,7 +680,8 @@ class ViewLayer: CAMetalLayer {
             // Process frame through Anime4K compute shaders
             if let processedTexture = pipeline.processFrame(
                     sourceTexture: videoTexture,
-                    commandBuffer: cmdBuf) {
+                    commandBuffer: cmdBuf,
+                    completionFence: computeToRenderFence) {
                 finalTexture = processedTexture
                 anime4KOutputTexture = processedTexture
                 NSLog("[ViewLayer] Anime4K output texture: %dx%d", processedTexture.width, processedTexture.height)
@@ -687,10 +690,6 @@ class ViewLayer: CAMetalLayer {
                 if frameCaptureEnabled {
                     captureFrame(sourceTexture: videoTexture, outputTexture: processedTexture)
                 }
-
-                // Add a blit encoder to create implicit barrier between compute and render
-                let blitEncoder = cmdBuf.makeBlitCommandEncoder()
-                blitEncoder?.endEncoding()
             } else {
                 NSLog("[ViewLayer] Anime4K processFrame returned nil!")
             }
@@ -716,6 +715,10 @@ class ViewLayer: CAMetalLayer {
         // ── Encode render pass ──
         guard let encoder = cmdBuf.makeRenderCommandEncoder(descriptor: passDesc) else { return }
         encoder.label = "Video Display Pass"
+
+        if let computeToRenderFence, anime4KPipeline?.isActive == true {
+            encoder.waitForFence(computeToRenderFence, before: .fragment)
+        }
 
         // Bind statically compiled pipeline state
         // (replaces per-frame glEnable/glDisable/glBlendFunc state machine)

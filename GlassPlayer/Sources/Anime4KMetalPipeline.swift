@@ -651,7 +651,8 @@ class Anime4KMetalPipeline {
     ///   - commandBuffer: Command buffer to encode compute passes
     /// - Returns: Output texture containing the processed frame
     func processFrame(sourceTexture: MTLTexture,
-                      commandBuffer: MTLCommandBuffer) -> MTLTexture? {
+                      commandBuffer: MTLCommandBuffer,
+                      completionFence: MTLFence? = nil) -> MTLTexture? {
         if !isActive {
             NSLog("[Anime4K] processFrame: pipeline NOT active, returning source texture")
             return sourceTexture
@@ -777,6 +778,12 @@ class Anime4KMetalPipeline {
         }
 
         encoder.popDebugGroup()
+
+        // Explicitly signal compute completion for the render pass in the same command buffer.
+        if let completionFence {
+            encoder.updateFence(completionFence)
+        }
+
         encoder.endEncoding()
 
         // Profile frame processing time
