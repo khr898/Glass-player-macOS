@@ -32,7 +32,7 @@ struct IntermediateTexture {
 final class TexturePool {
     private var pooledTextures: [String: [MTLTexture]] = [:]
     private let device: MTLDevice
-    private let pixelFormat: MTLPixelFormat = .bgra8Unorm
+    private let pixelFormat: MTLPixelFormat = .rgba16Float
 
     init(device: MTLDevice) {
         self.device = device
@@ -60,7 +60,7 @@ final class TexturePool {
             mipmapped: false
         )
         descriptor.usage = [.shaderRead, .shaderWrite]
-        descriptor.storageMode = .shared
+        descriptor.storageMode = .private
 
         if let texture = device.makeTexture(descriptor: descriptor) {
             texture.label = label
@@ -665,6 +665,7 @@ class Anime4KMetalPipeline {
             return sourceTexture
         }
         NSLog("[Anime4K] processFrame: processing with preset %@ (%d shader passes)", modeType.displayName, modeType.shaderPasses.count)
+        NSLog("[Anime4K] processFrame: source format=%@", String(describing: sourceTexture.pixelFormat))
 
         let shaderPasses = modeType.shaderPasses
         let frameStart = CACurrentMediaTime()
@@ -711,6 +712,7 @@ class Anime4KMetalPipeline {
                     outputTexture = ensureOutputTexture(width: inputWidth * scaleFactor,
                                                         height: inputHeight * scaleFactor)
                     NSLog("[Anime4K] Final kernel output: %dx%d", outputTexture.width, outputTexture.height)
+                    NSLog("[Anime4K] Final kernel output format=%@", String(describing: outputTexture.pixelFormat))
                 } else {
                     // Intermediate kernel - alternate write targets to avoid read/write aliasing.
                     if kernelIdx % 2 == 0 {
@@ -953,13 +955,13 @@ class Anime4KMetalPipeline {
         }
 
         let descriptor = MTLTextureDescriptor.texture2DDescriptor(
-            pixelFormat: .bgra8Unorm,
+            pixelFormat: .rgba16Float,
             width: width,
             height: height,
             mipmapped: false
         )
         descriptor.usage = [.shaderRead, .shaderWrite]
-        descriptor.storageMode = .shared  // Use shared for compatibility
+        descriptor.storageMode = .private
 
         let texture = device.makeTexture(descriptor: descriptor)
         outputTexture = texture
