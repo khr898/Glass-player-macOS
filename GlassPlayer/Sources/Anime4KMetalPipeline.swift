@@ -20,11 +20,14 @@ import UniformTypeIdentifiers
 // preset definitions instead of hardcoded string dictionaries.
 // ---------------------------------------------------------------------------
 
-/// Intermediate texture for chaining compute passes
-struct IntermediateTexture {
-    let texture: MTLTexture
+private struct PassOutputSize {
     let width: Int
     let height: Int
+}
+
+private struct KernelBindingSpec {
+    let inputNames: [String]
+    let outputName: String
 }
 
 /// Texture pool for reusing intermediate textures across frames
@@ -448,11 +451,11 @@ class Anime4KMetalPipeline {
     /// Cache of compiled compute pipeline states
     private var pipelineStates: [String: MTLComputePipelineState] = [:]
 
-    /// Intermediate textures for pass chaining (reused across frames)
-    private var intermediateTextures: [IntermediateTexture] = []
+    /// Named intermediate textures keyed by pass index and symbolic texture name.
+    private var namedIntermediateTextures: [String: MTLTexture] = [:]
 
-    /// Secondary intermediate textures for ping-pong writes within a pass
-    private var pingPongIntermediateTextures: [IntermediateTexture] = []
+    /// Output dimensions for each shader pass (precomputed at activation).
+    private var passOutputSizes: [PassOutputSize] = []
 
     /// Current preset configuration (stores the mode type)
     private var currentModeType: (any Anime4KMode.Type)?
@@ -601,10 +604,10 @@ class Anime4KMetalPipeline {
             }
         }
 
-        // Allocate intermediate textures
-        allocateIntermediateTextures(shaderFiles: shaderFiles,
-                                     inputWidth: inputWidth,
-                                     inputHeight: inputHeight)
+        // Configure dimensions for each pass and clear stale intermediates.
+        configurePassOutputSizes(shaderFiles: shaderFiles,
+                     inputWidth: inputWidth,
+                     inputHeight: inputHeight)
 
         // Store the mode type for static member access
         self.currentModeType = modeType
@@ -620,16 +623,12 @@ class Anime4KMetalPipeline {
 
     /// Deactivate the current preset
     func deactivate() {
-        // Return intermediate textures to pool before clearing
-        for intermediate in intermediateTextures {
-            texturePool.releaseTexture(intermediate.texture)
+        // Return intermediate textures to pool before clearing.
+        for texture in namedIntermediateTextures.values {
+            texturePool.releaseTexture(texture)
         }
-        intermediateTextures.removeAll()
-
-        for intermediate in pingPongIntermediateTextures {
-            texturePool.releaseTexture(intermediate.texture)
-        }
-        pingPongIntermediateTextures.removeAll()
+        namedIntermediateTextures.removeAll()
+        passOutputSizes.removeAll()
 
         // Clear output texture
         if let output = outputTexture {
@@ -685,16 +684,17 @@ class Anime4KMetalPipeline {
         // Push debug group for profiling in Xcode Instruments
         encoder.pushDebugGroup("Anime4K: \(modeType.displayName)")
 
-        // Chain passes together
-        // Key insight: MAIN must always be the original source texture, not the current input
-        // Intermediate passes need the output of previous passes bound at specific indices
+        // Chain passes together using a symbolic texture map for each shader pass.
         var currentInput = sourceTexture
-        let originalSource = sourceTexture  // MAIN is always the original source
-        var statsMaxTexture: MTLTexture?
+        let originalSource = sourceTexture
 
         for (index, pass) in shaderPasses.enumerated() {
             let kernelNames = KernelFunctionRegistry.kernels(for: pass.shaderFile)
             NSLog("[Anime4K] Pass %d: %@ (%d kernels)", index, pass.description, kernelNames.count)
+
+            var textureMap: [String: MTLTexture] = [
+                "MAIN": originalSource
+            ]
 
             for (kernelIdx, kernelName) in kernelNames.enumerated() {
                 guard let pipeline = pipelineStates[kernelName] else {
@@ -704,22 +704,26 @@ class Anime4KMetalPipeline {
 
                 encoder.setComputePipelineState(pipeline)
 
-                // Determine output texture for this specific kernel
+                let bindingSpec = bindingSpec(for: pass.shaderFile,
+                                              kernelIndex: kernelIdx,
+                                              kernelCount: kernelNames.count)
+
+                // Determine output texture for this specific kernel.
                 let outputTexture: MTLTexture
                 let isLastKernelOfLastPass = (index == shaderPasses.count - 1) && (kernelIdx == kernelNames.count - 1)
-                if isLastKernelOfLastPass {
+                if bindingSpec.outputName == "OUTPUT" && isLastKernelOfLastPass {
                     // Final kernel - use display output texture
                     outputTexture = ensureOutputTexture(width: inputWidth * scaleFactor,
                                                         height: inputHeight * scaleFactor)
                     NSLog("[Anime4K] Final kernel output: %dx%d", outputTexture.width, outputTexture.height)
                     NSLog("[Anime4K] Final kernel output format=%@", String(describing: outputTexture.pixelFormat))
                 } else {
-                    // Intermediate kernel - alternate write targets to avoid read/write aliasing.
-                    if kernelIdx % 2 == 0 {
-                        outputTexture = intermediateTextures[index].texture
-                    } else {
-                        outputTexture = pingPongIntermediateTextures[index].texture
+                    guard let intermediate = getOrCreateIntermediateTexture(passIndex: index,
+                                                                             textureName: bindingSpec.outputName) else {
+                        NSLog("[Anime4K] ERROR: Failed to allocate intermediate texture for %@", bindingSpec.outputName)
+                        continue
                     }
+                    outputTexture = intermediate
 
                     if outputTexture === currentInput {
                         NSLog("[Anime4K] WARNING: output aliases input at pass=%d kernel=%d", index, kernelIdx)
@@ -728,56 +732,29 @@ class Anime4KMetalPipeline {
                     NSLog("[Anime4K] Intermediate kernel %d.%d output: %dx%d", index, kernelIdx, outputTexture.width, outputTexture.height)
                 }
 
-                // Bind textures based on kernel requirements.
-                // DeRing kernels require explicit multi-input bindings; other kernels use fallback behavior.
-                var additionalReadResources: [MTLTexture] = []
-                if kernelName.contains("DeRingComputeStatistics_pass1") {
-                    // HOOKED, STATSMAX, MAIN, OUTPUT
-                    let stats = statsMaxTexture ?? currentInput
-                    encoder.setTexture(currentInput, index: 0)
-                    encoder.setTexture(stats, index: 1)
-                    encoder.setTexture(originalSource, index: 2)
-                    encoder.setTexture(outputTexture, index: 3)
-                    additionalReadResources.append(stats)
-                } else if kernelName.contains("DeRingComputeStatistics") {
-                    // HOOKED, MAIN, OUTPUT
-                    encoder.setTexture(currentInput, index: 0)
-                    encoder.setTexture(originalSource, index: 1)
-                    encoder.setTexture(outputTexture, index: 2)
-                } else if kernelName.contains("DeRingClamp") {
-                    // HOOKED, STATSMAX, MAIN, OUTPUT
-                    let stats = statsMaxTexture ?? currentInput
-                    encoder.setTexture(currentInput, index: 0)
-                    encoder.setTexture(stats, index: 1)
-                    encoder.setTexture(originalSource, index: 2)
-                    encoder.setTexture(outputTexture, index: 3)
-                    additionalReadResources.append(stats)
-                } else {
-                    // Generic fallback for CNN kernels.
-                    if index == 0 && kernelIdx == 0 {
-                        encoder.setTexture(originalSource, index: 0)
-                        encoder.setTexture(outputTexture, index: 1)
-                    } else {
-                        encoder.setTexture(currentInput, index: 0)
-                        encoder.setTexture(originalSource, index: 1)
-                        encoder.setTexture(outputTexture, index: 2)
+                // Bind input textures in exact symbolic order and output after inputs.
+                var inputTextures: [MTLTexture] = []
+                for (inputIndex, inputName) in bindingSpec.inputNames.enumerated() {
+                    guard let inputTexture = resolveInputTexture(inputName,
+                                                                 textureMap: textureMap,
+                                                                 currentInput: currentInput,
+                                                                 originalSource: originalSource) else {
+                        NSLog("[Anime4K] ERROR: Missing input texture '%@' for kernel %@", inputName, kernelName)
+                        continue
                     }
-
-                    // Preserve compatibility with kernels using high output indices.
-                    for i in 3...15 {
-                        encoder.setTexture(outputTexture, index: i)
-                    }
+                    encoder.setTexture(inputTexture, index: inputIndex)
+                    inputTextures.append(inputTexture)
                 }
+                encoder.setTexture(outputTexture, index: bindingSpec.inputNames.count)
 
                 // Bind sampler at index 0
                 encoder.setSamplerState(samplerState, index: 0)
 
                 // Declare resource usage for proper barrier handling
-                encoder.useResource(currentInput, usage: .read)
-                encoder.useResource(outputTexture, usage: .write)
-                for resource in additionalReadResources {
-                    encoder.useResource(resource, usage: .read)
+                for inputTexture in inputTextures {
+                    encoder.useResource(inputTexture, usage: .read)
                 }
+                encoder.useResource(outputTexture, usage: .write)
 
                 // Calculate thread groups based on OUTPUT dimensions
                 let width = outputTexture.width
@@ -795,10 +772,7 @@ class Anime4KMetalPipeline {
 
                 // Next kernel/pass reads from this kernel's output
                 currentInput = outputTexture
-
-                if kernelName.contains("DeRingComputeStatistics") {
-                    statsMaxTexture = outputTexture
-                }
+                textureMap[bindingSpec.outputName] = outputTexture
             }
         }
 
@@ -894,25 +868,21 @@ class Anime4KMetalPipeline {
 
     // MARK: - Private Methods
 
-    /// Allocate intermediate textures for pass chaining (uses texture pool)
-    private func allocateIntermediateTextures(shaderFiles: [String],
-                                              inputWidth: Int,
-                                              inputHeight: Int) {
-        // Return existing textures to pool before reallocating
-        for intermediate in intermediateTextures {
-            texturePool.releaseTexture(intermediate.texture)
+    /// Configure output dimensions for each pass.
+    private func configurePassOutputSizes(shaderFiles: [String],
+                                          inputWidth: Int,
+                                          inputHeight: Int) {
+        // Return existing textures to pool before reallocating.
+        for texture in namedIntermediateTextures.values {
+            texturePool.releaseTexture(texture)
         }
-        intermediateTextures.removeAll()
-
-        for intermediate in pingPongIntermediateTextures {
-            texturePool.releaseTexture(intermediate.texture)
-        }
-        pingPongIntermediateTextures.removeAll()
+        namedIntermediateTextures.removeAll()
+        passOutputSizes.removeAll()
 
         var currentWidth = inputWidth
         var currentHeight = inputHeight
 
-        for (index, shaderFile) in shaderFiles.enumerated() {
+        for shaderFile in shaderFiles {
             // Check if this shader upscales
             let isUpscale = shaderFile.contains("Upscale") &&
                            !shaderFile.contains("AutoDownscale")
@@ -922,29 +892,213 @@ class Anime4KMetalPipeline {
                 currentHeight *= 2
             }
 
-            // Get texture from pool (or create new one)
-            let label = "Anime4K_Intermediate_\(index)_\(shaderFile)"
-            if let texture = texturePool.acquireTexture(width: currentWidth, height: currentHeight, label: label) {
-                intermediateTextures.append(IntermediateTexture(
-                    texture: texture,
-                    width: currentWidth,
-                    height: currentHeight
-                ))
-            }
+            passOutputSizes.append(PassOutputSize(width: currentWidth, height: currentHeight))
+        }
 
-            let pingPongLabel = "Anime4K_IntermediatePingPong_\(index)_\(shaderFile)"
-            if let texture = texturePool.acquireTexture(width: currentWidth, height: currentHeight, label: pingPongLabel) {
-                pingPongIntermediateTextures.append(IntermediateTexture(
-                    texture: texture,
-                    width: currentWidth,
-                    height: currentHeight
-                ))
+        NSLog("[Anime4K] Configured %d pass output sizes", passOutputSizes.count)
+    }
+
+    private func getOrCreateIntermediateTexture(passIndex: Int,
+                                                textureName: String) -> MTLTexture? {
+        let key = "p\(passIndex):\(textureName)"
+        if let existing = namedIntermediateTextures[key] {
+            return existing
+        }
+
+        guard passIndex < passOutputSizes.count else {
+            return nil
+        }
+
+        let size = passOutputSizes[passIndex]
+        let label = "Anime4K_\(key)"
+        guard let texture = texturePool.acquireTexture(width: size.width,
+                                                       height: size.height,
+                                                       label: label) else {
+            return nil
+        }
+
+        namedIntermediateTextures[key] = texture
+        return texture
+    }
+
+    private func resolveInputTexture(_ inputName: String,
+                                     textureMap: [String: MTLTexture],
+                                     currentInput: MTLTexture,
+                                     originalSource: MTLTexture) -> MTLTexture? {
+        if inputName == "MAIN" {
+            return originalSource
+        }
+        if inputName == "$CURRENT" {
+            return currentInput
+        }
+        return textureMap[inputName]
+    }
+
+    private func bindingSpec(for shaderFile: String,
+                             kernelIndex: Int,
+                             kernelCount: Int) -> KernelBindingSpec {
+        if shaderFile == "Anime4K_Clamp_Highlights" {
+            switch kernelIndex {
+            case 0:
+                return KernelBindingSpec(inputNames: ["MAIN"], outputName: "STATSMAX")
+            case 1:
+                return KernelBindingSpec(inputNames: ["STATSMAX", "STATSMAX", "MAIN"], outputName: "STATSMAX")
+            default:
+                return KernelBindingSpec(inputNames: ["STATSMAX", "STATSMAX", "MAIN"], outputName: "OUTPUT")
             }
         }
 
-        NSLog("[Anime4K] Allocated %d intermediate textures (+%d ping-pong)",
-              intermediateTextures.count,
-              pingPongIntermediateTextures.count)
+        if shaderFile.contains("AutoDownscalePre") {
+            return KernelBindingSpec(inputNames: ["MAIN"], outputName: "OUTPUT")
+        }
+
+        if shaderFile.contains("Restore_CNN_VL") || shaderFile.contains("Restore_CNN_Soft_VL") {
+            return restoreVLSpec(kernelIndex: kernelIndex)
+        }
+
+        if shaderFile.contains("Upscale_CNN_x2_VL") || shaderFile.contains("Upscale_Denoise_CNN_x2_VL") {
+            return upscaleVLSpec(kernelIndex: kernelIndex, kernelCount: kernelCount)
+        }
+
+        if shaderFile.contains("Upscale_CNN_x2") || shaderFile.contains("Upscale_Denoise_CNN_x2") {
+            return upscaleStandardSpec(kernelIndex: kernelIndex, kernelCount: kernelCount)
+        }
+
+        if shaderFile.contains("Restore_CNN") {
+            return restoreStandardSpec(kernelIndex: kernelIndex, kernelCount: kernelCount)
+        }
+
+        if kernelIndex == 0 {
+            return KernelBindingSpec(inputNames: ["MAIN"], outputName: "$TMP0")
+        }
+        return KernelBindingSpec(inputNames: ["$CURRENT", "MAIN"], outputName: "$TMP\(kernelIndex)")
+    }
+
+    private func restoreStandardSpec(kernelIndex: Int,
+                                     kernelCount: Int) -> KernelBindingSpec {
+        if kernelIndex == 0 {
+            return KernelBindingSpec(inputNames: ["MAIN"], outputName: "conv2d_tf")
+        }
+
+        if kernelIndex == kernelCount - 1 {
+            let tailCount = max(kernelCount - 2, 0)
+            var inputs = ["MAIN", "conv2d_tf"]
+            if tailCount > 0 {
+                for i in 1...tailCount {
+                    inputs.append("conv2d_\(i)_tf")
+                }
+            }
+            return KernelBindingSpec(inputNames: inputs, outputName: "OUTPUT")
+        }
+
+        let prevName = kernelIndex == 1 ? "conv2d_tf" : "conv2d_\(kernelIndex - 1)_tf"
+        let outName = "conv2d_\(kernelIndex)_tf"
+        return KernelBindingSpec(inputNames: [prevName, "MAIN"], outputName: outName)
+    }
+
+    private func upscaleStandardSpec(kernelIndex: Int,
+                                     kernelCount: Int) -> KernelBindingSpec {
+        if kernelIndex == 0 {
+            return KernelBindingSpec(inputNames: ["MAIN"], outputName: "conv2d_tf")
+        }
+
+        if kernelIndex == kernelCount - 1 {
+            return KernelBindingSpec(inputNames: ["MAIN", "conv2d_last_tf"], outputName: "OUTPUT")
+        }
+
+        if kernelIndex == kernelCount - 2 {
+            let tailCount = max(kernelCount - 3, 0)
+            var inputs = ["conv2d_tf"]
+            if tailCount > 0 {
+                for i in 1...tailCount {
+                    inputs.append("conv2d_\(i)_tf")
+                }
+            }
+            inputs.append("MAIN")
+            return KernelBindingSpec(inputNames: inputs, outputName: "conv2d_last_tf")
+        }
+
+        let prevName = kernelIndex == 1 ? "conv2d_tf" : "conv2d_\(kernelIndex - 1)_tf"
+        let outName = "conv2d_\(kernelIndex)_tf"
+        return KernelBindingSpec(inputNames: [prevName, "MAIN"], outputName: outName)
+    }
+
+    private func restoreVLSpec(kernelIndex: Int) -> KernelBindingSpec {
+        if kernelIndex == 0 {
+            return KernelBindingSpec(inputNames: ["MAIN"], outputName: "conv2d_tf")
+        }
+        if kernelIndex == 1 {
+            return KernelBindingSpec(inputNames: ["MAIN"], outputName: "conv2d_tf1")
+        }
+        if kernelIndex == 16 {
+            var inputs = ["MAIN"]
+            for i in 1...7 {
+                inputs.append("conv2d_\(i)_tf")
+                inputs.append("conv2d_\(i)_tf1")
+            }
+            return KernelBindingSpec(inputNames: inputs, outputName: "OUTPUT")
+        }
+
+        let pair = ((kernelIndex - 2) / 2) + 1
+        let isFirst = ((kernelIndex - 2) % 2 == 0)
+        let prevA = pair == 1 ? "conv2d_tf" : "conv2d_\(pair - 1)_tf"
+        let prevB = pair == 1 ? "conv2d_tf1" : "conv2d_\(pair - 1)_tf1"
+        let out = isFirst ? "conv2d_\(pair)_tf" : "conv2d_\(pair)_tf1"
+        return KernelBindingSpec(inputNames: [prevA, prevB, "MAIN"], outputName: out)
+    }
+
+    private func upscaleVLSpec(kernelIndex: Int,
+                               kernelCount: Int) -> KernelBindingSpec {
+        if kernelIndex == 0 {
+            return KernelBindingSpec(inputNames: ["MAIN"], outputName: "conv2d_tf")
+        }
+        if kernelIndex == 1 {
+            return KernelBindingSpec(inputNames: ["MAIN"], outputName: "conv2d_tf1")
+        }
+
+        // Full VL chain (pass0..pass17).
+        if kernelCount >= 18 {
+            if kernelIndex == 17 {
+                return KernelBindingSpec(inputNames: ["MAIN", "conv2d_last_tf", "conv2d_last_tf1", "conv2d_last_tf2"], outputName: "OUTPUT")
+            }
+            if kernelIndex >= 14 {
+                let suffix = kernelIndex == 14 ? "" : (kernelIndex == 15 ? "1" : "2")
+                return KernelBindingSpec(inputNames: fullVLLastInputs(), outputName: "conv2d_last_tf\(suffix)")
+            }
+            let pair = ((kernelIndex - 2) / 2) + 1
+            let isFirst = ((kernelIndex - 2) % 2 == 0)
+            let prevA = pair == 1 ? "conv2d_tf" : "conv2d_\(pair - 1)_tf"
+            let prevB = pair == 1 ? "conv2d_tf1" : "conv2d_\(pair - 1)_tf1"
+            let out = isFirst ? "conv2d_\(pair)_tf" : "conv2d_\(pair)_tf1"
+            return KernelBindingSpec(inputNames: [prevA, prevB, "MAIN"], outputName: out)
+        }
+
+        // Legacy shortened chain used by current registry for Denoise VL.
+        if kernelIndex == kernelCount - 1 {
+            return KernelBindingSpec(inputNames: ["MAIN", "conv2d_last_tf", "conv2d_last_tf1", "conv2d_last_tf2"], outputName: "OUTPUT")
+        }
+        if kernelIndex >= kernelCount - 4 {
+            let idx = kernelIndex - (kernelCount - 4)
+            let suffix = idx == 0 ? "" : (idx == 1 ? "1" : "2")
+            return KernelBindingSpec(inputNames: fullVLLastInputs(), outputName: "conv2d_last_tf\(suffix)")
+        }
+
+        let pair = ((kernelIndex - 2) / 2) + 1
+        let isFirst = ((kernelIndex - 2) % 2 == 0)
+        let prevA = pair == 1 ? "conv2d_tf" : "conv2d_\(pair - 1)_tf"
+        let prevB = pair == 1 ? "conv2d_tf1" : "conv2d_\(pair - 1)_tf1"
+        let out = isFirst ? "conv2d_\(pair)_tf" : "conv2d_\(pair)_tf1"
+        return KernelBindingSpec(inputNames: [prevA, prevB, "MAIN"], outputName: out)
+    }
+
+    private func fullVLLastInputs() -> [String] {
+        var inputs = ["conv2d_tf", "conv2d_tf1"]
+        for i in 1...6 {
+            inputs.append("conv2d_\(i)_tf")
+            inputs.append("conv2d_\(i)_tf1")
+        }
+        inputs.append("MAIN")
+        return inputs
     }
 
     /// Ensure output texture exists at the specified dimensions
