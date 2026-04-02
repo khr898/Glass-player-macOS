@@ -110,12 +110,18 @@ struct KernelFunctionRegistry {
 
     /// Get all kernel functions for a shader file
     static func kernels(for shaderFile: String) -> [String] {
-        return kernelMapping[shaderFile] ?? []
+        guard let kernels = kernelMapping[shaderFile], !kernels.isEmpty else {
+            NSLog("[Anime4K] ERROR: Missing kernel mapping for shader file %@", shaderFile)
+            return []
+        }
+        return kernels
     }
 
     /// Initialize all kernel mappings - called at app startup
     /// Kernel names match the translated Metal shaders from translate_anime4k_shaders.py
     static func initialize() {
+        kernelMapping.removeAll()
+
         // Register all shader kernel mappings
         register(shaderFile: "Anime4K_Clamp_Highlights", kernels: [
             "Anime4Kv40DeRingComputeStatistics",      // pass0
@@ -254,10 +260,12 @@ struct KernelFunctionRegistry {
             "Anime4Kv32UpscaleDenoiseCNNx2VLConv4x3x3x16_pass9",// pass9
             "Anime4Kv32UpscaleDenoiseCNNx2VLConv4x3x3x16_pass10",// pass10
             "Anime4Kv32UpscaleDenoiseCNNx2VLConv4x3x3x16_pass11",// pass11
-            "Anime4Kv32UpscaleDenoiseCNNx2VLConv4x1x1x112_pass12",// pass12
-            "Anime4Kv32UpscaleDenoiseCNNx2VLConv4x1x1x112_pass13",// pass13
+            "Anime4Kv32UpscaleDenoiseCNNx2VLConv4x3x3x16_pass12",// pass12
+            "Anime4Kv32UpscaleDenoiseCNNx2VLConv4x3x3x16_pass13",// pass13
             "Anime4Kv32UpscaleDenoiseCNNx2VLConv4x1x1x112_pass14",// pass14
-            "Anime4Kv32UpscaleDenoiseCNNx2VLDepthtoSpace_pass15"  // pass15
+            "Anime4Kv32UpscaleDenoiseCNNx2VLConv4x1x1x112_pass15",// pass15
+            "Anime4Kv32UpscaleDenoiseCNNx2VLConv4x1x1x112_pass16",// pass16
+            "Anime4Kv32UpscaleDenoiseCNNx2VLDepthtoSpace_pass17"  // pass17
         ])
         register(shaderFile: "Anime4K_AutoDownscalePre_x2", kernels: [
             "Anime4Kv40AutoDownscalePrex2"
@@ -265,178 +273,6 @@ struct KernelFunctionRegistry {
         register(shaderFile: "Anime4K_AutoDownscalePre_x4", kernels: [
             "Anime4Kv32AutoDownscalePrex4"
         ])
-    }
-
-    /// Get kernel names for a shader file - this is the core mapping logic
-    /// Extracted from the original getKernelNamesForShader() method
-    private static func kernelsForShaderFile(_ shaderFile: String) -> Set<String> {
-        var kernels: Set<String> = []
-
-        if shaderFile.contains("Clamp_Highlights") {
-            kernels.formUnion([
-                "Anime4K_Clamp_Highlights_pass0_Anime4K_v4_0_De_Ring_Compute_Statistics",
-                "Anime4K_Clamp_Highlights_pass1_Anime4K_v4_0_De_Ring_Compute_Statistics",
-                "Anime4K_Clamp_Highlights_pass2_Anime4K_v4_0_De_Ring_Compute_Statistics"
-            ])
-        } else if shaderFile.contains("Restore_CNN_S") && !shaderFile.contains("Soft") {
-            kernels.formUnion([
-                "Anime4K_Restore_CNN_S_pass0_Anime4K_v4_0_Restore_CNN_S_Conv_4x3x3x3",
-                "Anime4K_Restore_CNN_S_pass1_Anime4K_v4_0_Restore_CNN_S_Conv_4x3x3x8",
-                "Anime4K_Restore_CNN_S_pass2_Anime4K_v4_0_Restore_CNN_S_Conv_4x3x3x8",
-                "Anime4K_Restore_CNN_S_pass3_Anime4K_v4_0_Restore_CNN_S_Residual"
-            ])
-        } else if shaderFile.contains("Restore_CNN_M") && !shaderFile.contains("Soft") {
-            kernels.formUnion([
-                "Anime4K_Restore_CNN_M_pass0_Anime4K_v4_0_Restore_CNN_M_Conv_4x3x3x3",
-                "Anime4K_Restore_CNN_M_pass1_Anime4K_v4_0_Restore_CNN_M_Conv_4x3x3x8",
-                "Anime4K_Restore_CNN_M_pass2_Anime4K_v4_0_Restore_CNN_M_Conv_4x3x3x8",
-                "Anime4K_Restore_CNN_M_pass3_Anime4K_v4_0_Restore_CNN_M_Conv_4x3x3x8",
-                "Anime4K_Restore_CNN_M_pass4_Anime4K_v4_0_Restore_CNN_M_Conv_4x3x3x8",
-                "Anime4K_Restore_CNN_M_pass5_Anime4K_v4_0_Restore_CNN_M_Conv_4x3x3x8",
-                "Anime4K_Restore_CNN_M_pass6_Anime4K_v4_0_Restore_CNN_M_Residual"
-            ])
-        } else if shaderFile.contains("Restore_CNN_VL") && !shaderFile.contains("Soft") {
-            kernels.formUnion([
-                "Anime4K_Restore_CNN_VL_pass0_Anime4K_v4_0_Restore_CNN_VL_Conv_4x3x3x3",
-                "Anime4K_Restore_CNN_VL_pass1_Anime4K_v4_0_Restore_CNN_VL_Conv_4x3x3x8",
-                "Anime4K_Restore_CNN_VL_pass2_Anime4K_v4_0_Restore_CNN_VL_Conv_4x3x3x8",
-                "Anime4K_Restore_CNN_VL_pass3_Anime4K_v4_0_Restore_CNN_VL_Conv_4x3x3x8",
-                "Anime4K_Restore_CNN_VL_pass4_Anime4K_v4_0_Restore_CNN_VL_Conv_4x3x3x8",
-                "Anime4K_Restore_CNN_VL_pass5_Anime4K_v4_0_Restore_CNN_VL_Conv_4x3x3x8",
-                "Anime4K_Restore_CNN_VL_pass6_Anime4K_v4_0_Restore_CNN_VL_Conv_4x3x3x8",
-                "Anime4K_Restore_CNN_VL_pass7_Anime4K_v4_0_Restore_CNN_VL_Conv_4x3x3x8",
-                "Anime4K_Restore_CNN_VL_pass8_Anime4K_v4_0_Restore_CNN_VL_Conv_4x3x3x8",
-                "Anime4K_Restore_CNN_VL_pass9_Anime4K_v4_0_Restore_CNN_VL_Conv_4x3x3x8",
-                "Anime4K_Restore_CNN_VL_pass10_Anime4K_v4_0_Restore_CNN_VL_Conv_4x3x3x8",
-                "Anime4K_Restore_CNN_VL_pass11_Anime4K_v4_0_Restore_CNN_VL_Conv_4x3x3x8",
-                "Anime4K_Restore_CNN_VL_pass12_Anime4K_v4_0_Restore_CNN_VL_Conv_4x3x3x8",
-                "Anime4K_Restore_CNN_VL_pass13_Anime4K_v4_0_Restore_CNN_VL_Conv_4x3x3x8",
-                "Anime4K_Restore_CNN_VL_pass14_Anime4K_v4_0_Restore_CNN_VL_Conv_4x3x3x8",
-                "Anime4K_Restore_CNN_VL_pass15_Anime4K_v4_0_Restore_CNN_VL_Residual"
-            ])
-        } else if shaderFile.contains("Upscale_CNN_x2_S") {
-            kernels.formUnion([
-                "Anime4K_Upscale_CNN_x2_S_pass0_Anime4K_v3_2_Upscale_CNN_x2_S_Conv_4x3x3x3",
-                "Anime4K_Upscale_CNN_x2_S_pass1_Anime4K_v3_2_Upscale_CNN_x2_S_Conv_4x3x3x8",
-                "Anime4K_Upscale_CNN_x2_S_pass2_Anime4K_v3_2_Upscale_CNN_x2_S_Conv_4x3x3x8",
-                "Anime4K_Upscale_CNN_x2_S_pass3_Anime4K_v3_2_Upscale_CNN_x2_S_Deconv_4x3x3x8"
-            ])
-        } else if shaderFile.contains("Upscale_CNN_x2_M") {
-            kernels.formUnion([
-                "Anime4K_Upscale_CNN_x2_M_pass0_Anime4K_v3_2_Upscale_CNN_x2_M_Conv_4x3x3x3",
-                "Anime4K_Upscale_CNN_x2_M_pass1_Anime4K_v3_2_Upscale_CNN_x2_M_Conv_4x3x3x8",
-                "Anime4K_Upscale_CNN_x2_M_pass2_Anime4K_v3_2_Upscale_CNN_x2_M_Conv_4x3x3x8",
-                "Anime4K_Upscale_CNN_x2_M_pass3_Anime4K_v3_2_Upscale_CNN_x2_M_Conv_4x3x3x8",
-                "Anime4K_Upscale_CNN_x2_M_pass4_Anime4K_v3_2_Upscale_CNN_x2_M_Conv_4x3x3x8",
-                "Anime4K_Upscale_CNN_x2_M_pass5_Anime4K_v3_2_Upscale_CNN_x2_M_Conv_4x3x3x8",
-                "Anime4K_Upscale_CNN_x2_M_pass6_Anime4K_v3_2_Upscale_CNN_x2_M_Conv_4x3x3x8",
-                "Anime4K_Upscale_CNN_x2_M_pass7_Anime4K_v3_2_Upscale_CNN_x2_M_Deconv_4x3x3x8"
-            ])
-        } else if shaderFile.contains("Upscale_CNN_x2_VL") {
-            kernels.formUnion([
-                "Anime4K_Upscale_CNN_x2_VL_pass0_Anime4K_v3_2_Upscale_CNN_x2_VL_Conv_4x3x3x3",
-                "Anime4K_Upscale_CNN_x2_VL_pass1_Anime4K_v3_2_Upscale_CNN_x2_VL_Conv_4x3x3x8",
-                "Anime4K_Upscale_CNN_x2_VL_pass2_Anime4K_v3_2_Upscale_CNN_x2_VL_Conv_4x3x3x8",
-                "Anime4K_Upscale_CNN_x2_VL_pass3_Anime4K_v3_2_Upscale_CNN_x2_VL_Conv_4x3x3x8",
-                "Anime4K_Upscale_CNN_x2_VL_pass4_Anime4K_v3_2_Upscale_CNN_x2_VL_Conv_4x3x3x8",
-                "Anime4K_Upscale_CNN_x2_VL_pass5_Anime4K_v3_2_Upscale_CNN_x2_VL_Conv_4x3x3x8",
-                "Anime4K_Upscale_CNN_x2_VL_pass6_Anime4K_v3_2_Upscale_CNN_x2_VL_Conv_4x3x3x8",
-                "Anime4K_Upscale_CNN_x2_VL_pass7_Anime4K_v3_2_Upscale_CNN_x2_VL_Conv_4x3x3x8",
-                "Anime4K_Upscale_CNN_x2_VL_pass8_Anime4K_v3_2_Upscale_CNN_x2_VL_Conv_4x3x3x8",
-                "Anime4K_Upscale_CNN_x2_VL_pass9_Anime4K_v3_2_Upscale_CNN_x2_VL_Conv_4x3x3x8",
-                "Anime4K_Upscale_CNN_x2_VL_pass10_Anime4K_v3_2_Upscale_CNN_x2_VL_Conv_4x3x3x8",
-                "Anime4K_Upscale_CNN_x2_VL_pass11_Anime4K_v3_2_Upscale_CNN_x2_VL_Conv_4x3x3x8",
-                "Anime4K_Upscale_CNN_x2_VL_pass12_Anime4K_v3_2_Upscale_CNN_x2_VL_Conv_4x3x3x8",
-                "Anime4K_Upscale_CNN_x2_VL_pass13_Anime4K_v3_2_Upscale_CNN_x2_VL_Conv_4x3x3x8",
-                "Anime4K_Upscale_CNN_x2_VL_pass14_Anime4K_v3_2_Upscale_CNN_x2_VL_Conv_4x3x3x8",
-                "Anime4K_Upscale_CNN_x2_VL_pass15_Anime4K_v3_2_Upscale_CNN_x2_VL_Conv_4x3x3x8",
-                "Anime4K_Upscale_CNN_x2_VL_pass16_Anime4K_v3_2_Upscale_CNN_x2_VL_Deconv_4x3x3x8"
-            ])
-        } else if shaderFile.contains("Upscale_Denoise_CNN_x2_S") {
-            kernels.formUnion([
-                "Anime4K_Upscale_Denoise_CNN_x2_S_pass0_Anime4K_v3_2_Upscale_Denoise_CNN_x2_S_Conv_4x3x3x3",
-                "Anime4K_Upscale_Denoise_CNN_x2_S_pass1_Anime4K_v3_2_Upscale_Denoise_CNN_x2_S_Conv_4x3x3x8",
-                "Anime4K_Upscale_Denoise_CNN_x2_S_pass2_Anime4K_v3_2_Upscale_Denoise_CNN_x2_S_Conv_4x3x3x8",
-                "Anime4K_Upscale_Denoise_CNN_x2_S_pass3_Anime4K_v3_2_Upscale_Denoise_CNN_x2_S_Deconv_4x3x3x8"
-            ])
-        } else if shaderFile.contains("Upscale_Denoise_CNN_x2_M") {
-            kernels.formUnion([
-                "Anime4K_Upscale_Denoise_CNN_x2_M_pass0_Anime4K_v3_2_Upscale_Denoise_CNN_x2_M_Conv_4x3x3x3",
-                "Anime4K_Upscale_Denoise_CNN_x2_M_pass1_Anime4K_v3_2_Upscale_Denoise_CNN_x2_M_Conv_4x3x3x8",
-                "Anime4K_Upscale_Denoise_CNN_x2_M_pass2_Anime4K_v3_2_Upscale_Denoise_CNN_x2_M_Conv_4x3x3x8",
-                "Anime4K_Upscale_Denoise_CNN_x2_M_pass3_Anime4K_v3_2_Upscale_Denoise_CNN_x2_M_Conv_4x3x3x8",
-                "Anime4K_Upscale_Denoise_CNN_x2_M_pass4_Anime4K_v3_2_Upscale_Denoise_CNN_x2_M_Conv_4x3x3x8",
-                "Anime4K_Upscale_Denoise_CNN_x2_M_pass5_Anime4K_v3_2_Upscale_Denoise_CNN_x2_M_Conv_4x3x3x8",
-                "Anime4K_Upscale_Denoise_CNN_x2_M_pass6_Anime4K_v3_2_Upscale_Denoise_CNN_x2_M_Conv_4x3x3x8",
-                "Anime4K_Upscale_Denoise_CNN_x2_M_pass7_Anime4K_v3_2_Upscale_Denoise_CNN_x2_M_Deconv_4x3x3x8"
-            ])
-        } else if shaderFile.contains("Upscale_Denoise_CNN_x2_VL") {
-            kernels.formUnion([
-                "Anime4K_Upscale_Denoise_CNN_x2_VL_pass0_Anime4K_v3_2_Upscale_Denoise_CNN_x2_VL_Conv_4x3x3x3",
-                "Anime4K_Upscale_Denoise_CNN_x2_VL_pass1_Anime4K_v3_2_Upscale_Denoise_CNN_x2_VL_Conv_4x3x3x8",
-                "Anime4K_Upscale_Denoise_CNN_x2_VL_pass2_Anime4K_v3_2_Upscale_Denoise_CNN_x2_VL_Conv_4x3x3x8",
-                "Anime4K_Upscale_Denoise_CNN_x2_VL_pass3_Anime4K_v3_2_Upscale_Denoise_CNN_x2_VL_Conv_4x3x3x8",
-                "Anime4K_Upscale_Denoise_CNN_x2_VL_pass4_Anime4K_v3_2_Upscale_Denoise_CNN_x2_VL_Conv_4x3x3x8",
-                "Anime4K_Upscale_Denoise_CNN_x2_VL_pass5_Anime4K_v3_2_Upscale_Denoise_CNN_x2_VL_Conv_4x3x3x8",
-                "Anime4K_Upscale_Denoise_CNN_x2_VL_pass6_Anime4K_v3_2_Upscale_Denoise_CNN_x2_VL_Conv_4x3x3x8",
-                "Anime4K_Upscale_Denoise_CNN_x2_VL_pass7_Anime4K_v3_2_Upscale_Denoise_CNN_x2_VL_Conv_4x3x3x8",
-                "Anime4K_Upscale_Denoise_CNN_x2_VL_pass8_Anime4K_v3_2_Upscale_Denoise_CNN_x2_VL_Conv_4x3x3x8",
-                "Anime4K_Upscale_Denoise_CNN_x2_VL_pass9_Anime4K_v3_2_Upscale_Denoise_CNN_x2_VL_Conv_4x3x3x8",
-                "Anime4K_Upscale_Denoise_CNN_x2_VL_pass10_Anime4K_v3_2_Upscale_Denoise_CNN_x2_VL_Conv_4x3x3x8",
-                "Anime4K_Upscale_Denoise_CNN_x2_VL_pass11_Anime4K_v3_2_Upscale_Denoise_CNN_x2_VL_Conv_4x3x3x8",
-                "Anime4K_Upscale_Denoise_CNN_x2_VL_pass12_Anime4K_v3_2_Upscale_Denoise_CNN_x2_VL_Conv_4x3x3x8",
-                "Anime4K_Upscale_Denoise_CNN_x2_VL_pass13_Anime4K_v3_2_Upscale_Denoise_CNN_x2_VL_Conv_4x3x3x8",
-                "Anime4K_Upscale_Denoise_CNN_x2_VL_pass14_Anime4K_v3_2_Upscale_Denoise_CNN_x2_VL_Conv_4x3x3x8",
-                "Anime4K_Upscale_Denoise_CNN_x2_VL_pass15_Anime4K_v3_2_Upscale_Denoise_CNN_x2_VL_Conv_4x3x3x8",
-                "Anime4K_Upscale_Denoise_CNN_x2_VL_pass16_Anime4K_v3_2_Upscale_Denoise_CNN_x2_VL_Deconv_4x3x3x8"
-            ])
-        } else if shaderFile.contains("AutoDownscalePre_x2") {
-            kernels.formUnion([
-                "Anime4K_AutoDownscalePre_x2_pass0_Anime4K_v4_0_AutoDownscalePre_x2",
-            ])
-        } else if shaderFile.contains("AutoDownscalePre_x4") {
-            kernels.formUnion([
-                "Anime4K_AutoDownscalePre_x4_pass0_Anime4K_v4_0_AutoDownscalePre_x4",
-            ])
-        } else if shaderFile.contains("Restore_CNN_Soft_S") {
-            kernels.formUnion([
-                "Anime4K_Restore_CNN_Soft_S_pass0_Anime4K_v4_0_Restore_CNN_Soft_S_Conv_4x3x3x3",
-                "Anime4K_Restore_CNN_Soft_S_pass1_Anime4K_v4_0_Restore_CNN_Soft_S_Conv_4x3x3x8",
-                "Anime4K_Restore_CNN_Soft_S_pass2_Anime4K_v4_0_Restore_CNN_Soft_S_Conv_4x3x3x8",
-                "Anime4K_Restore_CNN_Soft_S_pass3_Anime4K_v4_0_Restore_CNN_Soft_S_Residual"
-            ])
-        } else if shaderFile.contains("Restore_CNN_Soft_M") {
-            kernels.formUnion([
-                "Anime4K_Restore_CNN_Soft_M_pass0_Anime4K_v4_0_Restore_CNN_Soft_M_Conv_4x3x3x3",
-                "Anime4K_Restore_CNN_Soft_M_pass1_Anime4K_v4_0_Restore_CNN_Soft_M_Conv_4x3x3x8",
-                "Anime4K_Restore_CNN_Soft_M_pass2_Anime4K_v4_0_Restore_CNN_Soft_M_Conv_4x3x3x8",
-                "Anime4K_Restore_CNN_Soft_M_pass3_Anime4K_v4_0_Restore_CNN_Soft_M_Conv_4x3x3x8",
-                "Anime4K_Restore_CNN_Soft_M_pass4_Anime4K_v4_0_Restore_CNN_Soft_M_Conv_4x3x3x8",
-                "Anime4K_Restore_CNN_Soft_M_pass5_Anime4K_v4_0_Restore_CNN_Soft_M_Conv_4x3x3x8",
-                "Anime4K_Restore_CNN_Soft_M_pass6_Anime4K_v4_0_Restore_CNN_Soft_M_Residual"
-            ])
-        } else if shaderFile.contains("Restore_CNN_Soft_VL") {
-            kernels.formUnion([
-                "Anime4K_Restore_CNN_Soft_VL_pass0_Anime4K_v4_0_Restore_CNN_Soft_VL_Conv_4x3x3x3",
-                "Anime4K_Restore_CNN_Soft_VL_pass1_Anime4K_v4_0_Restore_CNN_Soft_VL_Conv_4x3x3x8",
-                "Anime4K_Restore_CNN_Soft_VL_pass2_Anime4K_v4_0_Restore_CNN_Soft_VL_Conv_4x3x3x8",
-                "Anime4K_Restore_CNN_Soft_VL_pass3_Anime4K_v4_0_Restore_CNN_Soft_VL_Conv_4x3x3x8",
-                "Anime4K_Restore_CNN_Soft_VL_pass4_Anime4K_v4_0_Restore_CNN_Soft_VL_Conv_4x3x3x8",
-                "Anime4K_Restore_CNN_Soft_VL_pass5_Anime4K_v4_0_Restore_CNN_Soft_VL_Conv_4x3x3x8",
-                "Anime4K_Restore_CNN_Soft_VL_pass6_Anime4K_v4_0_Restore_CNN_Soft_VL_Conv_4x3x3x8",
-                "Anime4K_Restore_CNN_Soft_VL_pass7_Anime4K_v4_0_Restore_CNN_Soft_VL_Conv_4x3x3x8",
-                "Anime4K_Restore_CNN_Soft_VL_pass8_Anime4K_v4_0_Restore_CNN_Soft_VL_Conv_4x3x3x8",
-                "Anime4K_Restore_CNN_Soft_VL_pass9_Anime4K_v4_0_Restore_CNN_Soft_VL_Conv_4x3x3x8",
-                "Anime4K_Restore_CNN_Soft_VL_pass10_Anime4K_v4_0_Restore_CNN_Soft_VL_Conv_4x3x3x8",
-                "Anime4K_Restore_CNN_Soft_VL_pass11_Anime4K_v4_0_Restore_CNN_Soft_VL_Conv_4x3x3x8",
-                "Anime4K_Restore_CNN_Soft_VL_pass12_Anime4K_v4_0_Restore_CNN_Soft_VL_Conv_4x3x3x8",
-                "Anime4K_Restore_CNN_Soft_VL_pass13_Anime4K_v4_0_Restore_CNN_Soft_VL_Conv_4x3x3x8",
-                "Anime4K_Restore_CNN_Soft_VL_pass14_Anime4K_v4_0_Restore_CNN_Soft_VL_Conv_4x3x3x8",
-                "Anime4K_Restore_CNN_Soft_VL_pass15_Anime4K_v4_0_Restore_CNN_Soft_VL_Residual"
-            ])
-        }
-
-        return kernels
     }
 }
 
@@ -581,15 +417,32 @@ class Anime4KMetalPipeline {
         self.inputWidth = inputWidth
         self.inputHeight = inputHeight
 
-        // Compile/load all required kernel functions
-        let requiredKernels = Set(shaderPasses.flatMap { pass in
-            KernelFunctionRegistry.kernels(for: pass.shaderFile)
-        })
+        // Compile/load all required kernel functions with strict validation.
+        var requiredKernels: Set<String> = []
+        var missingShaderMappings: [String] = []
+
+        for shaderFile in shaderFiles {
+            let kernels = KernelFunctionRegistry.kernels(for: shaderFile)
+            if kernels.isEmpty {
+                missingShaderMappings.append(shaderFile)
+                continue
+            }
+            requiredKernels.formUnion(kernels)
+        }
+
+        if !missingShaderMappings.isEmpty {
+            NSLog("[Anime4K] ERROR: Missing kernel mappings for preset %@: %@",
+                  presetName,
+                  missingShaderMappings.joined(separator: ", "))
+            return false
+        }
+
+        var missingKernelFunctions: [String] = []
 
         for kernelName in requiredKernels {
             if pipelineStates[kernelName] == nil {
                 guard let function = library.makeFunction(name: kernelName) else {
-                    NSLog("[Anime4K] Kernel function not found: %@", kernelName)
+                    missingKernelFunctions.append(kernelName)
                     continue
                 }
 
@@ -602,6 +455,14 @@ class Anime4KMetalPipeline {
                     return false
                 }
             }
+        }
+
+        if !missingKernelFunctions.isEmpty {
+            NSLog("[Anime4K] ERROR: Missing kernel functions in metallib for preset %@", presetName)
+            for missing in missingKernelFunctions.sorted() {
+                NSLog("[Anime4K]   missing kernel: %@", missing)
+            }
+            return false
         }
 
         // Configure dimensions for each pass and clear stale intermediates.

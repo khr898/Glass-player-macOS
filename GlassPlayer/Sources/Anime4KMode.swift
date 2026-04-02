@@ -419,7 +419,7 @@ public struct ModeBBFast: Anime4KMode {
         Anime4KShaderPass(shaderFile: "Anime4K_Upscale_CNN_x2_M", kernelFunction: "Anime4Kv32UpscaleCNNx2MConv4x3x3x3", isUpscaling: true, description: "Upscale x2 M"),
         Anime4KShaderPass(shaderFile: "Anime4K_AutoDownscalePre_x2", kernelFunction: "Anime4Kv40AutoDownscalePrex2", description: "Auto Downscale x2"),
         Anime4KShaderPass(shaderFile: "Anime4K_AutoDownscalePre_x4", kernelFunction: "Anime4Kv32AutoDownscalePrex4", description: "Auto Downscale x4"),
-        Anime4KShaderPass(shaderFile: "Anime4K_Restore_CNN_Soft_S", kernelFunction: "Anime4K_Restore_CNN_Soft_S_pass0_Anime4K_v4_0_Restore_CNN_Soft_S_Conv_4x3x3x3", description: "Restore Soft S"),
+        Anime4KShaderPass(shaderFile: "Anime4K_Restore_CNN_Soft_S", kernelFunction: "Anime4Kv40RestoreCNNSoftSConv4x3x3x3", description: "Restore Soft S"),
         Anime4KShaderPass(shaderFile: "Anime4K_Upscale_CNN_x2_S", kernelFunction: "Anime4Kv32UpscaleCNNx2SConv4x3x3x3", isUpscaling: true, description: "Upscale x2 S"),
     ]
 
