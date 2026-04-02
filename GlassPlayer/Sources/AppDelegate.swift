@@ -13,6 +13,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var welcomeWindow: WelcomeWindow?
     var settingsWindow: SettingsWindow?
     private var fileOpenedExternally = false
+    var pendingAnime4KPreset: String? = nil   // Anime4K preset to apply after file loads
     /// Flag: when true, the next openFile call came from Launch Services
     /// (re-invoked via `open -b`) so we skip the fullscreen redirect.
     private var reopenedFromFullscreen = false
@@ -20,6 +21,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - App Lifecycle
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Initialize Anime4K preset registry at app startup
+        initializeAnime4KPresets()
+
         // Disable automatic window state restoration – eliminates
         // "Unable to find className=(null)" errors in system log
         NSApplication.shared.disableRelaunchOnLogin()
@@ -33,11 +37,27 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // If launched with a file argument, open it
         let args = CommandLine.arguments
+        var anime4kPreset: String? = nil
+
         if args.count > 1 {
-            let path = args[1]
-            if FileManager.default.fileExists(atPath: path) {
-                openFile(path)
-                return
+            var i = 1
+            while i < args.count {
+                switch args[i] {
+                case "--anime4k":
+                    if i + 1 < args.count {
+                        anime4kPreset = args[i + 1]
+                        i += 2
+                    }
+                default:
+                    let path = args[i]
+                    if FileManager.default.fileExists(atPath: path) {
+                        openFile(path)
+                        // Store preset to apply after file loads
+                        pendingAnime4KPreset = anime4kPreset
+                        return
+                    }
+                    i += 1
+                }
             }
         }
 
@@ -100,6 +120,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             newPlayer.loadFile(path)
             playerWindows.append(newPlayer)
             playerWindow = newPlayer
+            // Apply pending Anime4K preset if specified
+            if let preset = pendingAnime4KPreset {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    newPlayer.mpv.applyShaderPreset(preset)
+                }
+            }
         } else {
             if playerWindow == nil {
                 let newPlayer = PlayerWindow()
@@ -107,6 +133,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 playerWindow = newPlayer
             }
             playerWindow?.loadFile(path)
+            // Apply pending Anime4K preset if specified
+            if let preset = pendingAnime4KPreset {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                    self?.playerWindow?.mpv.applyShaderPreset(preset)
+                }
+            }
         }
     }
 

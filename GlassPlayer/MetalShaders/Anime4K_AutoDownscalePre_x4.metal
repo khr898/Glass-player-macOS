@@ -1,9 +1,16 @@
-// Translated from Anime4K GLSL to Metal Compute Shaders
-// Original: MIT License / Unlicense - bloc97
-// Translation matches Anime4K.swift / MPVShader.swift architecture
+// Auto-generated from GLSL using translate_anime4k_shaders.py
+// Texture binding: BINDS=[0..N-1], MAIN=[N if applicable], OUTPUT=[last]
+// Source: Anime4K_AutoDownscalePre_x4.glsl
+// Shaders: 1
 
-// DESC: Anime4K-v3.2-AutoDownscalePre-x4
-// WHEN: OUTPUT.w NATIVE.w / 4.0 < OUTPUT.h NATIVE.h / 4.0 < * OUTPUT.w NATIVE.w / 2.4 > OUTPUT.h NATIVE.h / 2.4 > * *
+// Shader: Anime4K-v3.2-AutoDownscalePre-x4
+// Function: Anime4Kv32AutoDownscalePrex4
+// BINDS: ['HOOKED', 'NATIVE']
+// HOOK: MAIN
+// SAVE: None
+// Input textures: ['HOOKED', 'NATIVE', 'MAIN']
+// Output texture: output
+// Texture indices: BINDS=0..1, MAIN=2, OUTPUT=3
 
 #include <metal_stdlib>
 using namespace metal;
@@ -13,6 +20,18 @@ using vec3 = float3;
 using vec4 = float4;
 using ivec2 = int2;
 using mat4 = float4x4;
+
+#define MAIN_pos mtlPos
+#define MAIN_pt (float2(1, 1) / float2(MAIN.get_width(), MAIN.get_height()))
+#define MAIN_size float2(MAIN.get_width(), MAIN.get_height())
+#define MAIN_tex(pos) MAIN.sample(textureSampler, pos)
+#define MAIN_texOff(off) MAIN_tex(MAIN_pos + MAIN_pt * float2(off))
+
+#define HOOKED_pos MAIN_pos
+#define HOOKED_size MAIN_size
+#define HOOKED_pt MAIN_pt
+#define HOOKED_tex(pos) MAIN_tex(pos)
+#define HOOKED_texOff(off) MAIN_texOff(off)
 
 #define HOOKED_pos mtlPos
 #define HOOKED_size float2(HOOKED.get_width(), HOOKED.get_height())
@@ -26,24 +45,13 @@ using mat4 = float4x4;
 #define NATIVE_tex(pos) NATIVE.sample(textureSampler, pos)
 #define NATIVE_texOff(off) NATIVE_tex(NATIVE_pos + NATIVE_pt * float2(off))
 
-#define MAIN_pos mtlPos
-#define MAIN_pt (float2(1, 1) / float2(MAIN.get_width(), MAIN.get_height()))
-#define MAIN_size float2(MAIN.get_width(), MAIN.get_height())
-#define MAIN_tex(pos) MAIN.sample(textureSampler, pos)
-#define MAIN_texOff(off) MAIN_tex(MAIN_pos + MAIN_pt * float2(off))
-
-static float4 hook_pass0(float2 mtlPos, sampler textureSampler, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> NATIVE, texture2d<float, access::sample> MAIN) {
-	return HOOKED_tex(HOOKED_pos);
+vec4 hook(float2 mtlPos, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> NATIVE, texture2d<float, access::sample> MAIN, sampler textureSampler) {
+return HOOKED_tex(HOOKED_pos);
 }
-
-kernel void Anime4K_AutoDownscalePre_x4_pass0_Anime4K_v3_2_AutoDownscalePre_x4(
-    texture2d<float, access::sample> HOOKED [[texture(0)]],
-    texture2d<float, access::sample> NATIVE [[texture(1)]],
-    texture2d<float, access::sample> MAIN [[texture(2)]],
-    texture2d<float, access::write> output [[texture(3)]],
-    uint2 gid [[thread_position_in_grid]],
-    sampler textureSampler [[sampler(0)]]) {
+kernel void Anime4Kv32AutoDownscalePrex4(
+    texture2d<float, access::sample> HOOKED [[texture(0)]], texture2d<float, access::sample> NATIVE [[texture(1)]], texture2d<float, access::sample> MAIN [[texture(2)]], texture2d<float, access::write> output [[texture(3)]], uint2 gid [[thread_position_in_grid]], sampler textureSampler [[sampler(0)]]) {
     float2 mtlPos = float2(gid) / (float2(output.get_width(), output.get_height()) - float2(1, 1));
-    output.write(hook_pass0(mtlPos, textureSampler, HOOKED, NATIVE, MAIN), gid);
+    output.write(hook(mtlPos, HOOKED, NATIVE, MAIN, textureSampler), gid);
 }
+
 

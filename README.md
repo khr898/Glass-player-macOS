@@ -77,7 +77,12 @@ Designed for Apple Silicon with zero-copy rendering, Anime4K shaders, and Dolby 
 
 ```bash
 # Install dependencies
-brew install mpv
+# Option A: Install mpv WITHOUT vapoursynth (recommended, removes Python 3.14 dependency)
+brew uninstall mpv 2>/dev/null || true
+brew install ./Homebrew/mpv-no-vapoursynth.rb
+
+# Option B: Install stock mpv (requires Python 3.14 for vapoursynth support)
+# brew install mpv
 
 # Clone
 git clone https://github.com/khr898/Glass_player.git
@@ -86,6 +91,21 @@ cd Glass_player/GlassPlayer
 # Build and install
 bash build.sh
 ```
+
+#### Why build mpv without vapoursynth?
+
+The stock Homebrew mpv formula includes **vapoursynth** support, which requires Python 3.14. This creates a dependency chain that:
+- Adds ~50MB of Python runtime overhead
+- Requires users to install Python 3.14 if not already present
+- Only benefits users who need vapoursynth video filters (niche feature)
+
+**Glass Player recommends the vapoursynth-free build** because:
+- Removes Python 3.14 dependency entirely
+- Reduces app bundle size
+- Faster installation (no Python download)
+- No functional impact for playback + Anime4K upscaling
+
+**Note:** If you need vapoursynth filters (VCC, VS scripts), use Option B and ensure Python 3.14 is installed.
 
 The build script will:
 - Compile Swift sources with Metal 3 shader precompilation
@@ -167,21 +187,22 @@ GlassPlayer/
 │   ├── WelcomeWindow.swift     # Welcome screen
 │   ├── RcloneBrowser.swift     # rclone remote file browser
 │   ├── UniversalSilicon.swift  # Hardware detection & QoS
-│   └── Shaders.metal           # Metal vertex/fragment shaders
+│   ├── Shaders.metal           # Metal vertex/fragment shaders (display)
+│   └── Anime4KMetalPipeline.swift  # Anime4K compute shader pipeline
+├── MetalShaders/
+│   └── Anime4K_*.metal         # Anime4K compute shaders (Metal)
 ├── BridgingHeader.h            # C/ObjC bridge for mpv + OpenGL
 ├── Info.plist                  # App metadata & file associations
 └── build.sh                    # Build script (no Xcode required)
 configs/
 └── mpv.conf                    # Default mpv configuration
-shaders/
-└── Anime4K_*.glsl              # Bundled Anime4K shader collection
 ```
 
 ---
 
 ## Anime4K Shaders
 
-Glass Player bundles the full [Anime4K](https://github.com/bloc97/Anime4K) shader suite. Enable them in **Settings → Shaders**. Recommended presets:
+Glass Player bundles the full [Anime4K](https://github.com/bloc97/Anime4K) shader suite, translated to native **Metal compute shaders** for Apple Silicon GPU. Enable them in **Settings → Anime4K Enhancement**. Recommended presets:
 
 | Quality | Shaders | Use Case |
 |---|---|---|

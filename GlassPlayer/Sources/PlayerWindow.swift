@@ -873,7 +873,6 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
     @objc private func showShaderMenu(_ sender: NSButton) {
         NSLog("[PlayerWindow] showShaderMenu called!")
         let menu = NSMenu()
-        let recommendedPreset = UniversalMetalRuntime.recommendedAnime4KPreset()
 
         // "Off" option
         let offItem = NSMenuItem(title: "Off", action: #selector(clearShadersAction), keyEquivalent: "")
@@ -881,18 +880,10 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
         if mpv.currentShaderPreset == nil { offItem.state = .on }
         menu.addItem(offItem)
 
-        let autoItem = NSMenuItem(title: "Auto (Recommended)", action: #selector(applyAutoShaderAction), keyEquivalent: "")
-        autoItem.target = self
-        autoItem.toolTip = "Resolved now as: \(recommendedPreset)"
-        menu.addItem(autoItem)
-
         menu.addItem(.separator())
 
         // HQ presets
-        let hqHeaderTitle = recommendedPreset.contains("(HQ)")
-            ? "── HQ Presets (Recommended on this Mac) ──"
-            : "── HQ Presets ──"
-        let hqHeader = NSMenuItem(title: hqHeaderTitle, action: nil, keyEquivalent: "")
+        let hqHeader = NSMenuItem(title: "── HQ Presets ──", action: nil, keyEquivalent: "")
         hqHeader.isEnabled = false
         menu.addItem(hqHeader)
 
@@ -908,10 +899,7 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
         menu.addItem(.separator())
 
         // Fast presets
-        let fastHeaderTitle = recommendedPreset.contains("(Fast)")
-            ? "── Fast Presets (Recommended on this Mac) ──"
-            : "── Fast Presets ──"
-        let fastHeader = NSMenuItem(title: fastHeaderTitle, action: nil, keyEquivalent: "")
+        let fastHeader = NSMenuItem(title: "── Fast Presets ──", action: nil, keyEquivalent: "")
         fastHeader.isEnabled = false
         menu.addItem(fastHeader)
 
@@ -978,13 +966,6 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
         }
     }
 
-    @objc private func applyAutoShaderAction() {
-        let resolved = UniversalMetalRuntime.recommendedAnime4KPreset()
-        NSLog("[PlayerWindow] User selected Auto preset, resolved to: %@", resolved)
-        let result = mpv.applyShaderPreset(resolved)
-        NSLog("[PlayerWindow] applyShaderPreset returned: %@", result ? "true" : "false")
-        updateShaderButton()
-    }
 
     @objc private func clearShadersAction() {
         NSLog("[PlayerWindow] User cleared shaders")
@@ -1133,6 +1114,46 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
         } else {
             showVideoInfo()
         }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // MARK: - Anime4K Controls (Phase 5)
+    // ═══════════════════════════════════════════════════════════════════
+
+    private func toggleAnime4K() {
+        let isCurrentlyActive = mpv.currentShaderPreset != nil && mpv.currentShaderPreset != "Off"
+        if isCurrentlyActive {
+            mpv.clearShaders()
+            showOSD("Anime4K: OFF")
+        } else {
+            // Auto-select preset based on hardware
+            let recommendedPreset = UniversalMetalRuntime.recommendedAnime4KPreset()
+            mpv.setShaderPreset(recommendedPreset)
+            showOSD("Anime4K: \(recommendedPreset)")
+        }
+    }
+
+    private func applyShaderPresetDirect(_ preset: String) {
+        mpv.applyShaderPreset(preset)
+        showOSD("Anime4K: \(preset)")
+    }
+
+    private func cycleAnime4KPreset() {
+        let allPresets = ViewLayer.availableAnime4KPresets
+        let currentPreset = mpv.currentShaderPreset ?? "Off"
+
+        guard let currentIndex = allPresets.firstIndex(of: currentPreset) else {
+            // No preset active, enable with Mode A (HQ) as default
+            mpv.setShaderPreset("Mode A (HQ)")
+            showOSD("Anime4K: Mode A (HQ)")
+            return
+        }
+
+        // Cycle to next preset (wrap around)
+        let nextIndex = (currentIndex + 1) % allPresets.count
+        let nextPreset = allPresets[nextIndex]
+        mpv.setShaderPreset(nextPreset)
+        showOSD("Anime4K: \(nextPreset)")
     }
 
     private func showVideoInfo() {
@@ -1664,6 +1685,69 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
             mpv_command_string(mpv.mpvHandle, "add audio-delay 0.1")
             let delay2 = (mpv.getAudioDelay() * 10).rounded() / 10
             showOSD(String(format: "Audio delay: %+.1fs", delay2))
+
+        // ═══════════════════════════════════════════════════════════════
+        // MARK: - Anime4K Shortcuts (Phase 5)
+        // ═══════════════════════════════════════════════════════════════
+
+        // ═══════════════════════════════════════════════════════════════
+        // MARK: - Direct Preset Shortcuts (Option+1 through Option+6)
+        // ═══════════════════════════════════════════════════════════════
+
+        case 18:  // '1' key
+            if event.modifierFlags.contains(.option) {
+                applyShaderPresetDirect("Mode A (HQ)")
+                return true
+            }
+            return false
+
+        case 19:  // '2' key
+            if event.modifierFlags.contains(.option) {
+                applyShaderPresetDirect("Mode B (HQ)")
+                return true
+            }
+            return false
+
+        case 20:  // '3' key
+            if event.modifierFlags.contains(.option) {
+                applyShaderPresetDirect("Mode C (HQ)")
+                return true
+            }
+            return false
+
+        case 21:  // '4' key
+            if event.modifierFlags.contains(.option) {
+                applyShaderPresetDirect("Mode A (Fast)")
+                return true
+            }
+            return false
+
+        case 22:  // '5' key
+            if event.modifierFlags.contains(.option) {
+                applyShaderPresetDirect("Mode B (Fast)")
+                return true
+            }
+            return false
+
+        case 23:  // '6' key
+            if event.modifierFlags.contains(.option) {
+                applyShaderPresetDirect("Mode C (Fast)")
+                return true
+            }
+            return false
+
+        case 0:  // 'A' key (for Option+A variants)
+            if event.modifierFlags.contains(.option) {
+                if event.modifierFlags.contains(.shift) {
+                    cycleAnime4KPreset()
+                    return true
+                } else {
+                    toggleAnime4K()
+                    return true
+                }
+            }
+            return false
+
         default:
             return false
         }
@@ -1925,7 +2009,6 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
     }
 
     func mpvFileLoaded() {
-        print("[PlayerWindow] File loaded")
         isFirstPause = true  // reset for new file
         // Bug 15: reset seek state so time-pos updates flow through immediately
         isSeeking = false
@@ -1955,7 +2038,7 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
     }
 
     func mpvPlaybackEnded() {
-        print("[PlayerWindow] Playback ended")
+        // Playback ended - no action needed
     }
 
     func mpvTracksChanged(_ tracks: [TrackInfo]) {
@@ -2800,7 +2883,7 @@ private class ThumbnailMPV {
     private func setupMPV() {
         handle = mpv_create()
         guard handle != nil else {
-            print("[ThumbnailMPV] Failed to create mpv instance")
+            NSLog("[ThumbnailMPV] Failed to create mpv instance")
             return
         }
 
@@ -2827,7 +2910,7 @@ private class ThumbnailMPV {
 
         let err = mpv_initialize(handle!)
         if err < 0 {
-            print("[ThumbnailMPV] Failed to initialize: \(String(cString: mpv_error_string(err)))")
+            NSLog("[ThumbnailMPV] Failed to initialize: \(String(cString: mpv_error_string(err)))")
             mpv_destroy(handle)
             handle = nil
         }

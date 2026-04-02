@@ -20,9 +20,58 @@ echo "=== Building Glass Player (Native) ==="
 echo "Project: $PROJECT_DIR"
 echo "Profile: $BUILD_PROFILE"
 
-# Clean
+# ─── Verify mpv installation (vapoursynth-free) ────────────────────────
+echo "=== Verifying mpv installation ==="
+
+# Clean build directory
 rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR"
+
+check_mpv_vapoursynth() {
+    # Check if mpv is installed
+    if ! command -v mpv &> /dev/null; then
+        echo "ERROR: mpv is not installed."
+        echo ""
+        echo "Install with vapoursynth disabled (recommended):"
+        echo "  brew uninstall mpv"
+        echo "  brew install ./Homebrew/mpv-no-vapoursynth.rb"
+        echo ""
+        echo "Or install stock mpv (requires Python 3.14):"
+        echo "  brew install mpv"
+        exit 1
+    fi
+
+    # Check which mpv formula is installed
+    if brew list 2>/dev/null | grep -q "mpv-no-vapoursynth"; then
+        echo "  ✓ mpv-no-vapoursynth installed (recommended)"
+        return 0
+    fi
+
+    # Check if libmpv links against vapoursynth
+    if otool -L /opt/homebrew/lib/libmpv*.dylib 2>/dev/null | grep -q vapoursynth; then
+        echo "WARNING: mpv is linked against vapoursynth (requires Python 3.14)"
+        echo ""
+        echo "To remove this dependency, rebuild mpv without vapoursynth:"
+        echo "  brew uninstall mpv"
+        echo "  brew install user/glass-custom/mpv-no-vapoursynth"
+        echo ""
+        echo "Continuing build anyway..."
+        return 1
+    fi
+
+    # Check if libmpv exists
+    if [ ! -f /opt/homebrew/lib/libmpv.dylib ] && [ ! -f /opt/homebrew/lib/libmpv.2.dylib ]; then
+        echo "ERROR: libmpv not found in /opt/homebrew/lib/"
+        echo "Make sure mpv is properly installed."
+        exit 1
+    fi
+
+    echo "  ✓ mpv installed (vapoursynth-free)"
+    return 0
+}
+
+check_mpv_vapoursynth || true
+echo ""
 
 COMMON_SWIFTC_FLAGS=(
     -import-objc-header "$PROJECT_DIR/BridgingHeader.h"
@@ -112,8 +161,8 @@ else
     echo "  Skipping display metallib (runtime MSL compilation will be used)"
 fi
 
-# 2. Compile Anime4K compute shaders (metal_compute/*.metal)
-METAL_COMPUTE_DIR="$PROJECT_DIR/../metal_compute"
+# 2. Compile Anime4K compute shaders (MetalShaders/*.metal)
+METAL_COMPUTE_DIR="$PROJECT_DIR/MetalShaders"
 if [ -d "$METAL_COMPUTE_DIR" ] && xcrun --find metal >/dev/null 2>&1; then
     echo "  Compiling Anime4K compute shaders..."
     mkdir -p "$BUILD_DIR/anime4k_metallib"
@@ -296,21 +345,22 @@ bundle_lib() {
 
 process_deps() {
     local binary="$1"
-    
+
     otool -L "$binary" 2>/dev/null | tail -n +2 | awk '{print $1}' | while read dep; do
-        # Skip system frameworks and already-fixed paths
+        # Skip system frameworks, already-fixed paths, and problematic optional deps
         case "$dep" in
             /usr/lib/*|/System/*|@executable_path/*|@loader_path/*) continue ;;
+            *vapoursynth*) echo "  Skipping vapoursynth (requires external Python)"; continue ;;
         esac
-        
+
         local resolved=$(resolve_rpath "$dep" "$binary")
         if [ -n "$resolved" ] && [ -f "$resolved" ]; then
             local resolved_real=$(realpath "$resolved" 2>/dev/null || echo "$resolved")
             local resolved_name=$(basename "$resolved_real")
-            
+
             # Fix reference in binary
             install_name_tool -change "$dep" "@executable_path/../Frameworks/$resolved_name" "$binary" 2>/dev/null || true
-            
+
             # Bundle the dependency
             bundle_lib "$resolved"
         fi

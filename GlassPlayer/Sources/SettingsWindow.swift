@@ -1,4 +1,5 @@
 import Cocoa
+import Metal
 
 // ---------------------------------------------------------------------------
 // FlippedView – NSView with flipped coordinates so content starts at the top
@@ -793,19 +794,26 @@ class SettingsWindow: NSWindowController, NSTableViewDelegate, NSTableViewDataSo
             "HQ presets require M1 Pro/Max or better. Fast presets work on all Apple Silicon."
         ))
 
-        views.append(makePopUpRow(
-            title: "Preset",
-            key: "defaultShaderPreset",
-            options: ["Off", "Auto (Recommended)", "Mode A (HQ)", "Mode B (HQ)", "Mode C (HQ)",
-                      "Mode A+A (HQ)", "Mode B+B (HQ)", "Mode C+A (HQ)",
-                      "Mode A (Fast)", "Mode B (Fast)", "Mode C (Fast)",
-                      "Mode A+A (Fast)", "Mode B+B (Fast)", "Mode C+A (Fast)"],
-            defaultValue: "Off"
-        ))
+        // Preset selector with dynamic description below
+        let presetRow = makeAnime4KPresetRow()
+        views.append(presetRow)
+
+        // Description label that updates with preset selection
+        let descriptionLabel = makeAnime4KDescriptionLabel()
+        views.append(descriptionLabel)
+
+        // Hardware requirement indicator
+        let hardwareIndicator = makeAnime4KHardwareIndicator()
+        views.append(hardwareIndicator)
+
         views.append(makeToggleRow(
             title: "Auto-apply when loading anime content",
             key: "autoApplyShaders",
             defaultValue: false
+        ))
+
+        views.append(makeDescriptionLabel(
+            "Keyboard shortcuts: Option+A to toggle, Option+Shift+A to cycle presets."
         ))
 
         views.append(makeRestoreDefaultsButton(keys: [
@@ -814,6 +822,238 @@ class SettingsWindow: NSWindowController, NSTableViewDelegate, NSTableViewDataSo
 
         addViewsToContainer(container, views: views)
         return scroll
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // MARK: - Anime4K UI Helpers
+    // ═══════════════════════════════════════════════════════════════════
+
+    private func makeAnime4KPresetRow() -> NSView {
+        let row = NSView()
+        row.translatesAutoresizingMaskIntoConstraints = false
+
+        let label = NSTextField(labelWithString: "Preset")
+        label.font = .systemFont(ofSize: 13)
+        label.textColor = .labelColor
+        label.translatesAutoresizingMaskIntoConstraints = false
+        row.addSubview(label)
+
+        let popup = NSPopUpButton(frame: .zero, pullsDown: false)
+        let presets = ["Off", "Auto (Recommended)", "Mode A (HQ)", "Mode B (HQ)", "Mode C (HQ)",
+                       "Mode A+A (HQ)", "Mode B+B (HQ)", "Mode C+A (HQ)",
+                       "Mode A (Fast)", "Mode B (Fast)", "Mode C (Fast)",
+                       "Mode A+A (Fast)", "Mode B+B (Fast)", "Mode C+A (Fast)"]
+        popup.addItems(withTitles: presets)
+        let saved = UserDefaults.standard.string(forKey: "defaultShaderPreset") ?? "Off"
+        popup.selectItem(withTitle: saved)
+        popup.target = self
+        popup.action = #selector(anime4KPresetChanged(_:))
+        popup.font = .systemFont(ofSize: 12)
+        objc_setAssociatedObject(popup, AssociatedKeys.settingsKey, "defaultShaderPreset",
+                                 .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        popup.translatesAutoresizingMaskIntoConstraints = false
+        row.addSubview(popup)
+
+        row.heightAnchor.constraint(equalToConstant: 36).isActive = true
+        NSLayoutConstraint.activate([
+            label.leadingAnchor.constraint(equalTo: row.leadingAnchor, constant: 24),
+            label.centerYAnchor.constraint(equalTo: row.centerYAnchor),
+            popup.trailingAnchor.constraint(equalTo: row.trailingAnchor, constant: -24),
+            popup.centerYAnchor.constraint(equalTo: row.centerYAnchor),
+            popup.widthAnchor.constraint(greaterThanOrEqualToConstant: 180),
+        ])
+        return row
+    }
+
+    private func makeAnime4KDescriptionLabel() -> NSTextField {
+        let label = NSTextField(wrappingLabelWithString: "")
+        label.font = .systemFont(ofSize: 11)
+        label.textColor = .secondaryLabelColor
+        label.usesSingleLineMode = false
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.identifier = NSUserInterfaceItemIdentifier("anime4kDescriptionLabel")
+        updateAnime4KDescription(for: label)
+        return label
+    }
+
+    private func makeAnime4KHardwareIndicator() -> NSView {
+        let view = NSView()
+        view.translatesAutoresizingMaskIntoConstraints = false
+
+        let iconView = NSImageView()
+        iconView.image = NSImage(systemSymbolName: "cpu.fill.badge.bolt", accessibilityDescription: nil)
+        iconView.contentTintColor = .systemOrange
+        iconView.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(iconView)
+
+        let label = NSTextField(labelWithString: "Requires M2 Pro / M3 or better")
+        label.font = .systemFont(ofSize: 11)
+        label.textColor = .secondaryLabelColor
+        label.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(label)
+
+        view.heightAnchor.constraint(equalToConstant: 24).isActive = true
+        NSLayoutConstraint.activate([
+            iconView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 24),
+            iconView.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            iconView.widthAnchor.constraint(equalToConstant: 16),
+            iconView.heightAnchor.constraint(equalToConstant: 16),
+            label.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: 6),
+            label.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            label.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -24),
+        ])
+
+        // Store reference for updates
+        objc_setAssociatedObject(view, AssociatedKeys.anime4KHardwareLabel, label,
+                                 .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        objc_setAssociatedObject(view, AssociatedKeys.anime4KHardwareIcon, iconView,
+                                 .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+
+        return view
+    }
+
+    private func updateAnime4KDescription(for label: NSTextField) {
+        let presetKey = "defaultShaderPreset"
+        let currentPreset = UserDefaults.standard.string(forKey: presetKey) ?? "Off"
+
+        let description: String
+        switch currentPreset {
+        case "Off":
+            description = "Anime4K is disabled."
+        case "Auto (Recommended)":
+            description = "Automatically selects the best preset for your hardware using Apple Silicon QoS."
+        case "Mode A (HQ)":
+            description = "Aggressive edge restoration for 720p→4K. Best for sharp anime lines."
+        case "Mode B (HQ)":
+            description = "Soft restoration preserving original art style. Smoothest results."
+        case "Mode C (HQ)":
+            description = "Denoise and upscale for noisy sources. Removes compression artifacts."
+        case "Mode A+A (HQ)":
+            description = "Double aggressive restoration before upscaling. Maximum detail enhancement."
+        case "Mode B+B (HQ)":
+            description = "Double soft restoration. Ultra-smooth results, preserves art style."
+        case "Mode C+A (HQ)":
+            description = "Denoise then restore. Balanced quality for noisy 720p sources."
+        case "Mode A (Fast)":
+            description = "Fast restoration for 720p→1080p. Good balance of quality and performance."
+        case "Mode B (Fast)":
+            description = "Fast soft restoration. Subtle enhancement with minimal performance impact."
+        case "Mode C (Fast)":
+            description = "Fast denoise + upscale. Removes noise while upscaling."
+        case "Mode A+A (Fast)":
+            description = "Double restoration, optimized for speed. Enhanced detail without HQ cost."
+        case "Mode B+B (Fast)":
+            description = "Double soft restoration, fast. Smooth results on base M1."
+        case "Mode C+A (Fast)":
+            description = "Denoise then restore, optimized. Clean upscaling for compressed sources."
+        default:
+            description = "Select a preset to see description."
+        }
+
+        label.stringValue = description
+    }
+
+    private func updateAnime4KHardwareIndicator() {
+        guard let window = window,
+              let contentView = window.contentView else { return }
+
+        // Find the hardware indicator view by searching for subviews with associated objects
+        func findHardwareIndicator(in view: NSView) -> (NSView, NSTextField, NSImageView)? {
+            for subview in view.subviews {
+                if let label = objc_getAssociatedObject(subview, AssociatedKeys.anime4KHardwareLabel) as? NSTextField,
+                   let icon = objc_getAssociatedObject(subview, AssociatedKeys.anime4KHardwareIcon) as? NSImageView {
+                    return (subview, label, icon)
+                }
+                if let result = findHardwareIndicator(in: subview) {
+                    return result
+                }
+            }
+            return nil
+        }
+
+        guard let (_, textLabel, iconLabel) = findHardwareIndicator(in: contentView) else { return }
+
+        let presetKey = "defaultShaderPreset"
+        let currentPreset = UserDefaults.standard.string(forKey: presetKey) ?? "Off"
+
+        let hardwareRequirement: Anime4KHardwareRequirement
+        let performanceImpact: String
+
+        switch currentPreset {
+        case "Off":
+            iconLabel.image = NSImage(systemSymbolName: "slash.circle", accessibilityDescription: nil)
+            iconLabel.contentTintColor = .secondaryLabelColor
+            textLabel.stringValue = "Disabled"
+            return
+        case "Auto (Recommended)":
+            // Auto mode recommends based on hardware - show base requirement since it adapts
+            hardwareRequirement = .base
+            performanceImpact = "Auto-adapts to your hardware"
+        case "Mode A (Fast)", "Mode B (Fast)", "Mode C (Fast)":
+            hardwareRequirement = .base
+            performanceImpact = "Battery: -10%, GPU: Low impact"
+        case "Mode A+A (Fast)", "Mode B+B (Fast)", "Mode C+A (Fast)":
+            hardwareRequirement = .enhanced
+            performanceImpact = "Battery: -15%, GPU: Medium impact"
+        case "Mode A (HQ)", "Mode B (HQ)", "Mode C (HQ)",
+             "Mode A+A (HQ)", "Mode B+B (HQ)", "Mode C+A (HQ)":
+            hardwareRequirement = .extreme
+            performanceImpact = "Battery: -25%, GPU: High impact (M2 Pro+ recommended)"
+        default:
+            hardwareRequirement = .base
+            performanceImpact = "Unknown preset"
+        }
+
+        iconLabel.image = NSImage(systemSymbolName: hardwareRequirement.icon, accessibilityDescription: nil)
+        iconLabel.contentTintColor = hardwareRequirementColor(for: hardwareRequirement)
+        textLabel.stringValue = "\(hardwareRequirement.description) · \(performanceImpact)"
+    }
+
+    private func hardwareRequirementColor(for requirement: Anime4KHardwareRequirement) -> NSColor {
+        switch requirement {
+        case .base:
+            return .systemGreen
+        case .enhanced:
+            return .systemBlue
+        case .pro:
+            return .systemOrange
+        case .extreme:
+            return .systemRed
+        }
+    }
+
+    @objc private func anime4KPresetChanged(_ sender: NSPopUpButton) {
+        guard let key = objc_getAssociatedObject(sender, AssociatedKeys.settingsKey) as? String else { return }
+        let value = sender.titleOfSelectedItem ?? ""
+        UserDefaults.standard.set(value, forKey: key)
+        applySettingToMPV(key: key, value: value)
+
+        // Update description and hardware indicator
+        updateAnime4KDescriptionLabel()
+        updateAnime4KHardwareIndicator()
+    }
+
+    private func updateAnime4KDescriptionLabel() {
+        guard let window = window,
+              let contentView = window.contentView else { return }
+
+        // Find the description label by searching subviews
+        func findDescriptionLabel(in view: NSView) -> NSTextField? {
+            for subview in view.subviews {
+                if let label = subview as? NSTextField,
+                   label.identifier == NSUserInterfaceItemIdentifier("anime4kDescriptionLabel") {
+                    return label
+                }
+                if let result = findDescriptionLabel(in: subview) {
+                    return result
+                }
+            }
+            return nil
+        }
+
+        if let descriptionLabel = findDescriptionLabel(in: contentView) {
+            updateAnime4KDescription(for: descriptionLabel)
+        }
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -1074,14 +1314,16 @@ class SettingsWindow: NSWindowController, NSTableViewDelegate, NSTableViewDataSo
     private func applySettingToMPV(key: String, value: String) {
         // Special handling for shader preset setting
         if key == "defaultShaderPreset" {
-            NSLog("[Settings] applySettingToMPV: defaultShaderPreset = %@", value)
+            // Map "Auto (Recommended)" to "Mode A (Fast)"
+            let actualValue = (value == "Auto (Recommended)") ? "Mode A (Fast)" : value
+            NSLog("[Settings] applySettingToMPV: defaultShaderPreset = %@", actualValue)
             guard let appDelegate = NSApp.delegate as? AppDelegate else { return }
             for pw in appDelegate.playerWindows {
-                NSLog("[Settings] Applying preset %@ to player window", value)
-                if value == "Off" {
+                NSLog("[Settings] Applying preset %@ to player window", actualValue)
+                if actualValue == "Off" {
                     pw.mpv.clearShaders()
                 } else {
-                    let result = pw.mpv.applyShaderPreset(value)
+                    let result = pw.mpv.applyShaderPreset(actualValue)
                     NSLog("[Settings] applyShaderPreset returned: %@", result ? "true" : "false")
                 }
             }
@@ -1186,6 +1428,12 @@ class SettingsWindow: NSWindowController, NSTableViewDelegate, NSTableViewDataSo
 // Associated object key for settings binding
 private enum AssociatedKeys {
     static let settingsKey = UnsafeRawPointer(
+        UnsafeMutableRawPointer.allocate(byteCount: 1, alignment: 1)
+    )
+    static let anime4KHardwareLabel = UnsafeRawPointer(
+        UnsafeMutableRawPointer.allocate(byteCount: 1, alignment: 1)
+    )
+    static let anime4KHardwareIcon = UnsafeRawPointer(
         UnsafeMutableRawPointer.allocate(byteCount: 1, alignment: 1)
     )
 }

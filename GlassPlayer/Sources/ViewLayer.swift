@@ -125,6 +125,24 @@ class ViewLayer: CAMetalLayer {
     /// Texture containing Anime4K-processed frame (nil = use source texture)
     private var anime4KOutputTexture: MTLTexture?
 
+    // ═══════════════════════════════════════════════════════════════════
+    // MARK: - Frame Capture for Quality Comparison
+    /// Captures frames before/after Anime4K processing for SSIM/PSNR comparison
+    /// against mpv GLSL reference renders.
+    // ═══════════════════════════════════════════════════════════════════
+
+    /// Enable frame capture mode for quality verification
+    var frameCaptureEnabled: Bool = true  // Enabled for quality comparison testing
+
+    /// Output directory for captured frames
+    let frameCaptureDirectory = "/tmp/glass-player-captures"
+
+    /// Frame capture counter for unique filenames
+    private var frameCaptureCount: Int = 0
+
+    /// Maximum frames to capture (prevents disk space exhaustion)
+    let maxFrameCaptures: Int = 10
+
     // MARK: - Initialization
 
     override init() {
@@ -272,20 +290,25 @@ class ViewLayer: CAMetalLayer {
     func enableAnime4K(preset: String) -> Bool {
         NSLog("[ViewLayer] enableAnime4K called with preset: %@", preset)
 
+        // Handle "Auto (Recommended)" by mapping to Mode A (Fast)
+        let actualPreset = (preset == "Auto (Recommended)") ? "Mode A (Fast)" : preset
+
         guard anime4KPipeline == nil else {
             NSLog("[ViewLayer] Pipeline already exists, checking preset change...")
             // Already enabled, just change preset if different
-            if anime4KPreset != preset {
-                NSLog("[ViewLayer] Preset changed from %@ to %@", anime4KPreset ?? "nil", preset)
+            if anime4KPreset != actualPreset {
+                NSLog("[ViewLayer] Preset changed from %@ to %@", anime4KPreset ?? "nil", actualPreset)
                 anime4KPipeline?.deactivate()
                 if let pipeline = Anime4KMetalPipeline(device: mtlDevice) {
                     let dims = getLayerDimensions()
-                    if pipeline.activatePreset(preset,
+                    if pipeline.activatePreset(actualPreset,
                                                inputWidth: Int(dims.width),
                                                inputHeight: Int(dims.height)) {
                         anime4KPipeline = pipeline
-                        anime4KPreset = preset
-                        NSLog("[ViewLayer] Anime4K preset changed to: %@", preset)
+                        anime4KPreset = actualPreset
+                        NSLog("[ViewLayer] Anime4K preset changed to: %@", actualPreset)
+                        // Force a refresh to apply the new preset
+                        update(force: true)
                         return true
                     } else {
                         NSLog("[ViewLayer] activatePreset failed")
@@ -307,14 +330,16 @@ class ViewLayer: CAMetalLayer {
 
         let dims = getLayerDimensions()
         NSLog("[ViewLayer] Layer dimensions: %dx%d", dims.width, dims.height)
-        if pipeline.activatePreset(preset,
+        if pipeline.activatePreset(actualPreset,
                                    inputWidth: Int(dims.width),
                                    inputHeight: Int(dims.height)) {
             anime4KPipeline = pipeline
-            anime4KPreset = preset
+            anime4KPreset = actualPreset
             let outDims = pipeline.getOutputDimensions(inputWidth: Int(dims.width), inputHeight: Int(dims.height))
             NSLog("[ViewLayer] SUCCESS: Anime4K enabled: %@ (%dx%d → %dx%d)",
-                  preset, dims.width, dims.height, outDims.width, outDims.height)
+                  actualPreset, dims.width, dims.height, outDims.width, outDims.height)
+            // Force a refresh to apply the new preset
+            update(force: true)
             return true
         } else {
             NSLog("[ViewLayer] ERROR: activatePreset returned false")
@@ -334,7 +359,7 @@ class ViewLayer: CAMetalLayer {
 
     /// Get list of available Anime4K presets
     static var availableAnime4KPresets: [String] {
-        return Array(Anime4KMetalPipeline.presetDefinitions.keys).sorted()
+        return Anime4KPresetRegistry.allPresetNames()
     }
 
     /// Get current layer dimensions for Anime4K processing
@@ -657,6 +682,12 @@ class ViewLayer: CAMetalLayer {
                 finalTexture = processedTexture
                 anime4KOutputTexture = processedTexture
                 NSLog("[ViewLayer] Anime4K output texture: %dx%d", processedTexture.width, processedTexture.height)
+
+                // Capture frames for quality comparison if enabled
+                if frameCaptureEnabled {
+                    captureFrame(sourceTexture: videoTexture, outputTexture: processedTexture)
+                }
+
                 // Add a blit encoder to create implicit barrier between compute and render
                 let blitEncoder = cmdBuf.makeBlitCommandEncoder()
                 blitEncoder?.endEncoding()
@@ -722,6 +753,160 @@ class ViewLayer: CAMetalLayer {
         }
 
         CGLUnlockContext(cglCtx)
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // MARK: - Frame Capture for Quality Comparison
+    // ═══════════════════════════════════════════════════════════════════
+
+    /// Extension to convert MTLTexture to CGImage for frame capture
+    /// This is a duplicate of the FrameCapture utility - included here for integration
+    private func textureToCGImage(_ texture: MTLTexture) -> CGImage? {
+        // Copy to staging texture for CPU read
+        let descriptor = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: texture.pixelFormat,
+            width: texture.width,
+            height: texture.height,
+            mipmapped: false
+        )
+        descriptor.storageMode = .shared
+        descriptor.usage = [.shaderRead, .shaderWrite]
+
+        guard let stagingTexture = mtlDevice.makeTexture(descriptor: descriptor) else {
+            return nil
+        }
+
+        // Copy from source to staging
+        guard let commandQueue = mtlDevice.makeCommandQueue(),
+              let commandBuffer = commandQueue.makeCommandBuffer(),
+              let encoder = commandBuffer.makeBlitCommandEncoder() else {
+            return nil
+        }
+
+        encoder.copy(from: texture, to: stagingTexture)
+        encoder.endEncoding()
+        commandBuffer.commit()
+        commandBuffer.waitUntilCompleted()
+
+        // Convert staging texture to CGImage
+        guard texture.pixelFormat == .bgra8Unorm || texture.pixelFormat == .rgba8Unorm else {
+            return nil
+        }
+
+        let bytesPerPixel = 4
+        let bytesPerRow = texture.width * bytesPerPixel
+        let bytesPerImage = bytesPerRow * texture.height
+
+        let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: bytesPerImage)
+        defer { buffer.deallocate() }
+
+        let region = MTLRegion(
+            origin: MTLOrigin(x: 0, y: 0, z: 0),
+            size: MTLSize(width: texture.width, height: texture.height, depth: 1)
+        )
+
+        stagingTexture.getBytes(
+            buffer,
+            bytesPerRow: bytesPerRow,
+            bytesPerImage: bytesPerImage,
+            from: region,
+            mipmapLevel: 0,
+            slice: 0
+        )
+
+        guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB),
+              let context = CGContext(
+                data: buffer,
+                width: texture.width,
+                height: texture.height,
+                bitsPerComponent: 8,
+                bytesPerRow: bytesPerRow,
+                space: colorSpace,
+                bitmapInfo: texture.pixelFormat == .bgra8Unorm ?
+                    CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue :
+                    CGImageAlphaInfo.premultipliedLast.rawValue
+              ) else {
+            return nil
+        }
+
+        return context.makeImage()
+    }
+
+    /// Converts CGImage to PNG data representation
+    private func cgImageToPNG(_ image: CGImage) -> Data? {
+        let data = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(
+                data as CFMutableData,
+                "public.png" as CFString,
+                1,
+                nil
+        ) else {
+            return nil
+        }
+
+        CGImageDestinationAddImage(destination, image, nil)
+        guard CGImageDestinationFinalize(destination) else {
+            return nil
+        }
+
+        return data as Data
+    }
+
+    /// Captures the current source and Anime4K-processed frames to PNG files
+    /// for SSIM/PSNR comparison against mpv GLSL reference renders.
+    ///
+    /// Usage: Call this method after Anime4K processing in displayWithMetal()
+    /// to capture paired frames for quality verification.
+    ///
+    /// Output files:
+    ///   - frame_N_source.png (before Anime4K)
+    ///   - frame_N_output.png (after Anime4K)
+    ///
+    /// These can then be compared using the QualityCompare tool:
+    ///   QualityCompare frame_source.png frame_output.png --reference glsl_output.png
+    private func captureFrame(sourceTexture: MTLTexture, outputTexture: MTLTexture) {
+        guard frameCaptureEnabled else { return }
+        guard frameCaptureCount < maxFrameCaptures else {
+            NSLog("[FrameCapture] Max captures reached (\(maxFrameCaptures)), disabling")
+            frameCaptureEnabled = false
+            return
+        }
+
+        // Ensure output directory exists
+        try? FileManager.default.createDirectory(
+            atPath: frameCaptureDirectory,
+            withIntermediateDirectories: true
+        )
+
+        let frameNum = frameCaptureCount
+        let sourcePath = "\(frameCaptureDirectory)/frame_\(frameNum)_source.png"
+        let outputPath = "\(frameCaptureDirectory)/frame_\(frameNum)_output.png"
+
+        NSLog("[FrameCapture] Capturing frame %d: source=%dx%d, output=%dx%d",
+              frameNum, sourceTexture.width, sourceTexture.height,
+              outputTexture.width, outputTexture.height)
+
+        // Capture source texture
+        if let sourceCGImage = textureToCGImage(sourceTexture) {
+            if let sourceData = cgImageToPNG(sourceCGImage) {
+                try? sourceData.write(to: URL(fileURLWithPath: sourcePath))
+                NSLog("[FrameCapture] Saved source: %@", sourcePath)
+            }
+        }
+
+        // Capture output texture (after Anime4K)
+        if let outputCGImage = textureToCGImage(outputTexture) {
+            if let outputData = cgImageToPNG(outputCGImage) {
+                try? outputData.write(to: URL(fileURLWithPath: outputPath))
+                NSLog("[FrameCapture] Saved output: %@", outputPath)
+            }
+        }
+
+        frameCaptureCount += 1
+
+        if frameCaptureCount >= maxFrameCaptures {
+            NSLog("[FrameCapture] Captured %d frames, limit reached", maxFrameCaptures)
+        }
     }
 
     // ═══════════════════════════════════════════════════════════════════
