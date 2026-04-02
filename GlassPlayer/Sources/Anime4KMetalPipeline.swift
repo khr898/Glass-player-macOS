@@ -451,6 +451,9 @@ class Anime4KMetalPipeline {
     /// Intermediate textures for pass chaining (reused across frames)
     private var intermediateTextures: [IntermediateTexture] = []
 
+    /// Secondary intermediate textures for ping-pong writes within a pass
+    private var pingPongIntermediateTextures: [IntermediateTexture] = []
+
     /// Current preset configuration (stores the mode type)
     private var currentModeType: (any Anime4KMode.Type)?
 
@@ -549,11 +552,6 @@ class Anime4KMetalPipeline {
         // Initialize kernel registry
         KernelFunctionRegistry.initialize()
 
-        NSLog("[Anime4K] Pipeline initialized (texture pooling enabled)")
-
-        // Initialize kernel function registry
-        KernelFunctionRegistry.initialize()
-
         NSLog("[Anime4K] Metal pipeline initialized")
     }
 
@@ -628,6 +626,11 @@ class Anime4KMetalPipeline {
         }
         intermediateTextures.removeAll()
 
+        for intermediate in pingPongIntermediateTextures {
+            texturePool.releaseTexture(intermediate.texture)
+        }
+        pingPongIntermediateTextures.removeAll()
+
         // Clear output texture
         if let output = outputTexture {
             texturePool.releaseTexture(output)
@@ -686,6 +689,7 @@ class Anime4KMetalPipeline {
         // Intermediate passes need the output of previous passes bound at specific indices
         var currentInput = sourceTexture
         let originalSource = sourceTexture  // MAIN is always the original source
+        var statsMaxTexture: MTLTexture?
 
         for (index, pass) in shaderPasses.enumerated() {
             let kernelNames = KernelFunctionRegistry.kernels(for: pass.shaderFile)
@@ -708,49 +712,59 @@ class Anime4KMetalPipeline {
                                                         height: inputHeight * scaleFactor)
                     NSLog("[Anime4K] Final kernel output: %dx%d", outputTexture.width, outputTexture.height)
                 } else {
-                    // Intermediate kernel - use intermediate texture
-                    outputTexture = intermediateTextures[index].texture
-                    NSLog("[Anime4K] Intermediate kernel %d output: %dx%d", index, outputTexture.width, outputTexture.height)
+                    // Intermediate kernel - alternate write targets to avoid read/write aliasing.
+                    if kernelIdx % 2 == 0 {
+                        outputTexture = intermediateTextures[index].texture
+                    } else {
+                        outputTexture = pingPongIntermediateTextures[index].texture
+                    }
+
+                    if outputTexture === currentInput {
+                        NSLog("[Anime4K] WARNING: output aliases input at pass=%d kernel=%d", index, kernelIdx)
+                    }
+
+                    NSLog("[Anime4K] Intermediate kernel %d.%d output: %dx%d", index, kernelIdx, outputTexture.width, outputTexture.height)
                 }
 
-                // Bind textures based on kernel requirements
-                // Different shaders expect different texture indices - we need to cover all cases
-                //
-                // Common patterns:
-                // - Pass 0, Kernel 0: texture(0)=MAIN, texture(1)=output (simple 2-texture kernel)
-                // - Pass 0, Kernel 1+: texture(0)=prev_kernel_output, texture(1)=MAIN, texture(2)=output
-                // - Pass 1+: texture(0)=prev_pass_output, texture(1)=MAIN, texture(2)=output
-                // - Complex VL: texture(0-14)=intermediates, texture(15)=output
-
-                // Index 0: MAIN or previous output
-                if index == 0 && kernelIdx == 0 {
-                    // First kernel of first pass: MAIN is the original source
-                    encoder.setTexture(originalSource, index: 0)
-                } else {
-                    // All other kernels: index 0 is the previous kernel's output
+                // Bind textures based on kernel requirements.
+                // DeRing kernels require explicit multi-input bindings; other kernels use fallback behavior.
+                var additionalReadResources: [MTLTexture] = []
+                if kernelName.contains("DeRingComputeStatistics_pass1") {
+                    // HOOKED, STATSMAX, MAIN, OUTPUT
+                    let stats = statsMaxTexture ?? currentInput
                     encoder.setTexture(currentInput, index: 0)
-                }
-
-                // Index 1: Depends on whether this is the first kernel of first pass
-                if index == 0 && kernelIdx == 0 {
-                    // First kernel of first pass: output is at index 1 (simple 2-texture kernel)
-                    // Don't bind anything else here - outputTexture is already bound at index 1 below
-                } else {
-                    // All other kernels: MAIN (original source) at index 1
+                    encoder.setTexture(stats, index: 1)
+                    encoder.setTexture(originalSource, index: 2)
+                    encoder.setTexture(outputTexture, index: 3)
+                    additionalReadResources.append(stats)
+                } else if kernelName.contains("DeRingComputeStatistics") {
+                    // HOOKED, MAIN, OUTPUT
+                    encoder.setTexture(currentInput, index: 0)
                     encoder.setTexture(originalSource, index: 1)
-                }
+                    encoder.setTexture(outputTexture, index: 2)
+                } else if kernelName.contains("DeRingClamp") {
+                    // HOOKED, STATSMAX, MAIN, OUTPUT
+                    let stats = statsMaxTexture ?? currentInput
+                    encoder.setTexture(currentInput, index: 0)
+                    encoder.setTexture(stats, index: 1)
+                    encoder.setTexture(originalSource, index: 2)
+                    encoder.setTexture(outputTexture, index: 3)
+                    additionalReadResources.append(stats)
+                } else {
+                    // Generic fallback for CNN kernels.
+                    if index == 0 && kernelIdx == 0 {
+                        encoder.setTexture(originalSource, index: 0)
+                        encoder.setTexture(outputTexture, index: 1)
+                    } else {
+                        encoder.setTexture(currentInput, index: 0)
+                        encoder.setTexture(originalSource, index: 1)
+                        encoder.setTexture(outputTexture, index: 2)
+                    }
 
-                // Index 2: Output for kernels that expect it at index 2
-                // For first kernel of first pass, also bind output at index 1
-                if index == 0 && kernelIdx == 0 {
-                    encoder.setTexture(outputTexture, index: 1)  // First kernel expects output at index 1
-                }
-                encoder.setTexture(outputTexture, index: 2)  // Other kernels expect output at index 2
-
-                // Indices 3-15: Bind output at all possible indices for complex kernels
-                // Some VL preset kernels use texture(15) for output
-                for i in 3...15 {
-                    encoder.setTexture(outputTexture, index: i)
+                    // Preserve compatibility with kernels using high output indices.
+                    for i in 3...15 {
+                        encoder.setTexture(outputTexture, index: i)
+                    }
                 }
 
                 // Bind sampler at index 0
@@ -759,6 +773,9 @@ class Anime4KMetalPipeline {
                 // Declare resource usage for proper barrier handling
                 encoder.useResource(currentInput, usage: .read)
                 encoder.useResource(outputTexture, usage: .write)
+                for resource in additionalReadResources {
+                    encoder.useResource(resource, usage: .read)
+                }
 
                 // Calculate thread groups based on OUTPUT dimensions
                 let width = outputTexture.width
@@ -767,14 +784,19 @@ class Anime4KMetalPipeline {
                                            height: (height + threadGroupSize.height - 1) / threadGroupSize.height,
                                            depth: 1)
 
-                NSLog("[Anime4K] Dispatching kernel with threadGroups %dx%d", threadGroups.width, threadGroups.height)
-                encoder.dispatchThreads(threadGroups, threadsPerThreadgroup: threadGroupSize)
+                    NSLog("[Anime4K] Dispatching kernel with threadgroups %dx%d for output %dx%d",
+                        threadGroups.width, threadGroups.height, width, height)
+                    encoder.dispatchThreadgroups(threadGroups, threadsPerThreadgroup: threadGroupSize)
 
                 // Note: Metal automatically handles resource barriers for texture read/write
                 // Explicit barriers not needed for simple pass chaining
 
                 // Next kernel/pass reads from this kernel's output
                 currentInput = outputTexture
+
+                if kernelName.contains("DeRingComputeStatistics") {
+                    statsMaxTexture = outputTexture
+                }
             }
         }
 
@@ -880,6 +902,11 @@ class Anime4KMetalPipeline {
         }
         intermediateTextures.removeAll()
 
+        for intermediate in pingPongIntermediateTextures {
+            texturePool.releaseTexture(intermediate.texture)
+        }
+        pingPongIntermediateTextures.removeAll()
+
         var currentWidth = inputWidth
         var currentHeight = inputHeight
 
@@ -902,9 +929,20 @@ class Anime4KMetalPipeline {
                     height: currentHeight
                 ))
             }
+
+            let pingPongLabel = "Anime4K_IntermediatePingPong_\(index)_\(shaderFile)"
+            if let texture = texturePool.acquireTexture(width: currentWidth, height: currentHeight, label: pingPongLabel) {
+                pingPongIntermediateTextures.append(IntermediateTexture(
+                    texture: texture,
+                    width: currentWidth,
+                    height: currentHeight
+                ))
+            }
         }
 
-        NSLog("[Anime4K] Allocated %d intermediate textures (pooling enabled)", intermediateTextures.count)
+        NSLog("[Anime4K] Allocated %d intermediate textures (+%d ping-pong)",
+              intermediateTextures.count,
+              pingPongIntermediateTextures.count)
     }
 
     /// Ensure output texture exists at the specified dimensions

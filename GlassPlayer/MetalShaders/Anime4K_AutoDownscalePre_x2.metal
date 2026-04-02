@@ -45,7 +45,7 @@ using mat4 = float4x4;
 #define NATIVE_tex(pos) NATIVE.sample(textureSampler, pos)
 #define NATIVE_texOff(off) NATIVE_tex(NATIVE_pos + NATIVE_pt * float2(off))
 
-vec4 hook(float2 mtlPos, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> NATIVE, texture2d<float, access::sample> MAIN, sampler textureSampler) {
+static vec4 hook(float2 mtlPos, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> NATIVE, texture2d<float, access::sample> MAIN, sampler textureSampler) {
 return HOOKED_tex(HOOKED_pos);
 }
 kernel void Anime4Kv40AutoDownscalePrex2(

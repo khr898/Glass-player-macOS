@@ -34,7 +34,7 @@ using mat4 = float4x4;
 #define HOOKED_texOff(off) MAIN_texOff(off)
 
 #define go_0(x_off, y_off) (MAIN_texOff(vec2(x_off, y_off)))
-vec4 hook(float2 mtlPos, texture2d<float, access::sample> MAIN, sampler textureSampler) {
+static vec4 hook(float2 mtlPos, texture2d<float, access::sample> MAIN, sampler textureSampler) {
 vec4 result = mat4(-0.09991986, 0.13782342, -0.031251684, -0.06356843, -0.3437488, 0.05450952, 0.34347802, 0.46335372, 0.08607224, 0.044988394, 0.137179, 0.17976908, 0.0, 0.0, 0.0, 0.0) * go_0(-1.0, -1.0);
 result += mat4(-0.024212424, -0.09278509, -0.00040907756, 0.34552294, -0.13254678, 0.113105185, 0.005667946, -0.00036919137, -0.06375679, 0.009184115, 0.115518734, -0.115506776, 0.0, 0.0, 0.0, 0.0) * go_0(-1.0, 0.0);
 result += mat4(-0.14101827, 0.023523493, 0.044094566, -0.019271746, -0.44348842, -0.08818877, -0.4026149, -0.21995795, -0.15880394, -0.013732858, -0.020751135, 0.012719151, 0.0, 0.0, 0.0, 0.0) * go_0(-1.0, 1.0);
@@ -92,7 +92,7 @@ using mat4 = float4x4;
 
 #define go_0(x_off, y_off) (max((conv2d_tf_texOff(vec2(x_off, y_off))), 0.0))
 #define go_1(x_off, y_off) (max(-(conv2d_tf_texOff(vec2(x_off, y_off))), 0.0))
-vec4 hook_pass1(float2 mtlPos, texture2d<float, access::sample> conv2d_tf, texture2d<float, access::sample> MAIN, sampler textureSampler) {
+static vec4 hook_pass1(float2 mtlPos, texture2d<float, access::sample> conv2d_tf, texture2d<float, access::sample> MAIN, sampler textureSampler) {
 vec4 result = mat4(-0.16410656, -0.40521824, 0.13121907, -0.02314597, 0.105412476, -0.060401272, -0.043063477, -0.13933973, 0.12558138, -0.020861467, 0.030370515, 0.13178016, -0.14220351, 0.20736893, 0.003321564, -0.29241714) * go_0(-1.0, -1.0);
 result += mat4(0.18517321, 0.29162985, -0.26783395, 0.039760686, 0.025527012, -0.067319244, 0.055004176, 0.048916563, 0.12750523, -0.091435954, 0.13818842, 0.36704224, 0.0839921, 0.10186618, -0.17237376, 0.13282418) * go_0(-1.0, 0.0);
 result += mat4(-0.1657887, 0.0131325135, -0.17222486, 0.091398895, -0.12756164, -0.08437298, -0.29052997, 0.3269337, 0.15870757, -0.013529402, -0.0581753, 0.11802371, 0.07099966, -0.024063632, 0.31834844, -0.11183859) * go_0(-1.0, 1.0);
@@ -159,7 +159,7 @@ using mat4 = float4x4;
 
 #define go_0(x_off, y_off) (max((conv2d_1_tf_texOff(vec2(x_off, y_off))), 0.0))
 #define go_1(x_off, y_off) (max(-(conv2d_1_tf_texOff(vec2(x_off, y_off))), 0.0))
-vec4 hook_pass2(float2 mtlPos, texture2d<float, access::sample> conv2d_1_tf, texture2d<float, access::sample> MAIN, sampler textureSampler) {
+static vec4 hook_pass2(float2 mtlPos, texture2d<float, access::sample> conv2d_1_tf, texture2d<float, access::sample> MAIN, sampler textureSampler) {
 vec4 result = mat4(0.31543177, 0.23095237, -0.06692611, -0.5867763, 0.003622504, 0.17948842, -0.14627707, 0.1745016, -0.052964583, -0.15551159, 0.05644786, -0.012665164, 0.13107763, 0.11369179, -0.09452995, -0.11973403) * go_0(-1.0, -1.0);
 result += mat4(-0.2694661, -0.115382135, 0.3073268, -0.067228466, -0.25511482, -0.13922207, 0.36758214, -0.18821828, -0.022617863, 0.20333402, -0.11125889, 0.3552245, -0.013346653, -0.099095374, -0.25100616, 0.35521755) * go_0(-1.0, 0.0);
 result += mat4(0.011012409, -0.13675085, 0.25642, -0.34851208, -0.23184675, 0.18012202, 0.57654136, 0.103173524, -0.16461405, 0.038177088, 0.1234096, 0.013202029, -0.19033363, 0.07469178, -0.017948546, 0.15287702) * go_0(-1.0, 1.0);
@@ -226,7 +226,7 @@ using mat4 = float4x4;
 
 #define go_0(x_off, y_off) (max((conv2d_2_tf_texOff(vec2(x_off, y_off))), 0.0))
 #define go_1(x_off, y_off) (max(-(conv2d_2_tf_texOff(vec2(x_off, y_off))), 0.0))
-vec4 hook_pass3(float2 mtlPos, texture2d<float, access::sample> conv2d_2_tf, texture2d<float, access::sample> MAIN, sampler textureSampler) {
+static vec4 hook_pass3(float2 mtlPos, texture2d<float, access::sample> conv2d_2_tf, texture2d<float, access::sample> MAIN, sampler textureSampler) {
 vec4 result = mat4(-0.2237721, -0.0064096362, -0.31808427, 0.73477733, 0.015353088, 0.23983319, 0.14967978, -0.34920225, -0.07456269, 0.093151815, -0.14331086, -0.24586205, -0.14183366, 0.06401045, -0.22044073, 0.29932275) * go_0(-1.0, -1.0);
 result += mat4(-0.07968509, -0.3349146, 0.16529128, 0.08443499, 0.4095855, -0.17120704, 0.17425705, 0.15298946, 0.2981273, 0.2212369, 0.10392389, -0.28775454, -0.065247655, -0.15255849, 0.13094437, 0.18685219) * go_0(-1.0, 0.0);
 result += mat4(0.015706737, -0.17755036, 0.2622526, 0.112057306, -0.15876788, -0.38466996, -0.33700845, -0.031711742, -0.023320962, -0.3145249, -0.21223734, -0.1314596, -0.1888095, -0.046370104, 0.09000896, -0.0046378844) * go_0(-1.0, 1.0);
@@ -293,7 +293,7 @@ using mat4 = float4x4;
 
 #define go_0(x_off, y_off) (max((conv2d_3_tf_texOff(vec2(x_off, y_off))), 0.0))
 #define go_1(x_off, y_off) (max(-(conv2d_3_tf_texOff(vec2(x_off, y_off))), 0.0))
-vec4 hook_pass4(float2 mtlPos, texture2d<float, access::sample> conv2d_3_tf, texture2d<float, access::sample> MAIN, sampler textureSampler) {
+static vec4 hook_pass4(float2 mtlPos, texture2d<float, access::sample> conv2d_3_tf, texture2d<float, access::sample> MAIN, sampler textureSampler) {
 vec4 result = mat4(-0.29012984, -0.13150147, 0.31015614, 0.05992291, -0.050289866, 0.14845313, -0.09608898, 0.27913308, 0.060307387, -0.04160452, 0.035932682, -0.08137563, -0.07999419, 0.11818284, -0.27512288, 0.21948813) * go_0(-1.0, -1.0);
 result += mat4(0.12916058, -0.21759962, -0.33868533, 0.021636661, 0.053470243, 0.1412425, 0.043395396, -0.26751056, -0.01689101, -0.2623835, 0.010809152, 0.062962815, -0.20692012, -0.1677863, -0.23313859, -0.17402615) * go_0(-1.0, 0.0);
 result += mat4(-0.08204112, -0.23672083, -0.0064437394, -0.13200696, -0.056692924, -0.02708657, 0.12536962, 0.004428919, 0.14137582, 0.15404348, -0.105753876, 0.047957454, 0.15734316, 0.16562423, -0.010160829, -0.06602983) * go_0(-1.0, 1.0);
@@ -360,7 +360,7 @@ using mat4 = float4x4;
 
 #define go_0(x_off, y_off) (max((conv2d_4_tf_texOff(vec2(x_off, y_off))), 0.0))
 #define go_1(x_off, y_off) (max(-(conv2d_4_tf_texOff(vec2(x_off, y_off))), 0.0))
-vec4 hook_pass5(float2 mtlPos, texture2d<float, access::sample> conv2d_4_tf, texture2d<float, access::sample> MAIN, sampler textureSampler) {
+static vec4 hook_pass5(float2 mtlPos, texture2d<float, access::sample> conv2d_4_tf, texture2d<float, access::sample> MAIN, sampler textureSampler) {
 vec4 result = mat4(0.15332128, 0.027258258, 0.14900503, -0.15982795, 0.17021236, -0.51046044, -0.15287271, -0.058167327, 0.51826185, -0.34817994, 0.004513167, 0.05395769, 0.1990321, -0.049979225, 0.11391989, -0.16062729) * go_0(-1.0, -1.0);
 result += mat4(0.033682905, 0.019728886, 0.19931756, 0.17381927, 0.2585768, -0.2124572, -0.014632459, 0.39779893, -0.1146207, -0.2396625, 0.08960277, 0.38345298, 0.25497693, 0.11692859, -0.14207517, 0.12667973) * go_0(-1.0, 0.0);
 result += mat4(-0.14911255, 0.08910706, 0.16136818, 0.03914566, 0.24204038, -0.03607149, -0.4571109, 0.10802461, -0.0021356856, 0.00885878, 0.22297303, 0.2367231, 0.045177583, 0.11120606, -0.009971904, -0.059262395) * go_0(-1.0, 1.0);
@@ -427,7 +427,7 @@ using mat4 = float4x4;
 
 #define go_0(x_off, y_off) (max((conv2d_5_tf_texOff(vec2(x_off, y_off))), 0.0))
 #define go_1(x_off, y_off) (max(-(conv2d_5_tf_texOff(vec2(x_off, y_off))), 0.0))
-vec4 hook_pass6(float2 mtlPos, texture2d<float, access::sample> conv2d_5_tf, texture2d<float, access::sample> MAIN, sampler textureSampler) {
+static vec4 hook_pass6(float2 mtlPos, texture2d<float, access::sample> conv2d_5_tf, texture2d<float, access::sample> MAIN, sampler textureSampler) {
 vec4 result = mat4(-0.22753362, -0.08612073, 0.33140692, 0.08699529, -0.18788953, -0.056579117, -0.12905197, -0.06694621, 0.054559365, 0.15031597, -0.13430363, 0.021646025, 0.14884405, -0.0694291, 0.26149413, 0.11270503) * go_0(-1.0, -1.0);
 result += mat4(0.17876762, -0.09637848, 0.11285323, 0.2004893, 0.1317187, -0.036162686, 0.17958368, -0.069625, 0.28760737, -0.12505141, 0.12760694, 0.047717955, -0.16811855, -0.16340709, 0.13278298, -0.08403954) * go_0(-1.0, 0.0);
 result += mat4(-0.21917523, 0.079711854, -0.28642535, 0.2822416, 0.03001489, -0.014772918, -0.3487396, 0.10597145, -0.013841082, 0.17034237, 0.10810282, -0.08089695, -0.22184245, -0.59067357, 0.44113398, 0.13045649) * go_0(-1.0, 1.0);
@@ -542,7 +542,7 @@ using mat4 = float4x4;
 #define g_11 (max(-(conv2d_5_tf_tex(conv2d_5_tf_pos)), 0.0))
 #define g_12 (max((conv2d_6_tf_tex(conv2d_6_tf_pos)), 0.0))
 #define g_13 (max(-(conv2d_6_tf_tex(conv2d_6_tf_pos)), 0.0))
-vec4 hook_pass7(float2 mtlPos, texture2d<float, access::sample> MAIN, texture2d<float, access::sample> conv2d_tf, texture2d<float, access::sample> conv2d_1_tf, texture2d<float, access::sample> conv2d_2_tf, texture2d<float, access::sample> conv2d_3_tf, texture2d<float, access::sample> conv2d_4_tf, texture2d<float, access::sample> conv2d_5_tf, texture2d<float, access::sample> conv2d_6_tf, sampler textureSampler) {
+static vec4 hook_pass7(float2 mtlPos, texture2d<float, access::sample> MAIN, texture2d<float, access::sample> conv2d_tf, texture2d<float, access::sample> conv2d_1_tf, texture2d<float, access::sample> conv2d_2_tf, texture2d<float, access::sample> conv2d_3_tf, texture2d<float, access::sample> conv2d_4_tf, texture2d<float, access::sample> conv2d_5_tf, texture2d<float, access::sample> conv2d_6_tf, sampler textureSampler) {
 vec4 result = mat4(-0.08837163, -0.065234736, -0.034704313, 0.0, 0.021405501, 0.013663729, 0.019249594, 0.0, 0.05328863, 0.03580334, 0.046457592, 0.0, -0.12216048, 0.022547891, 0.016400825, 0.0) * g_0;
 result += mat4(0.061996464, 0.05631466, 0.06808407, 0.0, -0.005013109, -0.0044589997, -0.032367796, 0.0, 0.016481603, 0.13721058, 0.14924648, 0.0, 0.020035887, -0.07250003, -0.08034037, 0.0) * g_1;
 result += mat4(0.24078514, 0.081361525, 0.053420708, 0.0, -0.009353794, -0.051077116, -0.058007747, 0.0, -0.14071098, 0.01035966, 0.005308949, 0.0, -0.1489842, -0.06711817, -0.05552926, 0.0) * g_2;

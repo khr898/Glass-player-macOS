@@ -41,10 +41,10 @@ using mat4 = float4x4;
 
 #define KERNELSIZE 5 //Kernel size, must be an positive odd integer.
 #define KERNELHALFSIZE 2 //Half of the kernel size without remainder. Must be equal to trunc(KERNELSIZE/2).
-float get_luma(float2 mtlPos, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> MAIN, sampler textureSampler, vec4 rgba) {
+static float get_luma(float2 mtlPos, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> MAIN, sampler textureSampler, vec4 rgba) {
 return dot(vec4(0.299, 0.587, 0.114, 0.0), rgba);
 }
-vec4 hook(float2 mtlPos, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> MAIN, sampler textureSampler) {
+static vec4 hook(float2 mtlPos, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> MAIN, sampler textureSampler) {
 float gmax = 0.0;
 for (int i=0; i<KERNELSIZE; i++) {
 float g = get_luma(mtlPos, HOOKED, MAIN, textureSampler, MAIN_texOff(vec2(i - KERNELHALFSIZE, 0)));
@@ -103,7 +103,7 @@ using mat4 = float4x4;
 
 #define KERNELSIZE 5 //Kernel size, must be an positive odd integer.
 #define KERNELHALFSIZE 2 //Half of the kernel size without remainder. Must be equal to trunc(KERNELSIZE/2).
-vec4 hook_pass1(float2 mtlPos, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> STATSMAX, texture2d<float, access::sample> MAIN, sampler textureSampler) {
+static vec4 hook_pass1(float2 mtlPos, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> STATSMAX, texture2d<float, access::sample> MAIN, sampler textureSampler) {
 float gmax = 0.0;
 for (int i=0; i<KERNELSIZE; i++) {
 float g = STATSMAX_texOff(vec2(0, i - KERNELHALFSIZE)).x;
@@ -160,10 +160,10 @@ using mat4 = float4x4;
 #define STATSMAX_tex(pos) STATSMAX.sample(textureSampler, pos)
 #define STATSMAX_texOff(off) STATSMAX_tex(STATSMAX_pos + STATSMAX_pt * float2(off))
 
-float get_luma(float2 mtlPos, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> STATSMAX, texture2d<float, access::sample> MAIN, sampler textureSampler, vec4 rgba) {
+static float get_luma(float2 mtlPos, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> STATSMAX, texture2d<float, access::sample> MAIN, sampler textureSampler, vec4 rgba) {
 return dot(vec4(0.299, 0.587, 0.114, 0.0), rgba);
 }
-vec4 hook_pass2(float2 mtlPos, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> STATSMAX, texture2d<float, access::sample> MAIN, sampler textureSampler) {
+static vec4 hook_pass2(float2 mtlPos, texture2d<float, access::sample> HOOKED, texture2d<float, access::sample> STATSMAX, texture2d<float, access::sample> MAIN, sampler textureSampler) {
 float current_luma = get_luma(mtlPos, HOOKED, STATSMAX, MAIN, textureSampler, HOOKED_tex(HOOKED_pos));
 float new_luma = min(current_luma, STATSMAX_tex(HOOKED_pos).x);
 return HOOKED_tex(HOOKED_pos) - (current_luma - new_luma);
