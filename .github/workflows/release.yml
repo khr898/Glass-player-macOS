@@ -2,7 +2,7 @@
 # Glass Player — Release Build
 #
 # Triggers on version tags (v1.0.0, v2.3.1, etc.)
-# Builds the app, creates a DMG, and uploads it to GitHub Releases.
+# Builds an unsigned distribution ZIP and publishes it to GitHub Releases.
 #
 # Usage:
 #   git tag v1.0.0
@@ -24,7 +24,7 @@ permissions:
 jobs:
   build:
     name: Build & Release
-    runs-on: macos-14          # Apple Silicon (M1) runner
+    runs-on: macos-14
     timeout-minutes: 30
 
     steps:
@@ -35,45 +35,52 @@ jobs:
         run: |
           brew install mpv
 
-      - name: Build Glass Player
+      - name: Resolve version metadata
+        id: version
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            VERSION="${GITHUB_REF_NAME}"
+          else
+            VERSION="dev-${GITHUB_RUN_NUMBER}"
+          fi
+          ARTIFACT="GlassPlayer-${VERSION}-unsigned.zip"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "artifact=${ARTIFACT}" >> "$GITHUB_OUTPUT"
+
+      - name: Build Glass Player (unsigned, launch-stable)
         run: |
           cd GlassPlayer
           chmod +x build.sh
-          # CI build: skip local install, skip signing (no cert in CI),
-          # but still create the DMG
-          NO_INSTALL=1 SKIP_SIGN=1 CREATE_DMG=1 BUILD_PROFILE=optimized ./build.sh
+          # No Developer ID signing / notarization in CI release builds.
+          # SKIP_SIGN=1 still performs ad-hoc signing in build.sh, which
+          # keeps binaries launch-stable and avoids code-signature crashes.
+          NO_INSTALL=1 SKIP_SIGN=1 CREATE_DMG=0 BUILD_PROFILE=optimized ./build.sh
 
-      - name: Verify build
+      - name: Verify build and signature health
         run: |
           APP="GlassPlayer/build/optimized/Glass Player.app"
           echo "=== Binary info ==="
           file "$APP/Contents/MacOS/Glass Player"
+          echo "=== Signature verification (ad-hoc expected) ==="
+          codesign --verify --deep --strict "$APP"
+          codesign -dv "$APP" 2>&1 | grep -E "Identifier=|TeamIdentifier=|Authority=" || true
+          echo "=== Gatekeeper assessment (may require user override) ==="
+          spctl --assess --type execute -v "$APP" || true
           echo "=== Size ==="
           du -sh "$APP"
-          echo "=== Frameworks ==="
-          ls "$APP/Contents/Frameworks/" | wc -l | xargs echo "Bundled libraries:"
 
-      - name: Get version from tag
-        id: version
+      - name: Package unsigned app ZIP
         run: |
-          if [[ "${{ github.ref_type }}" == "tag" ]]; then
-            VERSION="${{ github.ref_name }}"
-          else
-            VERSION="dev-$(date +%Y%m%d-%H%M%S)"
-          fi
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          APP="GlassPlayer/build/optimized/Glass Player.app"
+          OUT="GlassPlayer/build/optimized/${{ steps.version.outputs.artifact }}"
+          rm -f "$OUT"
+          ditto -c -k --sequesterRsrc --keepParent "$APP" "$OUT"
 
-      - name: Rename DMG with version
-        run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          mv "GlassPlayer/build/optimized/GlassPlayer.dmg" \
-             "GlassPlayer/build/optimized/GlassPlayer-${VERSION}.dmg"
-
-      - name: Upload DMG artifact
+      - name: Upload unsigned app artifact
         uses: actions/upload-artifact@v4
         with:
-          name: GlassPlayer-${{ steps.version.outputs.version }}
-          path: GlassPlayer/build/optimized/GlassPlayer-${{ steps.version.outputs.version }}.dmg
+          name: GlassPlayer-${{ steps.version.outputs.version }}-unsigned
+          path: GlassPlayer/build/optimized/${{ steps.version.outputs.artifact }}
 
       - name: Create GitHub Release
         if: github.ref_type == 'tag'
@@ -84,18 +91,24 @@ jobs:
           prerelease: false
           generate_release_notes: true
           files: |
-            GlassPlayer/build/optimized/GlassPlayer-${{ steps.version.outputs.version }}.dmg
+            GlassPlayer/build/optimized/${{ steps.version.outputs.artifact }}
           body: |
             ## Glass Player ${{ steps.version.outputs.version }}
 
+            ### Build type
+            - Unsigned release package (no Developer ID notarization)
+            - Ad-hoc signed internally for launch stability
+
             ### Installation
-            1. Download `GlassPlayer-${{ steps.version.outputs.version }}.dmg`
-            2. Open the DMG
-            3. **Option A**: Double-click "Install Glass Player" (recommended)
-            4. **Option B**: Drag to Applications, then run in Terminal:
-               ```
-               xattr -cr "/Applications/Glass Player.app"
-               ```
+            1. Download `${{ steps.version.outputs.artifact }}`
+            2. Unzip and move **Glass Player.app** to Applications
+            3. Launch from Finder
+
+            ### Gatekeeper
+            This build is intentionally unsigned for distribution identity.
+            If first launch is blocked by Gatekeeper, allow it from:
+            - **System Settings → Privacy & Security → Open Anyway**
+            - or **Finder → Right-click app → Open → Open**
 
             ### Requirements
             - macOS 14.0 (Sonoma) or later
