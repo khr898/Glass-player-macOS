@@ -22,6 +22,8 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
     let mpv = MPVController()
     let videoView: VideoView
     var filePath: String?
+    private var currentMediaSource: String?
+    private var currentMediaIsURL = false
 
     // ── Bottom controls bar ──
     private let controlsContainer = NSVisualEffectView()
@@ -242,6 +244,8 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
 
     func loadFile(_ path: String) {
         filePath = path
+        currentMediaSource = path
+        currentMediaIsURL = false
         window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         mpv.loadFile(path)
@@ -252,12 +256,16 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
     }
 
     func loadUrl(_ url: String) {
+        let cleaned = normalizeInputURL(url)
         filePath = nil
+        currentMediaSource = cleaned
+        currentMediaIsURL = true
         thumbnailCache.removeAll()
         window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
-        mpv.loadUrl(url)
-        titleLabel.stringValue = url
+        mpv.loadUrl(cleaned)
+        titleLabel.stringValue = cleaned
+        setupThumbnailGenerator()
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -906,7 +914,7 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
         // Fast presets
         let fastHeaderTitle = recommendedPreset.contains("(Fast)")
             ? "── Fast (Recommended on this Mac) ──"
-            : "── Fast (M1/M2/Intel) ──"
+            : "── Fast (Lower GPU load) ──"
         let fastHeader = NSMenuItem(title: fastHeaderTitle, action: nil, keyEquivalent: "")
         fastHeader.isEnabled = false
         menu.addItem(fastHeader)
@@ -1546,8 +1554,14 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
                 openFileAction()
                 return true
             }
+            if event.keyCode == 32 { // U
+                toggleUrlInput()
+                return true
+            }
             return false
         }
+
+        let chars = event.charactersIgnoringModifiers?.lowercased() ?? ""
 
         switch event.keyCode {
         case 49:  // Space
@@ -1603,6 +1617,18 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
             currentSpeed = newSpeed
             updateSpeedButton()
         default:
+            if chars == ";" {
+                mpv.adjustAudioDelay(by: 0.1)
+                return true
+            }
+            if chars == "'" {
+                mpv.adjustAudioDelay(by: -0.1)
+                return true
+            }
+            if chars == "\\" {
+                mpv.setAudioDelay(0)
+                return true
+            }
             return false
         }
         return true
@@ -2237,11 +2263,11 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
         pendingThumbnailTime = -1
 
         // Create or reconfigure the dedicated thumbnail mpv instance
-        if let path = filePath {
+        if let source = currentMediaSource {
             if thumbnailMPV == nil {
                 thumbnailMPV = ThumbnailMPV()
             }
-            thumbnailMPV?.loadFile(path)
+            thumbnailMPV?.loadSource(source, isURL: currentMediaIsURL)
         }
     }
 
@@ -2394,10 +2420,21 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
                 if self.pendingThumbnailTime >= 0 {
                     let pending = self.pendingThumbnailTime
                     self.pendingThumbnailTime = -1
-                    self.generateThumbnail(at: pending, cacheKey: Int(pending))
+                    self.generateThumbnail(at: pending, cacheKey: Int(pending * 2))
                 }
             }
         }
+    }
+
+    private func normalizeInputURL(_ value: String) -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let parsed = URL(string: trimmed), let scheme = parsed.scheme, !scheme.isEmpty {
+            return trimmed
+        }
+        if trimmed.hasPrefix("/") || trimmed.hasPrefix("~") {
+            return trimmed
+        }
+        return "https://\(trimmed)"
     }
 
     /// Hide the preview popup
@@ -2744,15 +2781,22 @@ private class ThumbnailMPV {
         }
     }
 
-    func loadFile(_ path: String) {
+    func loadSource(_ source: String, isURL: Bool) {
         guard let handle = handle else { return }
-        guard path != currentFile else { return }
-        currentFile = path
+        guard source != currentFile else { return }
+        currentFile = source
 
         // Load file paused so it doesn't play
         mpv_command_string(handle, "set pause yes")
-        let escaped = path.replacingOccurrences(of: "'", with: "'\\''")
-        mpv_command_string(handle, "loadfile '\(escaped)' replace")
+        let mode = isURL ? "replace" : "replace"
+        "loadfile".withCString { a0 in
+            source.withCString { a1 in
+                mode.withCString { a2 in
+                    var cPtrs: [UnsafePointer<CChar>?] = [a0, a1, a2, nil]
+                    mpv_command(handle, &cPtrs)
+                }
+            }
+        }
 
         // Wait for file load
         for _ in 0..<40 {
@@ -2767,7 +2811,7 @@ private class ThumbnailMPV {
 
         return queue.sync {
             // Seek to the requested time (keyframe for speed)
-            mpv_command_string(handle, "seek \(time) absolute+keyframes")
+            mpv_command_string(handle, "seek \(time) absolute+exact")
 
             // Wait for seek to complete
             for _ in 0..<15 {

@@ -354,7 +354,10 @@ class MPVController {
     }
 
     func loadUrl(_ url: String) {
-        command(["loadfile", url])
+        let trimmed = url.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        let normalized = normalizeInputURL(trimmed)
+        command(["loadfile", normalized])
     }
 
     func togglePause() {
@@ -362,7 +365,7 @@ class MPVController {
     }
 
     func seek(by seconds: Double) {
-        mpv_command_string(mpvHandle, "seek \(seconds) relative")
+        command(["seek", "\(seconds)", "relative+exact"])
     }
 
     func seek(to position: Double) {
@@ -400,8 +403,23 @@ class MPVController {
     }
 
     func setSpeed(_ speed: Double) {
-        var s = speed
+        var s = clampRangeAccelerate(speed, lower: 0.25, upper: 4.0)
         mpv_set_property(mpvHandle, "speed", MPV_FORMAT_DOUBLE, &s)
+    }
+
+    func adjustAudioDelay(by delta: Double) {
+        command(["add", "audio-delay", "\(delta)"])
+    }
+
+    func setAudioDelay(_ delay: Double) {
+        var d = delay
+        mpv_set_property(mpvHandle, "audio-delay", MPV_FORMAT_DOUBLE, &d)
+    }
+
+    func getAudioDelay() -> Double {
+        var d: Double = 0
+        mpv_get_property(mpvHandle, "audio-delay", MPV_FORMAT_DOUBLE, &d)
+        return d
     }
 
     func getSpeed() -> Double {
@@ -888,6 +906,17 @@ class MPVController {
         }
     }
 
+    private func normalizeInputURL(_ value: String) -> String {
+        if let parsed = URL(string: value), let scheme = parsed.scheme, !scheme.isEmpty {
+            return value
+        }
+        // Preserve local paths while allowing quick protocol-less URL entry.
+        if value.hasPrefix("/") || value.hasPrefix("~") {
+            return value
+        }
+        return "https://\(value)"
+    }
+
     /// Set an mpv property at runtime (after mpv_initialize).
     /// Use this for live settings changes from the Settings UI.
     func setPropertyString(_ name: String, _ value: String) {
@@ -926,6 +955,7 @@ class MPVController {
             ("audioOutput",         "ao",                   false, false),
             ("audioChannels",       "audio-channels",       false, false),
             ("audioPassthrough",    "audio-spdif",          false, false),
+            ("audioDelay",          "audio-delay",          false, false),
             ("audioLang",           "alang",                false, false),
             ("defaultVolume",       "volume",               false, false),
             ("subAutoLoad",         "sub-auto",             false, false),

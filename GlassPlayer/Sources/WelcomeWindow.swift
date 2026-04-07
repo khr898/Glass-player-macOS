@@ -1,7 +1,7 @@
 import Cocoa
 
 // ---------------------------------------------------------------------------
-// WelcomeWindow – non-blocking launch screen with Open File & rclone options
+// WelcomeWindow – non-blocking launch screen with Open File & remote options
 // Follows system appearance (light/dark mode)
 // ---------------------------------------------------------------------------
 
@@ -119,7 +119,7 @@ class WelcomeWindow: NSWindowController {
         contentView.addSubview(openFileButton)
 
         let rcloneButton = makeActionButton(
-            title: "rclone Browser",
+            title: "Remote Browser",
             symbol: "network",
             subtitle: "Stream from remote storage",
             action: #selector(rcloneClicked)

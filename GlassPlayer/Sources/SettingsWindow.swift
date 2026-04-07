@@ -47,6 +47,7 @@ class SettingsWindow: NSWindowController, NSTableViewDelegate, NSTableViewDataSo
         "audioOutput":         "ao",
         "audioChannels":       "audio-channels",
         "audioPassthrough":    "audio-spdif",
+        "audioDelay":          "audio-delay",
         "audioLang":           "alang",
         "defaultVolume":       "volume",
         // Subtitles
@@ -472,6 +473,12 @@ class SettingsWindow: NSWindowController, NSTableViewDelegate, NSTableViewDataSo
             defaultValue: "eng,en,jpn,jp"
         ))
         views.append(makePopUpRow(
+            title: "Default Audio Delay",
+            key: "audioDelay",
+            options: ["-0.50", "-0.25", "-0.10", "0", "0.10", "0.25", "0.50"],
+            defaultValue: "0"
+        ))
+        views.append(makePopUpRow(
             title: "Default Volume",
             key: "defaultVolume",
             options: ["25", "50", "75", "100", "125", "150"],
@@ -480,7 +487,7 @@ class SettingsWindow: NSWindowController, NSTableViewDelegate, NSTableViewDataSo
 
         views.append(makeRestoreDefaultsButton(keys: [
             "volumeMax", "audioOutput", "audioChannels", "audioPassthrough",
-            "audioLang", "defaultVolume"
+            "audioLang", "audioDelay", "defaultVolume"
         ]))
 
         addViewsToContainer(container, views: views)
@@ -784,7 +791,7 @@ class SettingsWindow: NSWindowController, NSTableViewDelegate, NSTableViewDataSo
 
         views.append(makeDescriptionLabel(
             "Anime4K shaders enhance anime visuals using real-time GPU processing. " +
-            "HQ presets require M1 Pro/Max or better. Fast presets work on all Apple Silicon."
+            "Auto chooses a preset dynamically based on your current GPU and memory headroom."
         ))
 
         views.append(makePopUpRow(
@@ -823,7 +830,7 @@ class SettingsWindow: NSWindowController, NSTableViewDelegate, NSTableViewDataSo
 
         views.append(makeDescriptionLabel(
             "Clear stored data to free disk space. Watch history tracks your resume " +
-            "positions. Caches include decoded media data. rclone caches are remote " +
+            "positions. Caches include decoded media data. Remote caches are remote " +
             "file listings cached locally."
         ))
 
@@ -838,7 +845,7 @@ class SettingsWindow: NSWindowController, NSTableViewDelegate, NSTableViewDataSo
             action: #selector(clearMediaCaches)
         ))
         views.append(makeActionButton(
-            title: "Clear rclone Caches",
+            title: "Clear Remote Browser Caches",
             icon: "cloud",
             action: #selector(clearRcloneCaches)
         ))
@@ -868,12 +875,21 @@ class SettingsWindow: NSWindowController, NSTableViewDelegate, NSTableViewDataSo
     }
 
     @objc private func clearRcloneCaches() {
-        let home = NSHomeDirectory()
-        let rcloneCacheDir = home + "/.cache/rclone"
-        if FileManager.default.fileExists(atPath: rcloneCacheDir) {
-            try? FileManager.default.removeItem(atPath: rcloneCacheDir)
+        var cachePaths: [String] = []
+        if let envPath = ProcessInfo.processInfo.environment["RCLONE_CACHE_DIR"], !envPath.isEmpty {
+            cachePaths.append(envPath)
         }
-        showCleanupAlert("rclone caches cleared.")
+
+        let home = NSHomeDirectory()
+        cachePaths.append(home + "/.cache/rclone")
+        cachePaths.append(home + "/Library/Caches/rclone")
+
+        for path in cachePaths {
+            if FileManager.default.fileExists(atPath: path) {
+                try? FileManager.default.removeItem(atPath: path)
+            }
+        }
+        showCleanupAlert("Remote caches cleared.")
     }
 
     private func showCleanupAlert(_ message: String) {

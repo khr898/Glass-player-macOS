@@ -1,7 +1,7 @@
 import Cocoa
 
 // ---------------------------------------------------------------------------
-// RcloneBrowser – browse and play files from an rclone serve HTTP instance
+// RcloneBrowser – browse and play remote media sources/protocols
 // Apple-style design, follows system theme, regular NSWindow (movable to Spaces)
 // ---------------------------------------------------------------------------
 
@@ -44,8 +44,9 @@ class RcloneBrowser: NSWindowController, NSTableViewDelegate, NSTableViewDataSou
     private let pathLabel = NSTextField(labelWithString: "/")
     private let tableView = NSTableView()
     private let scrollView = NSScrollView()
-    private let statusLabel = NSTextField(labelWithString: "Enter an rclone serve URL and press Connect")
-    private let placeholderLabel = NSTextField(labelWithString: "Connect to an rclone HTTP server to browse files")
+    private let statusLabel = NSTextField(labelWithString: "Enter a remote URL and press Connect")
+    private let placeholderLabel = NSTextField(labelWithString: "Connect to a remote listing endpoint to browse files")
+    private let browsingSchemes: Set<String> = ["http", "https"]
 
     weak var playerWindow: PlayerWindow?
     var onFileSelected: ((String) -> Void)?
@@ -77,12 +78,12 @@ class RcloneBrowser: NSWindowController, NSTableViewDelegate, NSTableViewDataSou
             backing: .buffered,
             defer: false
         )
-        window.title = "rclone Browser"
+        window.title = "Remote Browser"
         window.minSize = NSSize(width: 400, height: 300)
         window.backgroundColor = .windowBackgroundColor
         window.isReleasedWhenClosed = false
         window.titlebarAppearsTransparent = true
-        window.collectionBehavior = .moveToActiveSpace
+        window.collectionBehavior = [.managed]
         // Follow system theme — do NOT force darkAqua
 
         super.init(window: window)
@@ -90,7 +91,8 @@ class RcloneBrowser: NSWindowController, NSTableViewDelegate, NSTableViewDataSou
         setupKeyHandler()
 
         // Restore last URL
-        if let savedUrl = UserDefaults.standard.string(forKey: "rcloneBaseUrl"),
+        if let savedUrl = UserDefaults.standard.string(forKey: "remoteBrowserBaseUrl") ??
+            UserDefaults.standard.string(forKey: "rcloneBaseUrl"),
            !savedUrl.isEmpty {
             urlField.stringValue = savedUrl
         }
@@ -344,18 +346,43 @@ class RcloneBrowser: NSWindowController, NSTableViewDelegate, NSTableViewDataSou
         var url = urlField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         if url.isEmpty { return }
 
-        // Add http:// if missing
-        if !url.hasPrefix("http://") && !url.hasPrefix("https://") {
-            url = "http://" + url
+        // Add https:// if missing
+        if !url.contains("://") {
+            url = "https://" + url
         }
         // Remove trailing slash
         while url.hasSuffix("/") { url.removeLast() }
+
+        guard let parsed = URL(string: url), let scheme = parsed.scheme else {
+            statusLabel.stringValue = "Invalid URL"
+            return
+        }
+
+        // Direct-play protocols (FTP/RTSP/etc.) do not provide browseable listings.
+        if !browsingSchemes.contains(scheme.lowercased()) {
+            isConnected = false
+            entries = []
+            tableView.reloadData()
+            pathLabel.stringValue = "/"
+            placeholderLabel.stringValue = "Browsing unavailable for \(scheme.uppercased()) sources"
+            placeholderLabel.isHidden = false
+            statusLabel.stringValue = "Opening stream URL..."
+            if let callback = onFileSelected {
+                callback(url)
+            } else {
+                playerWindow?.loadUrl(url)
+            }
+            UserDefaults.standard.set(url, forKey: "remoteBrowserBaseUrl")
+            UserDefaults.standard.set(url, forKey: "rcloneBaseUrl")
+            return
+        }
 
         baseUrl = url
         currentPath = "/"
         pathHistory = []
         isConnected = true
 
+        UserDefaults.standard.set(url, forKey: "remoteBrowserBaseUrl")
         UserDefaults.standard.set(url, forKey: "rcloneBaseUrl")
 
         connectButton.title = "Reconnect"
@@ -427,7 +454,11 @@ class RcloneBrowser: NSWindowController, NSTableViewDelegate, NSTableViewDataSou
         var request = URLRequest(url: url, timeoutInterval: 10)
         request.httpMethod = "GET"
 
-        let task = URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+        let config = URLSessionConfiguration.ephemeral
+        config.timeoutIntervalForRequest = 20
+        config.timeoutIntervalForResource = 30
+        let session = URLSession(configuration: config)
+        let task = session.dataTask(with: request) { [weak self] data, response, error in
             DispatchQueue.main.async {
                 guard let self = self else { return }
 

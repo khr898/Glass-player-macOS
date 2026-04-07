@@ -250,7 +250,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                          action: #selector(addExternalAudioAction),
                          keyEquivalent: "")
         fileMenu.addItem(.separator())
-        fileMenu.addItem(withTitle: "rclone Browser...",
+        fileMenu.addItem(withTitle: "Remote Browser...",
                          action: #selector(openRcloneBrowser),
                          keyEquivalent: "r")
         fileMenu.addItem(.separator())
@@ -414,13 +414,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         audioMenu.addItem(.separator())
         audioMenu.addItem(withTitle: "Audio Delay +0.1s",
                            action: #selector(audioDelayUpAction),
-                           keyEquivalent: "")
+                   keyEquivalent: ";")
         audioMenu.addItem(withTitle: "Audio Delay -0.1s",
                            action: #selector(audioDelayDownAction),
-                           keyEquivalent: "")
+                   keyEquivalent: "'")
         audioMenu.addItem(withTitle: "Reset Audio Delay",
                            action: #selector(resetAudioDelayAction),
-                           keyEquivalent: "")
+                   keyEquivalent: "\\")
         audioMenuItem.submenu = audioMenu
 
         // ── Subtitle menu ──
@@ -510,9 +510,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func openRcloneBrowser() {
-        if rcloneBrowser == nil {
-            rcloneBrowser = RcloneBrowser()
-        }
+        rcloneBrowser = RcloneBrowser()
         rcloneBrowser?.playerWindow = playerWindow
         rcloneBrowser?.onFileSelected = { [weak self] url in
             guard let self = self else { return }

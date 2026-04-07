@@ -278,11 +278,21 @@ struct UniversalMetalRuntime {
             return "Mode A (Fast)"
         }
 
+        // Prefer Fast presets in low-power mode to reduce battery lag.
+        if ProcessInfo.processInfo.isLowPowerModeEnabled {
+            return "Mode A (Fast)"
+        }
+
+        let workingSet = MTLCreateSystemDefaultDevice()?.recommendedMaxWorkingSetSize ?? 0
+
         switch gpuTier() {
         case .high:
-            return "Mode A (HQ)"
+            if workingSet >= 12 * 1024 * 1024 * 1024 {
+                return "Mode A (HQ)"
+            }
+            return "Mode A (Fast)"
         case .balanced:
-            return "Mode A (HQ)"
+            return "Mode A (Fast)"
         case .efficient, .unknown:
             return "Mode A (Fast)"
         }
@@ -312,7 +322,15 @@ struct UniversalMetalRuntime {
         let tier = gpuTier()
         let preset = recommendedAnime4KPreset()
         let memFloor = UniversalSharedMetalBufferFactory.shared.isMemoryFloorDevice
-        NSLog("[UniversalSilicon] GPU tier: %@ | Memory: %.0f GB (floor=%@) | Shader preset: %@",
-              tier.rawValue, memGB, memFloor ? "YES" : "NO", preset)
+        let deviceName = Host.current().localizedName ?? "Unknown Mac"
+        let gpuName = MTLCreateSystemDefaultDevice()?.name ?? "Unknown GPU"
+        NSLog("[UniversalSilicon] Device: %@ | GPU: %@ | tier: %@ | Memory: %.0f GB (floor=%@) | LowPower=%@ | Shader preset: %@",
+              deviceName,
+              gpuName,
+              tier.rawValue,
+              memGB,
+              memFloor ? "YES" : "NO",
+              ProcessInfo.processInfo.isLowPowerModeEnabled ? "YES" : "NO",
+              preset)
     }
 }
