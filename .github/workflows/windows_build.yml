@@ -33,7 +33,7 @@ jobs:
     - name: Download libmpv (x64)
       if: matrix.arch == 'x64'
       run: |
-        Invoke-WebRequest -Uri "https://sourceforge.net/projects/mpv-player-windows/files/libmpv/mpv-dev-x86_64-20231210-git-b16b579.7z/download" -OutFile mpv-dev.7z
+        Invoke-WebRequest -Uri "https://sourceforge.net/projects/mpv-player-windows/files/libmpv/mpv-dev-x86_64-20260419-git-06f4ce7.7z/download" -OutFile mpv-dev.7z
         7z x mpv-dev.7z -ovendor/mpv-dev
 
     - name: Download libmpv (arm64)
@@ -43,7 +43,7 @@ jobs:
       # but ideally this needs a custom built arm64 mpv library.
       # We'll use the x64 one just for include headers so cmake passes, linking will fail if strictly enforced.
       run: |
-        Invoke-WebRequest -Uri "https://sourceforge.net/projects/mpv-player-windows/files/libmpv/mpv-dev-x86_64-20231210-git-b16b579.7z/download" -OutFile mpv-dev.7z
+        Invoke-WebRequest -Uri "https://sourceforge.net/projects/mpv-player-windows/files/libmpv/mpv-dev-x86_64-20260419-git-06f4ce7.7z/download" -OutFile mpv-dev.7z
         7z x mpv-dev.7z -ovendor/mpv-dev
 
     - name: Configure CMake
