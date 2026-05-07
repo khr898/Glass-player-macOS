@@ -95,3 +95,16 @@ Check out the Anime4K Github repo for more information.
 ## License & Acknowledgments
 - **License:** GPL-3.0 (due to FFmpeg/mpv dependencies). Anime4K shaders are licensed under MIT.
 - **Powered by:** mpv, FFmpeg, and Anime4K.
+---
+
+## Windows Support (C++ & Qt6)
+
+Glass Player has been fully ported to Windows (x64 and arm64). The Windows version is built using C++, Qt6, and libmpv, retaining the core features:
+- **Hardware Acceleration**: Automatic fallback to the best available decoder (D3D11VA, Vulkan, etc.).
+- **Anime4K**: All shaders are bundled and dynamically mapped to presets within the app.
+
+### Installation on Windows
+1. Go to the **Actions** tab in this repository.
+2. Select the latest successful **Windows Build** workflow.
+3. Download the `GlassPlayer-Windows-x64` or `GlassPlayer-Windows-arm64` artifact.
+4. Extract the artifact and run the `.exe` setup installer to install Glass Player.

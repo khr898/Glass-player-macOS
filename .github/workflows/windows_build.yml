@@ -65,10 +65,10 @@ jobs:
 
     - name: Package Installer
       working-directory: windows/build
-      run: cpack -G ZIP
+      run: cpack -G NSIS
 
     - name: Upload Artifact
       uses: actions/upload-artifact@v3
       with:
         name: GlassPlayer-Windows-${{ matrix.arch }}
-        path: windows/build/GlassPlayer-*.zip
+        path: windows/build/GlassPlayer-*.exe
