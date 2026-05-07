@@ -29,7 +29,6 @@ jobs:
         host: 'windows'
         target: 'desktop'
         arch: ${{ matrix.arch == 'arm64' && 'win64_msvc2019_arm64' || 'win64_msvc2019_64' }}
-        modules: 'qtbase'
 
     - name: Download libmpv (x64)
       if: matrix.arch == 'x64'
