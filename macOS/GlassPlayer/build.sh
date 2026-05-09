@@ -2,7 +2,7 @@
 set -e
 
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
-ROOT_DIR="$(dirname "$PROJECT_DIR")"
+ROOT_DIR="$(dirname "$(dirname "$PROJECT_DIR")")"
 BUILD_PROFILE="${BUILD_PROFILE:-optimized}"
 BUILD_ROOT_DIR="$PROJECT_DIR/build"
 BUILD_DIR="$BUILD_ROOT_DIR/$BUILD_PROFILE"

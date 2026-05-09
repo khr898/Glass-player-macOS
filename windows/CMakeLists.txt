@@ -21,8 +21,8 @@ endif()
 
 # Fallback for Windows Actions if pkg-config isn't available
 if (NOT MPV_FOUND)
-    set(MPV_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/vendor/mpv-dev/include)
-    set(MPV_LIBRARIES ${CMAKE_CURRENT_SOURCE_DIR}/vendor/mpv-dev/lib/mpv.lib)
+    set(MPV_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/../vendor/mpv-dev/include)
+    set(MPV_LIBRARIES ${CMAKE_CURRENT_SOURCE_DIR}/../vendor/mpv-dev/lib/mpv.lib)
 endif()
 
 add_executable(GlassPlayer
