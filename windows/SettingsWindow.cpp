@@ -22,6 +22,11 @@ void SettingsWindow::setupUi()
 
     m_sidebar = new QListWidget(this);
     m_sidebar->setFixedWidth(180);
+    m_sidebar->setStyleSheet(
+        "QListWidget { background: #f0f0f0; border: none; outline: none; padding-top: 10px; }"
+        "QListWidget::item { height: 36px; padding-left: 15px; border-left: 3px solid transparent; color: #333; }"
+        "QListWidget::item:selected { background: #e0e0e0; border-left: 3px solid #0078d4; color: #000; }"
+    );
     connect(m_sidebar, &QListWidget::currentRowChanged, this, &SettingsWindow::onSidebarItemChanged);
     mainLayout->addWidget(m_sidebar);
 
@@ -31,7 +36,10 @@ void SettingsWindow::setupUi()
     buildGeneralSection();
     buildVideoSection();
     buildAudioSection();
+    buildSubtitlesSection();
     buildNetworkSection();
+    buildScalingSection();
+    buildColorSection();
     buildAnime4KSection();
 
     if (m_sidebar->count() > 0) {
@@ -161,5 +169,52 @@ void SettingsWindow::buildAnime4KSection()
     QLabel *header = new QLabel("<b>Anime4K</b>", container);
     layout->addWidget(header);
 
-    addCombo(container, layout, "Default Preset", "defaultShaderPreset", {"Off", "Mode A (HQ)", "Mode B (HQ)", "Mode C (HQ)"}, "Off");
+    addCombo(container, layout, "Default Preset", "defaultShaderPreset", {
+        "Off",
+        "Mode A (HQ)", "Mode B (HQ)", "Mode C (HQ)",
+        "Mode A+A (HQ)", "Mode B+B (HQ)", "Mode C+A (HQ)",
+        "Mode A (Fast)", "Mode B (Fast)", "Mode C (Fast)",
+        "Mode A+A (Fast)", "Mode B+B (Fast)", "Mode C+A (Fast)"
+    }, "Off");
 }
+
+void SettingsWindow::buildSubtitlesSection()
+{
+    m_sidebar->addItem("Subtitles");
+    QWidget *container = createSectionWidget();
+    QVBoxLayout *layout = qobject_cast<QVBoxLayout*>(container->layout());
+
+    QLabel *header = new QLabel("<b>Subtitles</b>", container);
+    layout->addWidget(header);
+
+    addToggle(container, layout, "Auto-load external subtitles", "subAutoLoad", true);
+    addCombo(container, layout, "Font Size", "subFontSize", {"20", "24", "28", "32", "36", "40", "48"}, "36");
+    addToggle(container, layout, "Override ASS styles", "subAssOverride", false);
+}
+
+void SettingsWindow::buildScalingSection()
+{
+    m_sidebar->addItem("Scaling");
+    QWidget *container = createSectionWidget();
+    QVBoxLayout *layout = qobject_cast<QVBoxLayout*>(container->layout());
+
+    QLabel *header = new QLabel("<b>Scaling & Rendering</b>", container);
+    layout->addWidget(header);
+
+    addCombo(container, layout, "Upscale Filter", "scaleFilter", {"ewa_lanczossharp", "lanczos", "spline36", "mitchell", "bilinear"}, "ewa_lanczossharp");
+    addCombo(container, layout, "Downscale Filter", "dscaleFilter", {"mitchell", "lanczos", "spline36", "bilinear"}, "mitchell");
+}
+
+void SettingsWindow::buildColorSection()
+{
+    m_sidebar->addItem("Color");
+    QWidget *container = createSectionWidget();
+    QVBoxLayout *layout = qobject_cast<QVBoxLayout*>(container->layout());
+
+    QLabel *header = new QLabel("<b>Color & HDR</b>", container);
+    layout->addWidget(header);
+
+    addCombo(container, layout, "Tone Mapping", "toneMapping", {"auto", "spline", "bt.2390", "reinhard", "mobius"}, "auto");
+    addToggle(container, layout, "HDR compute peak", "hdrComputePeak", true);
+}
+

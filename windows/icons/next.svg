@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white">
+  <!-- Skip forward bar -->
+  <rect x="18.5" y="3" width="2.5" height="18" rx="1"/>
+  <!-- Forward triangle -->
+  <polygon points="3,3 16,12 3,21"/>
+</svg>

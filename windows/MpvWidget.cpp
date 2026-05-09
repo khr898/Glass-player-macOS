@@ -13,9 +13,12 @@ MpvWidget::MpvWidget(QWidget *parent)
 
     // Setting options
     mpv_set_option_string(m_mpv, "vo", "libmpv");
-    // Hardware acceleration on Windows (d3d11va is preferred, vulkan/auto-copy fallback)
-    mpv_set_option_string(m_mpv, "hwdec", "auto");
-    mpv_set_option_string(m_mpv, "gpu-context", "x11egl"); // usually auto or angle on win
+    // Hardware decoding: use auto-safe so GLSL shaders (Anime4K) are never blocked.
+    // hwdec=auto-safe lets mpv fall back to software copy when a shader pipeline is active.
+    mpv_set_option_string(m_mpv, "hwdec", "auto-safe");
+    // Do NOT force gpu-context here — let mpv pick the correct one for the platform
+    // (on Windows this is typically d3d11 or opengl via ANGLE)
+    mpv_set_option_string(m_mpv, "gpu-api", "opengl");  // required for GLSL shader support
 
     if (mpv_initialize(m_mpv) < 0) {
         qFatal("Could not initialize mpv context");

@@ -42,11 +42,15 @@ void WelcomeWindow::setupUi()
     buttonsLayout->setAlignment(Qt::AlignCenter);
     buttonsLayout->setSpacing(20);
 
-    m_openFileBtn = new QPushButton("Open File\n\nBrowse local files", this);
+    m_openFileBtn = new QPushButton("Open File", this);
+    m_openFileBtn->setIcon(QIcon(":/icons/open_file.svg"));
+    m_openFileBtn->setIconSize(QSize(32, 32));
     m_openFileBtn->setFixedSize(170, 90);
     connect(m_openFileBtn, &QPushButton::clicked, this, &WelcomeWindow::onOpenFileClicked);
 
-    m_rcloneBtn = new QPushButton("Remote Browser\n\nStream from remote storage", this);
+    m_rcloneBtn = new QPushButton("Remote Browser", this);
+    m_rcloneBtn->setIcon(QIcon(":/icons/remote.svg"));
+    m_rcloneBtn->setIconSize(QSize(32, 32));
     m_rcloneBtn->setFixedSize(170, 90);
     connect(m_rcloneBtn, &QPushButton::clicked, this, &WelcomeWindow::onRcloneClicked);
 

@@ -30,7 +30,10 @@ private:
     void buildGeneralSection();
     void buildVideoSection();
     void buildAudioSection();
+    void buildSubtitlesSection();
     void buildNetworkSection();
+    void buildScalingSection();
+    void buildColorSection();
     void buildAnime4KSection();
 
     QWidget* createSectionWidget();

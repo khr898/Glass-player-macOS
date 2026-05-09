@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white">
+  <!-- Skip back bar -->
+  <rect x="3" y="3" width="2.5" height="18" rx="1"/>
+  <!-- Back triangle -->
+  <polygon points="21,3 8,12 21,21"/>
+</svg>

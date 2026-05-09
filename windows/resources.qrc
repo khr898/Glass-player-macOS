@@ -39,5 +39,23 @@
         <file alias="shaders/Anime4K_Upscale_Denoise_CNN_x2_VL.glsl">../shaders/Anime4K_Upscale_Denoise_CNN_x2_VL.glsl</file>
         <file alias="shaders/Anime4K_Upscale_DoG_x2.glsl">../shaders/Anime4K_Upscale_DoG_x2.glsl</file>
         <file alias="shaders/Anime4K_Upscale_Original_x2.glsl">../shaders/Anime4K_Upscale_Original_x2.glsl</file>
+        <file>icons/play.svg</file>
+        <file>icons/pause.svg</file>
+        <file>icons/prev.svg</file>
+        <file>icons/next.svg</file>
+        <file>icons/rewind.svg</file>
+        <file>icons/forward.svg</file>
+        <file>icons/volume_high.svg</file>
+        <file>icons/volume_mid.svg</file>
+        <file>icons/volume_mute.svg</file>
+        <file>icons/subtitle.svg</file>
+        <file>icons/audio.svg</file>
+        <file>icons/shader.svg</file>
+        <file>icons/fullscreen.svg</file>
+        <file>icons/fullscreen_exit.svg</file>
+        <file>icons/open_file.svg</file>
+        <file>icons/url.svg</file>
+        <file>icons/sun.svg</file>
+        <file>icons/remote.svg</file>
     </qresource>
 </RCC>

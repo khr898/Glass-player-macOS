@@ -22,6 +22,8 @@ public:
     ~MainWindow();
 
     void openFile(const QString &file);
+    void setAnime4kPreset(const QString& preset);
+    void suppressWelcome();       // Call before show() when a file arg is provided
 
 private slots:
     void onPlayPauseClicked();
@@ -39,11 +41,32 @@ private slots:
 
     void toggleFullscreen();
 
+    void hideHud();
+    void showHud();
+
+    void onRewindClicked();
+    void onForwardClicked();
+    void onPrevClicked();
+    void onNextClicked();
+    void onSpeedClicked();
+    void onAspectClicked();
+    void onSubtitleClicked();
+    void onAudioClicked();
+    void onUrlClicked();
+    void onFullscreenClicked();
+    void onBrightnessChanged(int level);
+
 protected:
     void keyPressEvent(QKeyEvent *event) override;
+    void resizeEvent(QResizeEvent *event) override;
+    void mouseMoveEvent(QMouseEvent *event) override;
 
 private:
     void setupUi();
+    void setupTopBar();
+    void setupBottomBar();
+    void setupBrightnessBar();
+    void updateHudPositions();
     QString formatTime(double seconds);
     void applyShaderPreset(const QString& preset);
 
@@ -53,13 +76,38 @@ private:
     RcloneBrowser *m_rcloneBrowser;
     QSettings m_settings;
 
+    // HUD Overlays
+    QWidget *m_topBar;
+    QWidget *m_bottomBar;
+    QWidget *m_brightnessBar;
+    QLabel *m_titleLabel;
+
+    // Bottom Bar Elements
     QSlider *m_seekSlider;
     QSlider *m_volumeSlider;
+    QSlider *m_brightnessSlider;
+    QLabel *m_currentTimeLabel;
+    QLabel *m_remainingTimeLabel;
+
     QPushButton *m_playPauseBtn;
-    QPushButton *m_muteBtn;
-    QLabel *m_timeLabel;
-    QComboBox *m_shaderCombo;
+    QPushButton *m_rewindBtn;
+    QPushButton *m_forwardBtn;
+    QPushButton *m_prevBtn;
+    QPushButton *m_nextBtn;
+
+    QPushButton *m_subtitleBtn;
+    QPushButton *m_audioBtn;
+    QPushButton *m_shaderBtn;
+    QPushButton *m_volumeBtn;
+    QPushButton *m_speedBtn;
+    QPushButton *m_aspectBtn;
+    QPushButton *m_fullscreenBtn;
+
+    QTimer *m_hudTimer;
 
     double m_duration = 0;
     bool m_isPlaying = true;
+    bool m_isMuted = false;
+    bool m_welcomeSuppressed = false;
 };
+

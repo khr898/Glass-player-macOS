@@ -42,12 +42,21 @@ add_executable(GlassPlayer WIN32
     RcloneBrowser.h
     MpvWidget.cpp
     MpvWidget.h
+    WinOSIntegration.cpp
+    WinOSIntegration.h
     resources.qrc
     ${APP_ICON_RESOURCE}
 )
 
 target_include_directories(GlassPlayer PRIVATE ${MPV_INCLUDE_DIRS})
-target_link_libraries(GlassPlayer PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets Qt6::OpenGLWidgets Qt6::Network ${MPV_LIBRARIES})
+target_link_libraries(GlassPlayer PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets Qt6::OpenGLWidgets Qt6::Network ${MPV_LIBRARIES} dxva2.lib wbemuuid.lib)
+
+# Copy libmpv-2.dll to the build directory so it can be run directly from IDE
+add_custom_command(TARGET GlassPlayer POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/../vendor/mpv-dev/libmpv-2.dll"
+        $<TARGET_FILE_DIR:GlassPlayer>
+)
 
 # CPack configuration for professional installer
 set(CPACK_PACKAGE_NAME "GlassPlayer")
@@ -70,10 +79,10 @@ set(CPACK_NSIS_URL_INFO_ABOUT "https://github.com/khr898/Glass-player-macOS")
 
 # Shortcut creation
 set(CPACK_NSIS_CREATE_ICONS_EXTRA "
-  CreateShortCut '$DESKTOP\\Glass Player.lnk' '$INSTDIR\\bin\\GlassPlayer.exe'
+  CreateShortCut '$DESKTOP\\\\Glass Player.lnk' '$INSTDIR\\\\bin\\\\GlassPlayer.exe'
 ")
 set(CPACK_NSIS_DELETE_ICONS_EXTRA "
-  Delete '$DESKTOP\\Glass Player.lnk'
+  Delete '$DESKTOP\\\\Glass Player.lnk'
 ")
 set(CPACK_NSIS_MENU_LINKS "bin/GlassPlayer.exe" "Glass Player")
 

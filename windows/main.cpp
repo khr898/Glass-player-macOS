@@ -1,4 +1,6 @@
 #include <QApplication>
+#include <QCommandLineParser>
+#include <QCommandLineOption>
 #include "MainWindow.h"
 
 int main(int argc, char *argv[])
@@ -10,11 +12,29 @@ int main(int argc, char *argv[])
     app.setApplicationName("Glass Player");
     app.setOrganizationName("Glass Player");
 
+    QCommandLineParser parser;
+    parser.setApplicationDescription("Glass Player");
+    parser.addHelpOption();
+
+    QCommandLineOption anime4kOption(QStringList() << "a" << "anime4k",
+        "Enable Anime4K with preset <preset> (e.g. ModeA, ModeB, ModeC, ModeAA, ModeBB, ModeCA).",
+        "preset");
+    parser.addOption(anime4kOption);
+
+    parser.addPositionalArgument("file", "The file to open.");
+
+    parser.process(app);
+
     MainWindow w;
 
-    // Pass command line arguments to open files if provided
-    if (argc > 1) {
-        w.openFile(QString::fromUtf8(argv[1]));
+    if (parser.isSet(anime4kOption)) {
+        w.setAnime4kPreset(parser.value(anime4kOption));
+    }
+
+    const QStringList args = parser.positionalArguments();
+    if (!args.isEmpty()) {
+        w.suppressWelcome();   // Don't show welcome when a file is opened directly
+        w.openFile(args.first());
     }
 
     w.show();
