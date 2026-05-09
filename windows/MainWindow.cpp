@@ -5,9 +5,10 @@
 #include <QFile>
 #include <QTemporaryDir>
 #include <QDebug>
+#include <QTimer>
 
 MainWindow::MainWindow(QWidget *parent)
-    : QMainWindow(parent)
+    : QMainWindow(parent), m_settings("GlassPlayer", "Settings")
 {
     setupUi();
 
@@ -17,6 +18,28 @@ MainWindow::MainWindow(QWidget *parent)
         m_isPlaying = false;
         m_playPauseBtn->setText("Play");
     });
+
+    m_welcomeWindow = new WelcomeWindow(this);
+    connect(m_welcomeWindow, &WelcomeWindow::fileOpened, this, &MainWindow::openFile);
+    connect(m_welcomeWindow, &WelcomeWindow::openRcloneBrowser, this, &MainWindow::onRcloneClicked);
+
+    m_settingsWindow = new SettingsWindow(this);
+    connect(m_settingsWindow, &SettingsWindow::settingChanged, this, &MainWindow::applySettingToMpv);
+
+    m_rcloneBrowser = new RcloneBrowser(this);
+    connect(m_rcloneBrowser, &RcloneBrowser::fileSelected, this, &MainWindow::openFile);
+
+    // Apply saved settings
+    QStringList keys = m_settings.allKeys();
+    for (const QString &key : keys) {
+        applySettingToMpv(key, m_settings.value(key));
+    }
+
+    if (m_settings.value("showWelcome", true).toBool()) {
+        QTimer::singleShot(0, this, [this]() {
+            m_welcomeWindow->exec();
+        });
+    }
 }
 
 MainWindow::~MainWindow()
@@ -45,6 +68,12 @@ void MainWindow::setupUi()
 
     QPushButton *openBtn = new QPushButton("Open", this);
     connect(openBtn, &QPushButton::clicked, this, &MainWindow::onOpenClicked);
+
+    QPushButton *rcloneBtn = new QPushButton("Remote", this);
+    connect(rcloneBtn, &QPushButton::clicked, this, &MainWindow::onRcloneClicked);
+
+    QPushButton *settingsBtn = new QPushButton("Settings", this);
+    connect(settingsBtn, &QPushButton::clicked, this, &MainWindow::onSettingsClicked);
 
     m_playPauseBtn = new QPushButton("Pause", this);
     connect(m_playPauseBtn, &QPushButton::clicked, this, &MainWindow::onPlayPauseClicked);
@@ -76,6 +105,8 @@ void MainWindow::setupUi()
     connect(m_shaderCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &MainWindow::onShaderPresetChanged);
 
     controlsLayout->addWidget(openBtn);
+    controlsLayout->addWidget(rcloneBtn);
+    controlsLayout->addWidget(settingsBtn);
     controlsLayout->addWidget(m_playPauseBtn);
     controlsLayout->addWidget(m_timeLabel);
     controlsLayout->addWidget(m_seekSlider, 1);
@@ -100,6 +131,16 @@ void MainWindow::onOpenClicked()
     if (!file.isEmpty()) {
         openFile(file);
     }
+}
+
+void MainWindow::onRcloneClicked()
+{
+    m_rcloneBrowser->exec();
+}
+
+void MainWindow::onSettingsClicked()
+{
+    m_settingsWindow->exec();
 }
 
 void MainWindow::onPlayPauseClicked()
@@ -159,6 +200,27 @@ void MainWindow::onShaderPresetChanged(int index)
 {
     QString presetId = m_shaderCombo->itemData(index).toString();
     applyShaderPreset(presetId);
+}
+
+void MainWindow::applySettingToMpv(const QString &key, const QVariant &value)
+{
+    if (key == "hwdec") {
+        m_mpvWidget->setProperty("hwdec", value.toString());
+    } else if (key == "debandEnabled") {
+        m_mpvWidget->setProperty("deband", value.toBool() ? "yes" : "no");
+    } else if (key == "audioOutput") {
+        m_mpvWidget->setProperty("ao", value.toString());
+    } else if (key == "audioChannels") {
+        m_mpvWidget->setProperty("audio-channels", value.toString());
+    } else if (key == "cacheEnabled") {
+        m_mpvWidget->setProperty("cache", value.toBool() ? "yes" : "no");
+    } else if (key == "cacheSecs") {
+        m_mpvWidget->setProperty("cache-secs", value.toString());
+    } else if (key == "defaultShaderPreset") {
+        QString val = value.toString();
+        int idx = m_shaderCombo->findText(val);
+        if (idx >= 0) m_shaderCombo->setCurrentIndex(idx);
+    }
 }
 
 void MainWindow::applyShaderPreset(const QString& preset)

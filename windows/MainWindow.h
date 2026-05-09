@@ -7,7 +7,11 @@
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QComboBox>
+#include <QSettings>
 #include "MpvWidget.h"
+#include "WelcomeWindow.h"
+#include "SettingsWindow.h"
+#include "RcloneBrowser.h"
 
 class MainWindow : public QMainWindow
 {
@@ -22,10 +26,13 @@ public:
 private slots:
     void onPlayPauseClicked();
     void onOpenClicked();
+    void onSettingsClicked();
+    void onRcloneClicked();
     void onSliderMoved(int position);
     void onVolumeChanged(int volume);
     void onMuteClicked();
     void onShaderPresetChanged(int index);
+    void applySettingToMpv(const QString &key, const QVariant &value);
 
     void updatePosition(double position);
     void updateDuration(double duration);
@@ -41,6 +48,10 @@ private:
     void applyShaderPreset(const QString& preset);
 
     MpvWidget *m_mpvWidget;
+    WelcomeWindow *m_welcomeWindow;
+    SettingsWindow *m_settingsWindow;
+    RcloneBrowser *m_rcloneBrowser;
+    QSettings m_settings;
 
     QSlider *m_seekSlider;
     QSlider *m_volumeSlider;

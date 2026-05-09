@@ -30,21 +30,8 @@ jobs:
         target: 'desktop'
         arch: ${{ matrix.arch == 'arm64' && 'win64_msvc2019_arm64' || 'win64_msvc2019_64' }}
 
-    - name: Download libmpv (x64)
-      if: matrix.arch == 'x64'
-      run: |
-        Invoke-WebRequest -Uri "https://downloads.sourceforge.net/project/mpv-player-windows/libmpv/mpv-dev-x86_64-20260419-git-06f4ce7.7z" -OutFile mpv-dev.7z
-        7z x mpv-dev.7z -ovendor/mpv-dev
-
-    - name: Download libmpv (arm64)
-      if: matrix.arch == 'arm64'
-      # Note: Finding pre-built arm64 libmpv for windows might require building from source or finding a specific fork.
-      # For now, we will fallback to attempting to link or providing a dummy to pass the workflow,
-      # but ideally this needs a custom built arm64 mpv library.
-      # We'll use the x64 one just for include headers so cmake passes, linking will fail if strictly enforced.
-      run: |
-        Invoke-WebRequest -Uri "https://downloads.sourceforge.net/project/mpv-player-windows/libmpv/mpv-dev-x86_64-20260419-git-06f4ce7.7z" -OutFile mpv-dev.7z
-        7z x mpv-dev.7z -ovendor/mpv-dev
+    # MPV dependencies are now bundled in the vendor/mpv-dev directory
+    # so we don't need to download them at runtime.
 
     - name: Configure CMake
       run: >
@@ -58,7 +45,7 @@ jobs:
     - name: Copy dependencies for packaging
       if: matrix.arch == 'x64'
       run: |
-        copy vendor/mpv-dev/mpv-2.dll windows/build/
+        copy vendor/mpv-dev/libmpv-2.dll windows/build/
         # Qt dependencies would be deployed here using windeployqt
         windeployqt --no-translations --no-opengl-sw --release windows/build/GlassPlayer.exe
 
