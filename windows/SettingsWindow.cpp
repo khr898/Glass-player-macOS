@@ -132,7 +132,7 @@ void SettingsWindow::buildGeneralSection()
     addToggle(container, layout, "Keep window on top during playback", "keepOnTop", false);
     
     addCombo(container, layout, "Window Resize Behavior", "windowResize", 
-             {"Fit to video", "Never resize", "Resize to 50%", "Resize to 75%", "Resize to 100%"}, "Fit to video");
+             {"Never resize", "Fit to video", "Resize to 50%", "Resize to 75%", "Resize to 100%"}, "Never resize");
              
     addCombo(container, layout, "Cursor Auto-hide (ms)", "cursorAutohide", 
              {"500", "800", "1000", "2000", "3000", "never"}, "800");

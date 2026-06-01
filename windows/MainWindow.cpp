@@ -283,6 +283,7 @@ MainWindow::MainWindow(QWidget *parent)
         m_settings.setValue("dscaleFilter", "mitchell");
         m_settings.setValue("toneMapping", "spline");
         m_settings.setValue("hdrComputePeak", true);
+        m_settings.setValue("windowResize", "Never resize");
     }
 
     // Apply saved settings
@@ -726,7 +727,7 @@ void MainWindow::onFileLoaded()
         return;
     }
 
-    QString behavior = m_settings.value("windowResize", "Fit to video").toString();
+    QString behavior = m_settings.value("windowResize", "Never resize").toString();
     if (behavior == "Never resize") {
         m_firstFileLoaded = false;
         return;
@@ -1644,7 +1645,6 @@ void MainWindow::syncSystemControls()
 
 void MainWindow::toggleFullscreen()
 {
-    setUpdatesEnabled(false);
     if (isFullScreen()) {
         showNormal();
         m_fullscreenBtn->setIcon(QIcon(":/icons/fullscreen.svg"));
@@ -1652,10 +1652,6 @@ void MainWindow::toggleFullscreen()
         showFullScreen();
         m_fullscreenBtn->setIcon(QIcon(":/icons/fullscreen_exit.svg"));
     }
-    QTimer::singleShot(50, this, [this]() {
-        setUpdatesEnabled(true);
-        update();
-    });
 }
 
 void MainWindow::keyPressEvent(QKeyEvent *event)
