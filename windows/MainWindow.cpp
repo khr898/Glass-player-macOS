@@ -449,7 +449,7 @@ void MainWindow::setupBottomBar()
     m_currentTimeLabel->setFixedWidth(60);
 
     m_seekSlider = new ClickableSlider(Qt::Horizontal, m_bottomBar);
-    m_seekSlider->setRange(0, 1000);
+    m_seekSlider->setRange(0, 1000000);
     m_seekSlider->setMouseTracking(true);
     m_seekSlider->installEventFilter(this);
     connect(m_seekSlider, &QSlider::sliderMoved, this, &MainWindow::onSliderMoved);
@@ -797,7 +797,7 @@ void MainWindow::onSliderMoved(int position)
 {
     m_isSeeking = true;
     if (m_duration > 0) {
-        double pos = (position / 1000.0) * m_duration;
+        double pos = (position / 1000000.0) * m_duration;
         m_currentTimeLabel->setText(formatTime(pos));
         m_remainingTimeLabel->setText("-" + formatTime(m_duration - pos));
 
@@ -813,7 +813,7 @@ void MainWindow::onSliderReleased()
 {
     m_isSeeking = false;
     if (m_duration > 0) {
-        double pos = (m_seekSlider->value() / 1000.0) * m_duration;
+        double pos = (m_seekSlider->value() / 1000000.0) * m_duration;
         m_mpvWidget->command(QVariantList() << "seek" << QString::number(pos) << "absolute+exact");
         m_currentTimeLabel->setText(formatTime(pos));
         m_remainingTimeLabel->setText("-" + formatTime(m_duration - pos));
@@ -1130,7 +1130,7 @@ void MainWindow::updatePosition(double position)
 {
     if (m_isSeeking) return;
     if (!m_seekSlider->isSliderDown() && m_duration > 0) {
-        m_seekSlider->setValue((position / m_duration) * 1000);
+        m_seekSlider->setValue((position / m_duration) * 1000000.0);
     }
     m_currentTimeLabel->setText(formatTime(position));
     m_remainingTimeLabel->setText("-" + formatTime(m_duration - position));
