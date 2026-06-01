@@ -1,6 +1,9 @@
 #include <QApplication>
 #include <QCommandLineParser>
 #include <QCommandLineOption>
+#include <QLocalServer>
+#include <QLocalSocket>
+#include <QDebug>
 #include "MainWindow.h"
 
 int main(int argc, char *argv[])
@@ -11,6 +14,48 @@ int main(int argc, char *argv[])
     QApplication app(argc, argv);
     app.setApplicationName("Glass Player");
     app.setOrganizationName("Glass Player");
+    app.setWindowIcon(QIcon(":/icons/app.svg"));
+
+    const QString serverName = "GlassPlayerIPCServer";
+    
+    // Check if arguments are provided to control the player
+    QStringList cmdArgs = app.arguments();
+    cmdArgs.removeFirst(); // Remove executable path
+    
+    if (!cmdArgs.isEmpty()) {
+        QLocalSocket socket;
+        socket.connectToServer(serverName);
+        if (socket.waitForConnected(500)) {
+            QString command = cmdArgs.join(" ");
+            socket.write(command.toUtf8());
+            socket.waitForBytesWritten(1000);
+            return 0; // Exit secondary instance immediately after sending command
+        }
+    }
+
+    // This is the primary instance. Clean up previous socket server leftovers.
+    QLocalServer::removeServer(serverName);
+
+    QLocalServer server;
+    if (!server.listen(serverName)) {
+        qWarning() << "Failed to start local IPC server:" << server.errorString();
+    }
+
+    MainWindow w;
+
+    // Connect the local IPC server to execute received CLI commands on the player
+    QObject::connect(&server, &QLocalServer::newConnection, &w, [&server, &w]() {
+        QLocalSocket *socket = server.nextPendingConnection();
+        if (socket) {
+            QObject::connect(socket, &QLocalSocket::readyRead, socket, [&w, socket]() {
+                QString command = QString::fromUtf8(socket->readAll()).trimmed();
+                if (!command.isEmpty()) {
+                    w.executeCommand(command);
+                }
+            });
+            QObject::connect(socket, &QLocalSocket::disconnected, socket, &QLocalSocket::deleteLater);
+        }
+    });
 
     QCommandLineParser parser;
     parser.setApplicationDescription("Glass Player");
@@ -25,8 +70,6 @@ int main(int argc, char *argv[])
 
     parser.process(app);
 
-    MainWindow w;
-
     if (parser.isSet(anime4kOption)) {
         w.setAnime4kPreset(parser.value(anime4kOption));
     }
@@ -35,8 +78,19 @@ int main(int argc, char *argv[])
     if (!args.isEmpty()) {
         w.suppressWelcome();   // Don't show welcome when a file is opened directly
         w.openFile(args.first());
+        w.show();
+    } else {
+        // Show the welcome screen dialog first. Only show the main window if accepted.
+        if (w.shouldShowWelcome()) {
+            if (w.runWelcomeScreen() == QDialog::Accepted) {
+                w.show();
+            } else {
+                return 0; // Clean exit without showing the black window
+            }
+        } else {
+            w.show();
+        }
     }
 
-    w.show();
     return app.exec();
 }

@@ -1,8 +1,12 @@
 #include "WinOSIntegration.h"
-#include <iostream>
+#include <algorithm>
 #include <comdef.h>
 
 #pragma comment(lib, "wbemuuid.lib")
+
+float WinOSIntegration::clamp01(float value) {
+    return std::clamp(value, 0.0f, 1.0f);
+}
 
 WinOSIntegration& WinOSIntegration::instance() {
     static WinOSIntegration inst;
@@ -17,6 +21,7 @@ WinOSIntegration::WinOSIntegration() {
 
 WinOSIntegration::~WinOSIntegration() {
     releaseMonitors();
+    if (m_pVolume)       { m_pVolume->Release();       m_pVolume = nullptr; }
     if (m_pWbemServices) m_pWbemServices->Release();
     if (m_pWbemLocator)  m_pWbemLocator->Release();
     CoUninitialize();
@@ -47,82 +52,81 @@ void WinOSIntegration::releaseMonitors() {
 
 // ─── Volume (Core Audio) ───────────────────────────────────────────────────────
 
-IAudioEndpointVolume* WinOSIntegration::getVolumeControl() {
-    IMMDeviceEnumerator* pEnumerator = NULL;
-    IMMDevice* pDevice = NULL;
-    IAudioEndpointVolume* pVolume = NULL;
-
-    CoCreateInstance(__uuidof(MMDeviceEnumerator), NULL, CLSCTX_INPROC_SERVER,
+IAudioEndpointVolume* WinOSIntegration::getCachedVolumeControl() {
+    if (m_pVolume) return m_pVolume;
+    IMMDeviceEnumerator* pEnumerator = nullptr;
+    IMMDevice* pDevice = nullptr;
+    CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_INPROC_SERVER,
                      __uuidof(IMMDeviceEnumerator), (void**)&pEnumerator);
     if (pEnumerator) {
         pEnumerator->GetDefaultAudioEndpoint(eRender, eMultimedia, &pDevice);
         if (pDevice) {
             pDevice->Activate(__uuidof(IAudioEndpointVolume), CLSCTX_INPROC_SERVER,
-                              NULL, (void**)&pVolume);
+                              nullptr, (void**)&m_pVolume);
             pDevice->Release();
         }
         pEnumerator->Release();
     }
-    return pVolume;
+    return m_pVolume;
 }
 
 float WinOSIntegration::getSystemVolume() {
     float volume = 0;
-    IAudioEndpointVolume* pVolume = getVolumeControl();
-    if (pVolume) {
+    if (auto* pVolume = getCachedVolumeControl())
         pVolume->GetMasterVolumeLevelScalar(&volume);
-        pVolume->Release();
-    }
     return volume;
 }
 
 void WinOSIntegration::setSystemVolume(float level) {
-    if (level < 0.0f) level = 0.0f;
-    if (level > 1.0f) level = 1.0f;
-    IAudioEndpointVolume* pVolume = getVolumeControl();
-    if (pVolume) {
-        pVolume->SetMasterVolumeLevelScalar(level, NULL);
-        pVolume->Release();
-    }
+    level = clamp01(level);
+    if (auto* pVolume = getCachedVolumeControl())
+        pVolume->SetMasterVolumeLevelScalar(level, nullptr);
 }
 
 bool WinOSIntegration::isMuted() {
     BOOL mute = FALSE;
-    IAudioEndpointVolume* pVolume = getVolumeControl();
-    if (pVolume) {
+    if (auto* pVolume = getCachedVolumeControl())
         pVolume->GetMute(&mute);
-        pVolume->Release();
-    }
     return mute == TRUE;
 }
 
 void WinOSIntegration::setMuted(bool mute) {
-    IAudioEndpointVolume* pVolume = getVolumeControl();
-    if (pVolume) {
-        pVolume->SetMute(mute, NULL);
-        pVolume->Release();
-    }
+    if (auto* pVolume = getCachedVolumeControl())
+        pVolume->SetMute(mute, nullptr);
 }
 
 // ─── Brightness ───────────────────────────────────────────────────────────────
 // Strategy: try DDC/CI (external monitors) first; fall back to WMI (laptop panels).
 
 float WinOSIntegration::getSystemBrightness() {
+    ULONGLONG now = GetTickCount64();
+    if (m_lastBrightnessQueryTime > 0 && (now - m_lastBrightnessQueryTime) < 3000) {
+        return m_cachedBrightness;
+    }
+
+    float brightness = 0.5f;
     // Try DDC/CI first
     if (!m_monitors.empty()) {
         DWORD minB, curB, maxB;
         if (GetMonitorBrightness(m_monitors[0].hPhysicalMonitor, &minB, &curB, &maxB) &&
             maxB > minB) {
-            return (float)(curB - minB) / (float)(maxB - minB);
+            brightness = (float)(curB - minB) / (float)(maxB - minB);
+        } else {
+            brightness = getBrightnessWmi();
         }
+    } else {
+        brightness = getBrightnessWmi();
     }
-    // Fall back to WMI for internal panels
-    return getBrightnessWmi();
+
+    m_cachedBrightness = brightness;
+    m_lastBrightnessQueryTime = now;
+    return brightness;
 }
 
 void WinOSIntegration::setSystemBrightness(float level) {
-    if (level < 0.0f) level = 0.0f;
-    if (level > 1.0f) level = 1.0f;
+    level = clamp01(level);
+    m_cachedBrightness = level;
+    m_lastBrightnessQueryTime = GetTickCount64();
 
     // Try DDC/CI first
     if (!m_monitors.empty()) {

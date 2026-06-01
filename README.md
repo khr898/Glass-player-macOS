@@ -105,6 +105,21 @@ Glass Player has been fully ported to Windows (x64 and arm64). The Windows versi
 
 ### Installation on Windows
 1. Go to the **Actions** tab in this repository.
-2. Select the latest successful **Windows Build** workflow.
-3. Download the `GlassPlayer-Windows-x64` or `GlassPlayer-Windows-arm64` artifact.
-4. Extract the artifact and run the `.exe` setup installer to install Glass Player.
+2. Run the **Cross-platform Build** workflow manually (`workflow_dispatch`).
+3. Download the `GlassPlayer-Windows-x64-installer` or `GlassPlayer-Windows-arm64-installer` artifact.
+4. Run the single-file `.exe` installer.
+
+### Building on Windows from source
+```powershell
+# x64
+cmake -S windows -B build-win-x64 -G "Visual Studio 17 2022" -A x64
+cmake --build build-win-x64 --config Release
+
+# ARM64
+cmake -S windows -B build-win-arm64 -G "Visual Studio 17 2022" -A ARM64
+cmake --build build-win-arm64 --config Release
+```
+
+Notes:
+- Install the Visual Studio C++ ARM64 toolchain/workload for ARM64 builds.
+- Provide architecture-matched libmpv binaries under `vendor/mpv-dev/arm64` (or `vendor/mpv-dev/x64`) when building each target.

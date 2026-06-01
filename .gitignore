@@ -23,3 +23,5 @@ DerivedData/
 *.d
 *.dSYM/
 windows/build/
+windows/build_x64/
+windows/build_arm64/

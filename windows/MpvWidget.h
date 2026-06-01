@@ -5,7 +5,7 @@
 #include <mpv/render_gl.h>
 #include <QOpenGLWidget>
 #include <QOpenGLFunctions>
-#include <QThread>
+#include <QString>
 
 class MpvWidget : public QOpenGLWidget, protected QOpenGLFunctions
 {
@@ -16,7 +16,9 @@ public:
 
     void command(const QVariantList &args);
     void setProperty(const QString &name, const QVariant &value);
+    void setProperty(const char *name, const QVariant &value);
     QVariant getProperty(const QString &name) const;
+    QVariant getProperty(const char *name) const;
 
     void loadFile(const QString &file);
     void play();
@@ -24,6 +26,7 @@ public:
     void seek(double offset);
     void setVolume(int volume);
     void toggleMute();
+    static QString resolveHwdecAfterProbe(const QString& configuredMode, const QString& hwdecCurrent, bool isArm64Build);
 
     // mpv object for more advanced configurations if needed outside
     mpv_handle *mpv() const { return m_mpv; }
@@ -32,6 +35,8 @@ signals:
     void positionChanged(double position);
     void durationChanged(double duration);
     void eofReached();
+    void pauseChanged(bool paused);
+    void fileLoaded();
 
 protected:
     void initializeGL() override;
@@ -47,9 +52,16 @@ private:
     static void onUpdateWrapper(void *ctx);
 
     void handleEvent(mpv_event *event);
+    QString detectPreferredHwdec() const;
+    void applyHwdecFallbackIfNeeded();
 
     mpv_handle *m_mpv;
     mpv_render_context *m_mpv_gl;
+    QString m_hwdecMode;
+    bool m_hwdecFallbackHandled = false;
+
+    bool m_glInitialized = false;
+    QString m_pendingFileToLoad;
 
     QMetaObject::Connection m_eventConnection;
 };

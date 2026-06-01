@@ -57,5 +57,8 @@
         <file>icons/url.svg</file>
         <file>icons/sun.svg</file>
         <file>icons/remote.svg</file>
+        <file>icons/aspect.svg</file>
+        <file>icons/app.svg</file>
+        <file>icons/settings.svg</file>
     </qresource>
 </RCC>

@@ -6,6 +6,7 @@
 RcloneBrowser::RcloneBrowser(QWidget *parent)
     : QDialog(parent), m_networkManager(new QNetworkAccessManager(this))
 {
+    setWindowFlags(windowFlags() | Qt::WindowStaysOnTopHint);
     setupUi();
 }
 
@@ -175,7 +176,7 @@ void RcloneBrowser::parseDirectoryListing(const QString &html)
     m_listWidget->clear();
     
     // Simple regex for `<a href="link">name</a> size`
-    QRegularExpression regex("<a\\s+href=\"([^\"]+)\"\\s*>([^<]+)</a>\\s*([^<]*)");
+    static const QRegularExpression regex("<a\\s+href=\"([^\"]+)\"\\s*>([^<]+)</a>\\s*([^<]*)");
     QRegularExpressionMatchIterator i = regex.globalMatch(html);
     
     while (i.hasNext()) {

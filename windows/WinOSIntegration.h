@@ -6,6 +6,7 @@
 #include <highlevelmonitorconfigurationapi.h>
 #include <physicalmonitorenumerationapi.h>
 #include <wbemidl.h>
+
 #include <vector>
 
 class WinOSIntegration {
@@ -23,11 +24,14 @@ public:
     float getSystemBrightness();
     void setSystemBrightness(float level);
 
+
+
 private:
     WinOSIntegration();
     ~WinOSIntegration();
 
-    IAudioEndpointVolume* getVolumeControl();
+    IAudioEndpointVolume* getCachedVolumeControl();
+    IAudioEndpointVolume* m_pVolume = nullptr;
 
     // DDC/CI (external monitors)
     struct MonitorInfo {
@@ -44,4 +48,10 @@ private:
     bool initWmi();
     float getBrightnessWmi();
     void  setBrightnessWmi(float level);
+
+    static float clamp01(float value);
+
+    // Brightness caching
+    float m_cachedBrightness = 0.5f;
+    ULONGLONG m_lastBrightnessQueryTime = 0;
 };

@@ -1,60 +1,97 @@
-name: Windows Build
+name: Cross-platform Build
 
 on:
-  push:
-    branches: [ "**" ]
-  pull_request:
-    branches: [ "**" ]
   workflow_dispatch:
 
 jobs:
   build:
-    runs-on: windows-latest
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
     strategy:
+      fail-fast: false
       matrix:
-        arch: [x64, arm64]
+        include:
+          - name: Windows x64
+            runner: windows-latest
+            target: windows
+            arch: x64
+            qt_arch: win64_msvc2019_64
+            artifact_name: GlassPlayer-Windows-x64-installer
+            mpv_dll: vendor/mpv-dev/x64/libmpv-2.dll
+          - name: Windows ARM64
+            runner: windows-latest
+            target: windows
+            arch: ARM64
+            qt_arch: win64_msvc2019_arm64
+            artifact_name: GlassPlayer-Windows-arm64-installer
+            mpv_dll: vendor/mpv-dev/arm64/libmpv-2.dll
+          - name: macOS arm64
+            runner: macos-14
+            target: macos
+            artifact_name: GlassPlayer-macOS-arm64-dmg
 
     steps:
-    - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-    - name: Set up MSVC
-      uses: ilammy/msvc-dev-cmd@v1
-      with:
-        arch: ${{ matrix.arch }}
+      - name: Set up MSVC
+        if: matrix.target == 'windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: ${{ matrix.arch }}
 
-    - name: Install Qt
-      uses: jurplel/install-qt-action@v3
-      with:
-        version: '6.5.3'
-        host: 'windows'
-        target: 'desktop'
-        arch: ${{ matrix.arch == 'arm64' && 'win64_msvc2019_arm64' || 'win64_msvc2019_64' }}
+      - name: Install Qt
+        if: matrix.target == 'windows'
+        uses: jurplel/install-qt-action@v3
+        with:
+          version: '6.5.3'
+          host: 'windows'
+          target: 'desktop'
+          arch: ${{ matrix.qt_arch }}
 
-    # MPV dependencies are now bundled in the vendor/mpv-dev directory
-    # so we don't need to download them at runtime.
+      - name: Configure CMake (Windows)
+        if: matrix.target == 'windows'
+        run: >
+          cmake -S windows -B build-win-${{ matrix.arch }}
+          -G "Visual Studio 17 2022"
+          -A ${{ matrix.arch }}
 
-    - name: Configure CMake
-      run: >
-        cmake -S windows -B windows/build
-        -DCMAKE_BUILD_TYPE=Release
-        -G "Ninja"
+      - name: Build (Windows)
+        if: matrix.target == 'windows'
+        run: cmake --build build-win-${{ matrix.arch }} --config Release
 
-    - name: Build
-      run: cmake --build windows/build --config Release
+      - name: Deploy runtime (Windows)
+        if: matrix.target == 'windows'
+        shell: pwsh
+        run: |
+          Copy-Item "${{ matrix.mpv_dll }}" "build-win-${{ matrix.arch }}\\Release\\libmpv-2.dll" -Force
+          windeployqt --release --no-translations --no-opengl-sw "build-win-${{ matrix.arch }}\\Release\\GlassPlayer.exe"
 
-    - name: Copy dependencies for packaging
-      if: matrix.arch == 'x64'
-      run: |
-        copy vendor/mpv-dev/libmpv-2.dll windows/build/
-        # Qt dependencies would be deployed here using windeployqt
-        windeployqt --no-translations --no-opengl-sw --release windows/build/GlassPlayer.exe
+      - name: Package standalone installer (Windows)
+        if: matrix.target == 'windows'
+        run: cpack --config build-win-${{ matrix.arch }}/CPackConfig.cmake -C Release -G NSIS
 
-    - name: Package Installer
-      working-directory: windows/build
-      run: cpack -G NSIS
+      - name: Install mpv (macOS)
+        if: matrix.target == 'macos'
+        run: brew install mpv
 
-    - name: Upload Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: GlassPlayer-Windows-${{ matrix.arch }}
-        path: windows/build/GlassPlayer-*.exe
+      - name: Build app bundle (macOS arm64)
+        if: matrix.target == 'macos'
+        run: |
+          cd macOS/GlassPlayer
+          chmod +x build.sh
+          NO_INSTALL=1 SKIP_SIGN=1 CREATE_DMG=1 BUILD_PROFILE=optimized ./build.sh
+
+      - name: Upload artifact (Windows)
+        if: matrix.target == 'windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: build-win-${{ matrix.arch }}/GlassPlayer-*.exe
+
+      - name: Upload artifact (macOS)
+        if: matrix.target == 'macos'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: macOS/GlassPlayer/build/optimized/GlassPlayer.dmg

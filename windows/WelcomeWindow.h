@@ -3,9 +3,12 @@
 #include <QDialog>
 #include <QLabel>
 #include <QPushButton>
+#include <QToolButton>
+#include <QFrame>
 #include <QDragEnterEvent>
 #include <QDropEvent>
 #include <QMimeData>
+#include <QMouseEvent>
 
 class WelcomeWindow : public QDialog
 {
@@ -22,6 +25,9 @@ signals:
 protected:
     void dragEnterEvent(QDragEnterEvent *event) override;
     void dropEvent(QDropEvent *event) override;
+    void mousePressEvent(QMouseEvent *event) override;
+    void mouseMoveEvent(QMouseEvent *event) override;
+    void mouseReleaseEvent(QMouseEvent *event) override;
 
 private slots:
     void onOpenFileClicked();
@@ -30,6 +36,10 @@ private slots:
 private:
     void setupUi();
 
-    QPushButton *m_openFileBtn;
-    QPushButton *m_rcloneBtn;
+    QFrame *m_mainFrame = nullptr;
+    QPushButton *m_closeBtn = nullptr;
+    QToolButton *m_openFileBtn = nullptr;
+    QToolButton *m_rcloneBtn = nullptr;
+    bool m_dragActive = false;
+    QPoint m_dragPosition;
 };
