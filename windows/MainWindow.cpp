@@ -703,19 +703,26 @@ void MainWindow::openFile(const QString &file)
 
 void MainWindow::onOpenClicked()
 {
-    QString file = QFileDialog::getOpenFileName(this, "Open Video");
-    if (!file.isEmpty()) {
-        openFile(file);
+    QFileDialog dialog(this, "Open Video");
+    dialog.setWindowFlags(Qt::Dialog | Qt::WindowStaysOnTopHint);
+    dialog.setOption(QFileDialog::DontUseNativeDialog, true);
+    if (dialog.exec() == QDialog::Accepted) {
+        QString file = dialog.selectedFiles().first();
+        if (!file.isEmpty()) {
+            openFile(file);
+        }
     }
 }
 
 void MainWindow::onRcloneClicked()
 {
+    m_rcloneBrowser->setWindowFlags(Qt::Dialog | Qt::WindowStaysOnTopHint);
     m_rcloneBrowser->exec();
 }
 
 void MainWindow::onSettingsClicked()
 {
+    m_settingsWindow->setWindowFlags(Qt::Dialog | Qt::WindowStaysOnTopHint);
     m_settingsWindow->exec();
 }
 
@@ -1645,6 +1652,7 @@ void MainWindow::syncSystemControls()
 
 void MainWindow::toggleFullscreen()
 {
+    m_mpvWidget->setUpdatesEnabled(false);
     if (isFullScreen()) {
         showNormal();
         m_fullscreenBtn->setIcon(QIcon(":/icons/fullscreen.svg"));
@@ -1652,6 +1660,12 @@ void MainWindow::toggleFullscreen()
         showFullScreen();
         m_fullscreenBtn->setIcon(QIcon(":/icons/fullscreen_exit.svg"));
     }
+
+    QTimer::singleShot(250, this, [this]() {
+        m_mpvWidget->setUpdatesEnabled(true);
+        m_mpvWidget->update();
+        updateHudPositions();
+    });
 }
 
 void MainWindow::keyPressEvent(QKeyEvent *event)
