@@ -15,6 +15,7 @@
 #include <QGraphicsDropShadowEffect>
 #include <QShortcut>
 #include <QGuiApplication>
+#include <QStyleHints>
 #include <QScreen>
 #include <algorithm>
 #include <thread>
@@ -50,10 +51,10 @@ public:
         hide();
     }
 
-    void setPreview(const QImage &img, const QString &timeStr) {
+    void setPreview(const QImage &img, const QString &timeStr, bool keepPrevious = false) {
         if (!img.isNull()) {
             m_imgLabel->setPixmap(QPixmap::fromImage(img));
-        } else {
+        } else if (!keepPrevious) {
             m_imgLabel->clear();
         }
         m_timeLabel->setText(timeStr);
@@ -110,11 +111,11 @@ public:
     QImage generateThumbnail(double time) {
         if (!m_mpv) return QImage();
 
-        QString seekCmd = QString("seek %1 absolute+exact").arg(time);
+        QString seekCmd = QString("seek %1 absolute+keyframes").arg(time);
         mpv_command_string(m_mpv, seekCmd.toUtf8().constData());
 
         for (int i = 0; i < 15; ++i) {
-            mpv_event *event = mpv_wait_event(m_mpv, 0.03);
+            mpv_event *event = mpv_wait_event(m_mpv, 0.002);
             if (!event || event->event_id == MPV_EVENT_NONE) break;
             if (event->event_id == MPV_EVENT_PLAYBACK_RESTART) break;
         }
@@ -133,7 +134,7 @@ public:
                 }
             }
             if (attempt < 3) {
-                QThread::msleep(10);
+                QThread::msleep(3);
             }
         }
         QFile::remove(m_tmpPath);
@@ -161,7 +162,7 @@ private:
         mpv_set_option_string(m_mpv, "demuxer-max-bytes", "5MiB");
         mpv_set_option_string(m_mpv, "demuxer-max-back-bytes", "1MiB");
         mpv_set_option_string(m_mpv, "screenshot-format", "jpg");
-        mpv_set_option_string(m_mpv, "screenshot-jpeg-quality", "50");
+        mpv_set_option_string(m_mpv, "screenshot-jpeg-quality", "30");
 
         if (mpv_initialize(m_mpv) < 0) {
             mpv_destroy(m_mpv);
@@ -239,6 +240,17 @@ MainWindow::MainWindow(QWidget *parent)
     m_hudTimer->setSingleShot(true);
     connect(m_hudTimer, &QTimer::timeout, this, &MainWindow::hideHud);
     m_hudTimer->start(3000);
+
+    m_clickTimer = new QTimer(this);
+    m_clickTimer->setSingleShot(true);
+    m_clickTimer->setInterval(200);
+    connect(m_clickTimer, &QTimer::timeout, this, [this]() {
+        if (m_bottomBar->isVisible()) {
+            hideHud();
+        } else {
+            showHud();
+        }
+    });
 
     // Bi-directional OS sync: keep sliders/icons in sync when values change externally.
     m_systemSyncTimer = new QTimer(this);
@@ -782,9 +794,9 @@ void MainWindow::onSliderMoved(int position)
         m_remainingTimeLabel->setText("-" + formatTime(m_duration - pos));
 
         qint64 now = QDateTime::currentMSecsSinceEpoch();
-        if (now - m_lastSeekTime > 30) {
+        if (now - m_lastSeekTime > 25) {
             m_lastSeekTime = now;
-            m_mpvWidget->setProperty("time-pos", pos);
+            m_mpvWidget->command(QVariantList() << "seek" << QString::number(pos) << "absolute+keyframes");
         }
     }
 }
@@ -794,7 +806,7 @@ void MainWindow::onSliderReleased()
     m_isSeeking = false;
     if (m_duration > 0) {
         double pos = (m_seekSlider->value() / 1000.0) * m_duration;
-        m_mpvWidget->setProperty("time-pos", pos);
+        m_mpvWidget->command(QVariantList() << "seek" << QString::number(pos) << "absolute+exact");
         m_currentTimeLabel->setText(formatTime(pos));
         m_remainingTimeLabel->setText("-" + formatTime(m_duration - pos));
     }
@@ -1517,12 +1529,6 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
     if (watched == m_mpvWidget) {
         if (event->type() == QEvent::Resize) {
             updateHudPositions();
-        } else if (event->type() == QEvent::MouseButtonDblClick) {
-            auto *mouseEvent = static_cast<QMouseEvent*>(event);
-            if (mouseEvent->button() == Qt::LeftButton) {
-                toggleFullscreen();
-                return true;
-            }
         } else if (event->type() == QEvent::MouseButtonPress) {
             auto *mouseEvent = static_cast<QMouseEvent*>(event);
             if (mouseEvent->button() == Qt::LeftButton) {
@@ -1533,10 +1539,16 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
                     (m_volumeBar->isVisible() && m_volumeBar->geometry().contains(localPos))) {
                     return false;
                 }
-                if (m_bottomBar->isVisible()) {
-                    hideHud();
+                
+                qint64 now = QDateTime::currentMSecsSinceEpoch();
+                static qint64 lastClickTime = 0;
+                if (now - lastClickTime < QGuiApplication::styleHints()->mouseDoubleClickInterval()) {
+                    m_clickTimer->stop();
+                    toggleFullscreen();
+                    lastClickTime = 0;
                 } else {
-                    showHud();
+                    lastClickTime = now;
+                    m_clickTimer->start();
                 }
                 return true;
             }
@@ -1933,8 +1945,12 @@ void MainWindow::handleTimelineHover(QPoint pos)
     double time = ratio * m_duration;
     m_lastHoverTime = time;
 
+    bool isNewHover = false;
     if (!m_previewWidget) {
         m_previewWidget = new TimelinePreviewWidget(m_mpvWidget);
+        isNewHover = true;
+    } else if (!m_previewWidget->isVisible()) {
+        isNewHover = true;
     }
 
     QPoint globalPos = m_seekSlider->mapTo(m_mpvWidget, QPoint(pos.x(), 0));
@@ -1949,7 +1965,7 @@ void MainWindow::handleTimelineHover(QPoint pos)
     if (m_thumbnailCache.contains(halfSec)) {
         m_previewWidget->setPreview(m_thumbnailCache.value(halfSec), formatTime(time));
     } else {
-        m_previewWidget->setPreview(QImage(), formatTime(time));
+        m_previewWidget->setPreview(QImage(), formatTime(time), !isNewHover);
         generateThumbnail(time, halfSec);
     }
 }
@@ -1975,7 +1991,7 @@ void MainWindow::generateThumbnail(double time, int cacheKey)
 
         QMetaObject::invokeMethod(this, [this, img, cacheKey]() {
             if (!img.isNull()) {
-                if (m_thumbnailCache.size() > 100) {
+                if (m_thumbnailCache.size() > 500) {
                     m_thumbnailCache.clear();
                 }
                 m_thumbnailCache.insert(cacheKey, img);

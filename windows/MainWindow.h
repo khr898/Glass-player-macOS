@@ -174,6 +174,7 @@ private:
 
     QTimer *m_hudTimer;
     QTimer *m_systemSyncTimer;
+    QTimer *m_clickTimer;
 
     double m_duration = 0;
     bool m_isPlaying = true;
