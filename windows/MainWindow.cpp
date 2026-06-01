@@ -111,7 +111,7 @@ public:
     QImage generateThumbnail(double time) {
         if (!m_mpv) return QImage();
 
-        QString seekCmd = QString("seek %1 absolute+exact").arg(time);
+        QString seekCmd = QString("seek %1 absolute+exact").arg(time, 0, 'f', 6);
         mpv_command_string(m_mpv, seekCmd.toUtf8().constData());
 
         for (int i = 0; i < 15; ++i) {
@@ -804,7 +804,7 @@ void MainWindow::onSliderMoved(int position)
         qint64 now = QDateTime::currentMSecsSinceEpoch();
         if (now - m_lastSeekTime > 25) {
             m_lastSeekTime = now;
-            m_mpvWidget->command(QVariantList() << "seek" << QString::number(pos) << "absolute+keyframes");
+            m_mpvWidget->command(QVariantList() << "seek" << QString::number(pos, 'f', 6) << "absolute+keyframes");
         }
     }
 }
@@ -814,7 +814,7 @@ void MainWindow::onSliderReleased()
     m_isSeeking = false;
     if (m_duration > 0) {
         double pos = (m_seekSlider->value() / 1000000.0) * m_duration;
-        m_mpvWidget->command(QVariantList() << "seek" << QString::number(pos) << "absolute+exact");
+        m_mpvWidget->command(QVariantList() << "seek" << QString::number(pos, 'f', 6) << "absolute+exact");
         m_currentTimeLabel->setText(formatTime(pos));
         m_remainingTimeLabel->setText("-" + formatTime(m_duration - pos));
     }

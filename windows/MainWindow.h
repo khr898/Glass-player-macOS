@@ -76,6 +76,42 @@ protected:
             }
         }
     }
+
+    void mouseMoveEvent(QMouseEvent *event) override
+    {
+        if (event->buttons() & Qt::LeftButton) {
+            int val = 0;
+            if (orientation() == Qt::Horizontal) {
+                val = style()->sliderValueFromPosition(
+                    minimum(),
+                    maximum(),
+                    event->pos().x(),
+                    width()
+                );
+            } else {
+                val = style()->sliderValueFromPosition(
+                    minimum(),
+                    maximum(),
+                    height() - event->pos().y(),
+                    height()
+                );
+            }
+            val = qBound(minimum(), val, maximum());
+            setValue(val);
+            emit sliderMoved(val);
+
+            // Warp mouse pointer to the visual center of the scrubber circle!
+            QStyleOptionSlider opt;
+            initStyleOption(&opt);
+            QRect handleRect = style()->subControlRect(QStyle::CC_Slider, &opt, QStyle::SC_SliderHandle, this);
+            if (handleRect.isValid()) {
+                QPoint globalCenter = mapToGlobal(handleRect.center());
+                QCursor::setPos(globalCenter);
+            }
+            return;
+        }
+        QSlider::mouseMoveEvent(event);
+    }
 };
 
 class MainWindow : public QMainWindow
