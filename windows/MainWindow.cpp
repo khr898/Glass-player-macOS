@@ -690,6 +690,17 @@ void MainWindow::updateHudPositions()
 
 void MainWindow::openFile(const QString &file)
 {
+    if (!m_currentFile.isEmpty()) {
+        MainWindow *newWin = new MainWindow();
+        newWin->setAttribute(Qt::WA_DeleteOnClose);
+        newWin->suppressWelcome();
+        newWin->openFile(file);
+        newWin->show();
+        newWin->raise();
+        newWin->activateWindow();
+        return;
+    }
+
     m_currentFile = file;
     m_thumbnailCache.clear();
     m_isGeneratingThumbnail = false;
@@ -1742,6 +1753,22 @@ void MainWindow::executeCommand(const QString &commandLine)
 
     QString cmd = args.first().toLower();
     args.removeFirst();
+
+    // Fallback: if cmd is not a known command, treat the entire commandLine as a path to load
+    if (cmd != "play" && cmd != "pause" && cmd != "toggle" && cmd != "stop" && cmd != "seek" &&
+        cmd != "volume" && cmd != "mute" && cmd != "load" && cmd != "anime4k" && cmd != "fullscreen" &&
+        cmd != "speed" && cmd != "aspect" && cmd != "next" && cmd != "prev") {
+        
+        suppressWelcome();
+        if (m_welcomeWindow && m_welcomeWindow->isVisible()) {
+            m_welcomeWindow->accept();
+        }
+        openFile(commandLine);
+        show();
+        raise();
+        activateWindow();
+        return;
+    }
 
     if (cmd == "play") {
         m_mpvWidget->play();
