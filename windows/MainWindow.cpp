@@ -111,7 +111,7 @@ public:
     QImage generateThumbnail(double time) {
         if (!m_mpv) return QImage();
 
-        QString seekCmd = QString("seek %1 absolute+keyframes").arg(time);
+        QString seekCmd = QString("seek %1 absolute+exact").arg(time);
         mpv_command_string(m_mpv, seekCmd.toUtf8().constData());
 
         for (int i = 0; i < 15; ++i) {

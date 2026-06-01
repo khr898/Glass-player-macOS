@@ -15,7 +15,8 @@
 #include "SettingsWindow.h"
 #include "RcloneBrowser.h"
 
-#include <QStyle>
+#include <QStyleOptionSlider>
+#include <QCursor>
 
 class ClickableSlider : public QSlider
 {
@@ -49,8 +50,31 @@ protected:
             val = qBound(minimum(), val, maximum());
             setValue(val);
             emit sliderMoved(val);
+
+            // Warp mouse pointer to the visual center of the scrubber circle!
+            QStyleOptionSlider opt;
+            initStyleOption(&opt);
+            QRect handleRect = style()->subControlRect(QStyle::CC_Slider, &opt, QStyle::SC_SliderHandle, this);
+            if (handleRect.isValid()) {
+                QPoint globalCenter = mapToGlobal(handleRect.center());
+                QCursor::setPos(globalCenter);
+            }
         }
         QSlider::mousePressEvent(event);
+    }
+
+    void mouseReleaseEvent(QMouseEvent *event) override
+    {
+        QSlider::mouseReleaseEvent(event);
+        if (event->button() == Qt::LeftButton) {
+            QStyleOptionSlider opt;
+            initStyleOption(&opt);
+            QRect handleRect = style()->subControlRect(QStyle::CC_Slider, &opt, QStyle::SC_SliderHandle, this);
+            if (handleRect.isValid()) {
+                QPoint globalCenter = mapToGlobal(handleRect.center());
+                QCursor::setPos(globalCenter);
+            }
+        }
     }
 };
 
