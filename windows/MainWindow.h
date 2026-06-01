@@ -15,6 +15,8 @@
 #include "SettingsWindow.h"
 #include "RcloneBrowser.h"
 
+#include <QStyle>
+
 class ClickableSlider : public QSlider
 {
     Q_OBJECT
@@ -28,13 +30,22 @@ protected:
     void mousePressEvent(QMouseEvent *event) override
     {
         if (event->button() == Qt::LeftButton) {
-            double ratio = 0.0;
+            int val = 0;
             if (orientation() == Qt::Horizontal) {
-                ratio = static_cast<double>(event->pos().x()) / width();
+                val = style()->sliderValueFromPosition(
+                    minimum(),
+                    maximum(),
+                    event->pos().x(),
+                    width()
+                );
             } else {
-                ratio = 1.0 - (static_cast<double>(event->pos().y()) / height());
+                val = style()->sliderValueFromPosition(
+                    minimum(),
+                    maximum(),
+                    height() - event->pos().y(),
+                    height()
+                );
             }
-            int val = minimum() + qRound(ratio * (maximum() - minimum()));
             val = qBound(minimum(), val, maximum());
             setValue(val);
             emit sliderMoved(val);

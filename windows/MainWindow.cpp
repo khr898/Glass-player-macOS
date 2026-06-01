@@ -1950,9 +1950,13 @@ void MainWindow::handleTimelineHover(QPoint pos)
 {
     if (m_duration <= 0) return;
 
-    double ratio = static_cast<double>(pos.x()) / m_seekSlider->width();
-    ratio = std::clamp(ratio, 0.0, 1.0);
-    double time = ratio * m_duration;
+    int val = m_seekSlider->style()->sliderValueFromPosition(
+        m_seekSlider->minimum(),
+        m_seekSlider->maximum(),
+        pos.x(),
+        m_seekSlider->width()
+    );
+    double time = (static_cast<double>(val) / m_seekSlider->maximum()) * m_duration;
     m_lastHoverTime = time;
 
     bool isNewHover = false;
