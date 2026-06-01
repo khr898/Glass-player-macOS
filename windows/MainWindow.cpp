@@ -1,4 +1,7 @@
 #include "MainWindow.h"
+#ifdef _WIN32
+#include <windows.h>
+#endif
 #include "WinOSIntegration.h"
 #include <QFileDialog>
 #include <QKeyEvent>
@@ -359,7 +362,7 @@ void MainWindow::setupUi()
 
 void MainWindow::setupTopBar()
 {
-    m_topBar = new QWidget(m_mpvWidget);
+    m_topBar = new QWidget(m_centralWidget);
     m_topBar->setObjectName("topBar");
     m_topBar->setFixedHeight(44);
     m_topBar->setStyleSheet(
@@ -429,7 +432,7 @@ void MainWindow::setupTopBar()
 
 void MainWindow::setupBottomBar()
 {
-    m_bottomBar = new QWidget(m_mpvWidget);
+    m_bottomBar = new QWidget(m_centralWidget);
     m_bottomBar->setObjectName("bottomBar");
     m_bottomBar->setFixedHeight(90);
     m_bottomBar->setStyleSheet(
@@ -534,7 +537,7 @@ void MainWindow::setupBottomBar()
 
 void MainWindow::setupBrightnessBar()
 {
-    m_brightnessBar = new QWidget(m_mpvWidget);
+    m_brightnessBar = new QWidget(m_centralWidget);
     m_brightnessBar->setObjectName("brightnessBar");
     m_brightnessBar->setFixedWidth(40);
     m_brightnessBar->setFixedHeight(200);
@@ -571,7 +574,7 @@ void MainWindow::setupBrightnessBar()
 
 void MainWindow::setupVolumeBar()
 {
-    m_volumeBar = new QWidget(m_mpvWidget);
+    m_volumeBar = new QWidget(m_centralWidget);
     m_volumeBar->setObjectName("volumeBar");
     m_volumeBar->setFixedWidth(40);
     m_volumeBar->setFixedHeight(200);
@@ -727,6 +730,10 @@ void MainWindow::onOpenClicked()
     dialog.show();
     dialog.raise();
     dialog.activateWindow();
+#ifdef _WIN32
+    HWND hwnd = (HWND)dialog.winId();
+    SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+#endif
     if (dialog.exec() == QDialog::Accepted) {
         QString file = dialog.selectedFiles().first();
         if (!file.isEmpty()) {
@@ -741,6 +748,10 @@ void MainWindow::onRcloneClicked()
     m_rcloneBrowser->show();
     m_rcloneBrowser->raise();
     m_rcloneBrowser->activateWindow();
+#ifdef _WIN32
+    HWND hwnd = (HWND)m_rcloneBrowser->winId();
+    SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+#endif
     m_rcloneBrowser->exec();
 }
 
@@ -750,6 +761,10 @@ void MainWindow::onSettingsClicked()
     m_settingsWindow->show();
     m_settingsWindow->raise();
     m_settingsWindow->activateWindow();
+#ifdef _WIN32
+    HWND hwnd = (HWND)m_settingsWindow->winId();
+    SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+#endif
     m_settingsWindow->exec();
 }
 
@@ -2004,7 +2019,7 @@ void MainWindow::handleTimelineHover(QPoint pos)
 
     bool isNewHover = false;
     if (!m_previewWidget) {
-        m_previewWidget = new TimelinePreviewWidget(m_mpvWidget);
+        m_previewWidget = new TimelinePreviewWidget(m_centralWidget);
         isNewHover = true;
     } else if (!m_previewWidget->isVisible()) {
         isNewHover = true;
