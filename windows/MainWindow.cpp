@@ -233,7 +233,9 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_welcomeWindow, &WelcomeWindow::fileOpened, this, &MainWindow::openFile);
     connect(m_welcomeWindow, &WelcomeWindow::openRcloneBrowser, this, &MainWindow::onRcloneClicked);
 
-    m_settingsWindow = new SettingsWindow(this);
+    m_settingsWindow = new SettingsWindow(nullptr);
+    m_settingsWindow->setWindowModality(Qt::ApplicationModal);
+    m_settingsWindow->setWindowFlags(Qt::Dialog | Qt::WindowStaysOnTopHint);
     connect(m_settingsWindow, &SettingsWindow::settingChanged, this, &MainWindow::applySettingToMpv);
 
     m_hudTimer = new QTimer(this);
@@ -262,7 +264,9 @@ MainWindow::MainWindow(QWidget *parent)
     centralWidget()->setMouseTracking(true);
     m_mpvWidget->setMouseTracking(true);
     m_mpvWidget->installEventFilter(this);
-    m_rcloneBrowser = new RcloneBrowser(this);
+    m_rcloneBrowser = new RcloneBrowser(nullptr);
+    m_rcloneBrowser->setWindowModality(Qt::ApplicationModal);
+    m_rcloneBrowser->setWindowFlags(Qt::Dialog | Qt::WindowStaysOnTopHint);
     connect(m_rcloneBrowser, &RcloneBrowser::fileSelected, this, &MainWindow::openFile);
 
     // Initialize default settings if first run
@@ -319,6 +323,8 @@ MainWindow::~MainWindow()
         m_thumbnailMpv->shutdown();
         delete m_thumbnailMpv;
     }
+    delete m_settingsWindow;
+    delete m_rcloneBrowser;
 }
 
 void MainWindow::suppressWelcome()
@@ -703,9 +709,13 @@ void MainWindow::openFile(const QString &file)
 
 void MainWindow::onOpenClicked()
 {
-    QFileDialog dialog(this, "Open Video");
+    QFileDialog dialog(nullptr, "Open Video");
+    dialog.setWindowModality(Qt::ApplicationModal);
     dialog.setWindowFlags(Qt::Dialog | Qt::WindowStaysOnTopHint);
     dialog.setOption(QFileDialog::DontUseNativeDialog, true);
+    dialog.show();
+    dialog.raise();
+    dialog.activateWindow();
     if (dialog.exec() == QDialog::Accepted) {
         QString file = dialog.selectedFiles().first();
         if (!file.isEmpty()) {
@@ -717,12 +727,18 @@ void MainWindow::onOpenClicked()
 void MainWindow::onRcloneClicked()
 {
     m_rcloneBrowser->setWindowFlags(Qt::Dialog | Qt::WindowStaysOnTopHint);
+    m_rcloneBrowser->show();
+    m_rcloneBrowser->raise();
+    m_rcloneBrowser->activateWindow();
     m_rcloneBrowser->exec();
 }
 
 void MainWindow::onSettingsClicked()
 {
     m_settingsWindow->setWindowFlags(Qt::Dialog | Qt::WindowStaysOnTopHint);
+    m_settingsWindow->show();
+    m_settingsWindow->raise();
+    m_settingsWindow->activateWindow();
     m_settingsWindow->exec();
 }
 
