@@ -1,27 +1,83 @@
-# macOS
+# ==========================================
+# Glass Player Production Gitignore
+# ==========================================
+
+# macOS system files
 .DS_Store
 ._*
+.Spotlight-V100
+.Trashes
 
-# Build output
-GlassPlayer/build/
+# Windows system files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
 
-# Logs
-*.log
-
-# Xcode (if opened)
-*.xcodeproj
-*.xcworkspace
-xcuserdata/
-DerivedData/
-
-# IDE
+# IDE & Editor caches / metadata
 .vscode/
 .idea/
+*.suo
+*.user
+*.userossc
+*.sln.docstates
+*.sln
 
-# Compiled binaries
-*.o
-*.d
+# Xcode / Apple Build & Caches
+build/
+DerivedData/
+*.xcodeproj/
+!*.xcodeproj/project.pbxproj
+!*.xcodeproj/xcshareddata/
+*.xcworkspace/
+!*.xcworkspace/contents.xcworkspacedata
+xcuserdata/
+*.xccheckout
+*.moved-aside
+*.pin
+*.xcresult
 *.dSYM/
+GlassPlayer/build/
+
+# CMake Build Output & Caches (Windows port)
+CMakeCache.txt
+CMakeFiles/
+CMakeSettings.json
+CMakePresets.json
+CMakeUserPresets.json
+Makefile
+cmake_install.cmake
+install/
 windows/build/
 windows/build_x64/
 windows/build_arm64/
+windows/dist/
+
+# Qt Creator & Qt Build artifacts
+*.autosave
+*.qmlc
+*.jsc
+object_script.*
+qrc_*.cpp
+ui_*.h
+*.pro.user
+*.pro.user.*
+
+# Compiled C++ Binaries & Libraries (Windows)
+*.o
+*.obj
+*.d
+*.a
+*.lib
+*.so
+*.dylib
+*.dll
+*.exe
+*.pdb
+*.ilk
+*.exp
+*.zip
+*.tar.gz
+*.7z
+
+# App logs & caches
+*.log

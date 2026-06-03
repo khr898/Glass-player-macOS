@@ -8,6 +8,10 @@
 #include <wbemidl.h>
 
 #include <vector>
+#include <thread>
+#include <mutex>
+#include <condition_variable>
+#include <atomic>
 
 class WinOSIntegration {
 public:
@@ -52,6 +56,17 @@ private:
     static float clamp01(float value);
 
     // Brightness caching
-    float m_cachedBrightness = 0.5f;
-    ULONGLONG m_lastBrightnessQueryTime = 0;
+    std::atomic<float> m_cachedBrightness{0.5f};
+    std::atomic<ULONGLONG> m_lastBrightnessQueryTime{0};
+
+    // Background thread for brightness
+    std::thread m_brightnessThread;
+    std::mutex m_mutex;
+    std::mutex m_hwMutex;
+    std::condition_variable m_cv;
+    std::atomic<bool> m_shutdown{false};
+    std::atomic<bool> m_hasNewBrightness{false};
+    std::atomic<float> m_targetBrightness{0.5f};
+
+    bool m_isWine = false;
 };

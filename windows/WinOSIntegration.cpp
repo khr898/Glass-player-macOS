@@ -14,22 +14,72 @@ WinOSIntegration& WinOSIntegration::instance() {
 }
 
 WinOSIntegration::WinOSIntegration() {
+    HMODULE hNtdll = GetModuleHandleA("ntdll.dll");
+    m_isWine = (hNtdll && GetProcAddress(hNtdll, "wine_get_version") != nullptr);
+
     CoInitializeEx(NULL, COINIT_MULTITHREADED);
     refreshMonitors();
     initWmi();
+
+    if (!m_isWine) {
+        m_brightnessThread = std::thread([this]() {
+            HRESULT hr = CoInitializeEx(NULL, COINIT_MULTITHREADED);
+
+            while (true) {
+                float level = 0.5f;
+                {
+                    std::unique_lock<std::mutex> lock(m_mutex);
+                    m_cv.wait(lock, [this]() { return m_shutdown || m_hasNewBrightness; });
+                    if (m_shutdown && !m_hasNewBrightness) {
+                        break;
+                    }
+                    level = m_targetBrightness;
+                    m_hasNewBrightness = false;
+                }
+
+                {
+                    std::lock_guard<std::mutex> hwLock(m_hwMutex);
+                    bool ddcSuccess = false;
+                    if (!m_monitors.empty()) {
+                        DWORD minB, curB, maxB;
+                        if (GetMonitorBrightness(m_monitors[0].hPhysicalMonitor, &minB, &curB, &maxB) &&
+                            maxB > minB) {
+                            DWORD newB = minB + (DWORD)(level * (maxB - minB));
+                            SetMonitorBrightness(m_monitors[0].hPhysicalMonitor, newB);
+                            ddcSuccess = true;
+                        }
+                    }
+                    if (!ddcSuccess) {
+                        setBrightnessWmi(level);
+                    }
+                }
+            }
+
+            if (SUCCEEDED(hr)) {
+                CoUninitialize();
+            }
+        });
+    }
 }
 
 WinOSIntegration::~WinOSIntegration() {
+    m_shutdown = true;
+    m_cv.notify_one();
+    if (m_brightnessThread.joinable()) {
+        m_brightnessThread.join();
+    }
+
     releaseMonitors();
     if (m_pVolume)       { m_pVolume->Release();       m_pVolume = nullptr; }
-    if (m_pWbemServices) m_pWbemServices->Release();
-    if (m_pWbemLocator)  m_pWbemLocator->Release();
+    if (m_pWbemServices) { m_pWbemServices->Release(); m_pWbemServices = nullptr; }
+    if (m_pWbemLocator)  { m_pWbemLocator->Release();  m_pWbemLocator = nullptr; }
     CoUninitialize();
 }
 
 // ─── Monitor (DDC/CI) ─────────────────────────────────────────────────────────
 
 void WinOSIntegration::refreshMonitors() {
+    if (m_isWine) return;
     releaseMonitors();
     HMONITOR hMonitor = MonitorFromWindow(GetDesktopWindow(), MONITOR_DEFAULTTOPRIMARY);
     DWORD numPhysicalMonitors;
@@ -99,23 +149,29 @@ void WinOSIntegration::setMuted(bool mute) {
 // Strategy: try DDC/CI (external monitors) first; fall back to WMI (laptop panels).
 
 float WinOSIntegration::getSystemBrightness() {
+    if (m_isWine) {
+        return m_cachedBrightness;
+    }
     ULONGLONG now = GetTickCount64();
     if (m_lastBrightnessQueryTime > 0 && (now - m_lastBrightnessQueryTime) < 3000) {
         return m_cachedBrightness;
     }
 
     float brightness = 0.5f;
-    // Try DDC/CI first
-    if (!m_monitors.empty()) {
-        DWORD minB, curB, maxB;
-        if (GetMonitorBrightness(m_monitors[0].hPhysicalMonitor, &minB, &curB, &maxB) &&
-            maxB > minB) {
-            brightness = (float)(curB - minB) / (float)(maxB - minB);
+    {
+        std::lock_guard<std::mutex> hwLock(m_hwMutex);
+        // Try DDC/CI first
+        if (!m_monitors.empty()) {
+            DWORD minB, curB, maxB;
+            if (GetMonitorBrightness(m_monitors[0].hPhysicalMonitor, &minB, &curB, &maxB) &&
+                maxB > minB) {
+                brightness = (float)(curB - minB) / (float)(maxB - minB);
+            } else {
+                brightness = getBrightnessWmi();
+            }
         } else {
             brightness = getBrightnessWmi();
         }
-    } else {
-        brightness = getBrightnessWmi();
     }
 
     m_cachedBrightness = brightness;
@@ -128,23 +184,22 @@ void WinOSIntegration::setSystemBrightness(float level) {
     m_cachedBrightness = level;
     m_lastBrightnessQueryTime = GetTickCount64();
 
-    // Try DDC/CI first
-    if (!m_monitors.empty()) {
-        DWORD minB, curB, maxB;
-        if (GetMonitorBrightness(m_monitors[0].hPhysicalMonitor, &minB, &curB, &maxB) &&
-            maxB > minB) {
-            DWORD newB = minB + (DWORD)(level * (maxB - minB));
-            SetMonitorBrightness(m_monitors[0].hPhysicalMonitor, newB);
-            return;
-        }
+    if (m_isWine) {
+        return;
     }
-    // Fall back to WMI
-    setBrightnessWmi(level);
+
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_targetBrightness = level;
+        m_hasNewBrightness = true;
+    }
+    m_cv.notify_one();
 }
 
 // ─── WMI helpers (WmiMonitorBrightness) ───────────────────────────────────────
 
 bool WinOSIntegration::initWmi() {
+    if (m_isWine) return false;
     HRESULT hr = CoCreateInstance(CLSID_WbemLocator, 0, CLSCTX_INPROC_SERVER,
                                   IID_IWbemLocator, (LPVOID*)&m_pWbemLocator);
     if (FAILED(hr)) return false;

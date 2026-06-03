@@ -83,6 +83,14 @@ class VideoView: NSView {
         return true
     }
 
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard let win = window, let screen = win.screen else { return }
+        videoLayer.colorspace = screen.colorSpace?.cgColorSpace
+            ?? CGColorSpace(name: CGColorSpace.displayP3)!
+        videoLayer.contentsScale = win.backingScaleFactor
+    }
+
     /// Tear down rendering
     func uninit() {
         videoLayer.uninitRendering()

@@ -24,6 +24,9 @@
 #include <QScreen>
 #include <algorithm>
 #include <thread>
+#include <mutex>
+#include <condition_variable>
+#include <functional>
 #include <QDateTime>
 #include <QThread>
 #include <QImage>
@@ -80,13 +83,21 @@ class ThumbnailMpv {
 public:
     ThumbnailMpv() {
         m_tmpPath = QDir::tempPath() + QString("/glassplayer_thumb_%1.jpg").arg(QCoreApplication::applicationPid());
-        setupMpv();
+        m_workerThread = std::thread(&ThumbnailMpv::workerLoop, this);
     }
     ~ThumbnailMpv() {
         shutdown();
     }
 
     void shutdown() {
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            m_shutdown = true;
+        }
+        m_cv.notify_all();
+        if (m_workerThread.joinable()) {
+            m_workerThread.join();
+        }
         if (m_mpv) {
             mpv_terminate_destroy(m_mpv);
             m_mpv = nullptr;
@@ -96,8 +107,78 @@ public:
     }
 
     void loadSource(const QString &source) {
-        if (!m_mpv) setupMpv();
-        if (!m_mpv || source == m_currentFile) return;
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            m_pendingSource = source;
+            m_hasPendingSource = true;
+        }
+        m_cv.notify_all();
+    }
+
+    struct ThumbnailRequest {
+        double time = 0.0;
+        int cacheKey = 0;
+        QObject *context = nullptr;
+        std::function<void(QImage, int)> callback;
+    };
+
+    void requestThumbnail(double time, int cacheKey, QObject *context, std::function<void(QImage, int)> callback) {
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            m_pendingThumbnail = { time, cacheKey, context, callback };
+            m_hasPendingThumbnail = true;
+        }
+        m_cv.notify_all();
+    }
+
+private:
+    void workerLoop() {
+        setupMpv();
+        if (!m_mpv) return;
+
+        while (true) {
+            QString src;
+            bool doLoad = false;
+            ThumbnailRequest req;
+            bool doThumb = false;
+
+            {
+                std::unique_lock<std::mutex> lock(m_mutex);
+                m_cv.wait(lock, [this]() {
+                    return m_shutdown || m_hasPendingSource || m_hasPendingThumbnail;
+                });
+
+                if (m_shutdown) {
+                    break;
+                }
+
+                if (m_hasPendingSource) {
+                    src = m_pendingSource;
+                    m_hasPendingSource = false;
+                    doLoad = true;
+                } else if (m_hasPendingThumbnail) {
+                    req = m_pendingThumbnail;
+                    m_hasPendingThumbnail = false;
+                    doThumb = true;
+                }
+            }
+
+            if (doLoad) {
+                performLoadSource(src);
+            } else if (doThumb) {
+                performGenerateThumbnail(req);
+            }
+        }
+
+        if (m_mpv) {
+            mpv_terminate_destroy(m_mpv);
+            m_mpv = nullptr;
+        }
+    }
+
+    void performLoadSource(const QString &source) {
+        if (!m_mpv) return;
+        if (source == m_currentFile) return;
         m_currentFile = source;
 
         mpv_command_string(m_mpv, "set pause yes");
@@ -113,19 +194,27 @@ public:
         }
 
         for (int i = 0; i < 40; ++i) {
+            {
+                std::lock_guard<std::mutex> lock(m_mutex);
+                if (m_shutdown) return;
+            }
             mpv_event *event = mpv_wait_event(m_mpv, 0.05);
             if (!event || event->event_id == MPV_EVENT_NONE) continue;
             if (event->event_id == MPV_EVENT_FILE_LOADED) break;
         }
     }
 
-    QImage generateThumbnail(double time) {
-        if (!m_mpv) return QImage();
+    void performGenerateThumbnail(const ThumbnailRequest &req) {
+        if (!m_mpv) return;
 
-        QString seekCmd = QString("seek %1 absolute+exact").arg(time, 0, 'f', 6);
+        QString seekCmd = QString("seek %1 absolute+exact").arg(req.time, 0, 'f', 6);
         mpv_command_string(m_mpv, seekCmd.toUtf8().constData());
 
         for (int i = 0; i < 15; ++i) {
+            {
+                std::lock_guard<std::mutex> lock(m_mutex);
+                if (m_shutdown) return;
+            }
             mpv_event *event = mpv_wait_event(m_mpv, 0.002);
             if (!event || event->event_id == MPV_EVENT_NONE) break;
             if (event->event_id == MPV_EVENT_PLAYBACK_RESTART) break;
@@ -137,6 +226,10 @@ public:
 
         QImage result;
         for (int attempt = 0; attempt < 4; ++attempt) {
+            {
+                std::lock_guard<std::mutex> lock(m_mutex);
+                if (m_shutdown) return;
+            }
             if (QFile::exists(m_tmpPath)) {
                 QImage img(m_tmpPath);
                 if (!img.isNull()) {
@@ -149,10 +242,14 @@ public:
             }
         }
         QFile::remove(m_tmpPath);
-        return result;
+
+        if (req.context && req.callback) {
+            QMetaObject::invokeMethod(req.context, [callback = req.callback, result, key = req.cacheKey]() {
+                callback(result, key);
+            }, Qt::QueuedConnection);
+        }
     }
 
-private:
     void setupMpv() {
         m_mpv = mpv_create();
         if (!m_mpv) return;
@@ -184,6 +281,17 @@ private:
     mpv_handle *m_mpv = nullptr;
     QString m_tmpPath;
     QString m_currentFile;
+
+    std::thread m_workerThread;
+    std::mutex m_mutex;
+    std::condition_variable m_cv;
+    bool m_shutdown = false;
+
+    QString m_pendingSource;
+    bool m_hasPendingSource = false;
+
+    ThumbnailRequest m_pendingThumbnail;
+    bool m_hasPendingThumbnail = false;
 };
 
 
@@ -750,9 +858,7 @@ void MainWindow::openFile(const QString &file)
         m_thumbnailMpv = new ThumbnailMpv();
     }
 
-    std::thread([this, file]() {
-        m_thumbnailMpv->loadSource(file);
-    }).detach();
+    m_thumbnailMpv->loadSource(file);
 
     m_mpvWidget->loadFile(file);
     m_isPlaying = true;
@@ -1240,7 +1346,13 @@ void MainWindow::onNextClicked() { m_mpvWidget->command(QVariantList() << "playl
 void MainWindow::onSpeedClicked()
 {
     QMenu menu(this);
-    menu.setWindowFlags(menu.windowFlags() | Qt::WindowStaysOnTopHint | Qt::FramelessWindowHint | Qt::NoDropShadowWindowHint);
+    Qt::WindowFlags flags = menu.windowFlags() | Qt::FramelessWindowHint | Qt::NoDropShadowWindowHint;
+    if (windowFlags() & Qt::WindowStaysOnTopHint) {
+        flags |= Qt::WindowStaysOnTopHint;
+    } else {
+        flags &= ~Qt::WindowStaysOnTopHint;
+    }
+    menu.setWindowFlags(flags);
     menu.setAttribute(Qt::WA_TranslucentBackground);
 
     menu.setStyleSheet(kMenuStyle);
@@ -1266,7 +1378,13 @@ void MainWindow::onSpeedClicked()
 void MainWindow::onAspectClicked()
 {
     QMenu menu(this);
-    menu.setWindowFlags(menu.windowFlags() | Qt::WindowStaysOnTopHint | Qt::FramelessWindowHint | Qt::NoDropShadowWindowHint);
+    Qt::WindowFlags flags = menu.windowFlags() | Qt::FramelessWindowHint | Qt::NoDropShadowWindowHint;
+    if (windowFlags() & Qt::WindowStaysOnTopHint) {
+        flags |= Qt::WindowStaysOnTopHint;
+    } else {
+        flags &= ~Qt::WindowStaysOnTopHint;
+    }
+    menu.setWindowFlags(flags);
     menu.setAttribute(Qt::WA_TranslucentBackground);
 
     menu.setStyleSheet(kMenuStyle);
@@ -1295,7 +1413,13 @@ void MainWindow::onAspectClicked()
 void MainWindow::onSubtitleClicked()
 {
     QMenu menu(this);
-    menu.setWindowFlags(menu.windowFlags() | Qt::WindowStaysOnTopHint | Qt::FramelessWindowHint | Qt::NoDropShadowWindowHint);
+    Qt::WindowFlags flags = menu.windowFlags() | Qt::FramelessWindowHint | Qt::NoDropShadowWindowHint;
+    if (windowFlags() & Qt::WindowStaysOnTopHint) {
+        flags |= Qt::WindowStaysOnTopHint;
+    } else {
+        flags &= ~Qt::WindowStaysOnTopHint;
+    }
+    menu.setWindowFlags(flags);
     menu.setAttribute(Qt::WA_TranslucentBackground);
 
     menu.setStyleSheet(kMenuStyle);
@@ -1333,7 +1457,13 @@ void MainWindow::onSubtitleClicked()
 void MainWindow::onAudioClicked()
 {
     QMenu menu(this);
-    menu.setWindowFlags(menu.windowFlags() | Qt::WindowStaysOnTopHint | Qt::FramelessWindowHint | Qt::NoDropShadowWindowHint);
+    Qt::WindowFlags flags = menu.windowFlags() | Qt::FramelessWindowHint | Qt::NoDropShadowWindowHint;
+    if (windowFlags() & Qt::WindowStaysOnTopHint) {
+        flags |= Qt::WindowStaysOnTopHint;
+    } else {
+        flags &= ~Qt::WindowStaysOnTopHint;
+    }
+    menu.setWindowFlags(flags);
     menu.setAttribute(Qt::WA_TranslucentBackground);
 
     menu.setStyleSheet(kMenuStyle);
@@ -1362,7 +1492,13 @@ void MainWindow::onAudioClicked()
 void MainWindow::onShaderClicked()
 {
     QMenu menu(this);
-    menu.setWindowFlags(menu.windowFlags() | Qt::WindowStaysOnTopHint | Qt::FramelessWindowHint | Qt::NoDropShadowWindowHint);
+    Qt::WindowFlags flags = menu.windowFlags() | Qt::FramelessWindowHint | Qt::NoDropShadowWindowHint;
+    if (windowFlags() & Qt::WindowStaysOnTopHint) {
+        flags |= Qt::WindowStaysOnTopHint;
+    } else {
+        flags &= ~Qt::WindowStaysOnTopHint;
+    }
+    menu.setWindowFlags(flags);
     menu.setAttribute(Qt::WA_TranslucentBackground);
 
     menu.setStyleSheet(kMenuStyle);
@@ -2080,28 +2216,23 @@ void MainWindow::generateThumbnail(double time, int cacheKey)
     }
     m_isGeneratingThumbnail = true;
 
-    std::thread([this, time, cacheKey]() {
-        m_thumbnailMpv->loadSource(m_currentFile);
-        QImage img = m_thumbnailMpv->generateThumbnail(time);
-
-        QMetaObject::invokeMethod(this, [this, img, cacheKey]() {
-            if (!img.isNull()) {
-                if (m_thumbnailCache.size() > 500) {
-                    m_thumbnailCache.clear();
-                }
-                m_thumbnailCache.insert(cacheKey, img);
-                if (m_previewWidget && m_previewWidget->isVisible()) {
-                    m_previewWidget->setPreview(img, formatTime(m_lastHoverTime));
-                }
+    m_thumbnailMpv->requestThumbnail(time, cacheKey, this, [this](QImage img, int key) {
+        if (!img.isNull()) {
+            if (m_thumbnailCache.size() > 500) {
+                m_thumbnailCache.clear();
             }
-            m_isGeneratingThumbnail = false;
-
-            if (m_pendingThumbnailTime >= 0) {
-                double pending = m_pendingThumbnailTime;
-                m_pendingThumbnailTime = -1;
-                generateThumbnail(pending, static_cast<int>(pending * 2));
+            m_thumbnailCache.insert(key, img);
+            if (m_previewWidget && m_previewWidget->isVisible()) {
+                m_previewWidget->setPreview(img, formatTime(m_lastHoverTime));
             }
-        }, Qt::QueuedConnection);
-    }).detach();
+        }
+        m_isGeneratingThumbnail = false;
+
+        if (m_pendingThumbnailTime >= 0) {
+            double pending = m_pendingThumbnailTime;
+            m_pendingThumbnailTime = -1;
+            generateThumbnail(pending, static_cast<int>(pending * 2));
+        }
+    });
 }
 

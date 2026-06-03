@@ -2831,26 +2831,28 @@ private class ThumbnailMPV {
     }
 
     func loadSource(_ source: String, isURL: Bool) {
-        guard let handle = handle else { return }
-        guard source != currentFile else { return }
-        currentFile = source
+        queue.async { [weak self] in
+            guard let self = self, let handle = self.handle else { return }
+            guard source != self.currentFile else { return }
+            self.currentFile = source
 
-        // Load file paused so it doesn't play
-        mpv_command_string(handle, "set pause yes")
-        let mode = isURL ? "replace" : "replace"
-        "loadfile".withCString { a0 in
-            source.withCString { a1 in
-                mode.withCString { a2 in
-                    var cPtrs: [UnsafePointer<CChar>?] = [a0, a1, a2, nil]
-                    mpv_command(handle, &cPtrs)
+            // Load file paused so it doesn't play
+            mpv_command_string(handle, "set pause yes")
+            let mode = isURL ? "replace" : "replace"
+            "loadfile".withCString { a0 in
+                source.withCString { a1 in
+                    mode.withCString { a2 in
+                        var cPtrs: [UnsafePointer<CChar>?] = [a0, a1, a2, nil]
+                        mpv_command(handle, &cPtrs)
+                    }
                 }
             }
-        }
 
-        // Wait for file load
-        for _ in 0..<40 {
-            guard let event = mpv_wait_event(handle, 0.05) else { continue }
-            if event.pointee.event_id == MPV_EVENT_FILE_LOADED { break }
+            // Wait for file load
+            for _ in 0..<40 {
+                guard let event = mpv_wait_event(handle, 0.05) else { continue }
+                if event.pointee.event_id == MPV_EVENT_FILE_LOADED { break }
+            }
         }
     }
 
