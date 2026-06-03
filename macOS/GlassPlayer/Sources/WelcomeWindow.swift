@@ -51,7 +51,11 @@ class WelcomeWindow: NSWindowController {
 
         // Background: use NSVisualEffectView for theme-adaptive surface
         let bg = NSVisualEffectView(frame: contentView.bounds)
-        bg.material = .underWindowBackground
+        if #available(macOS 10.14, *) {
+            bg.material = .underWindowBackground
+        } else {
+            bg.material = .windowBackground
+        }
         bg.blendingMode = .behindWindow
         bg.state = .active
         bg.autoresizingMask = [.width, .height]

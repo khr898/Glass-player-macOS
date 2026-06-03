@@ -72,6 +72,7 @@ endif()
 
 add_executable(GlassPlayer WIN32
     main.cpp
+    Theme.h
     MainWindow.cpp
     MainWindow.h
     WelcomeWindow.cpp
@@ -104,10 +105,12 @@ endif()
 set(CPACK_PACKAGE_NAME "GlassPlayer")
 set(CPACK_PACKAGE_VENDOR "Glass Player Team")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Glass Player - A modern media player")
-set(CPACK_PACKAGE_VERSION "1.0.0")
+if(NOT CPACK_PACKAGE_VERSION)
+    set(CPACK_PACKAGE_VERSION "1.0.0")
+endif()
 set(CPACK_GENERATOR "NSIS")
 
-# Professional NSIS branding
+# Professional NSIS branding and behavior
 set(CPACK_PACKAGE_INSTALL_DIRECTORY "GlassPlayer")
 set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/../LICENSE")
 set(CPACK_NSIS_DISPLAY_NAME "Glass Player")
@@ -116,6 +119,14 @@ set(CPACK_NSIS_MUI_ICON "${CMAKE_CURRENT_SOURCE_DIR}/icons/app.ico")
 set(CPACK_NSIS_MUI_UNIICON "${CMAKE_CURRENT_SOURCE_DIR}/icons/app.ico")
 set(CPACK_NSIS_HELP_LINK "https://github.com/khr898/Glass-player-macOS")
 set(CPACK_NSIS_URL_INFO_ABOUT "https://github.com/khr898/Glass-player-macOS")
+
+# Premium NSIS installer options
+set(CPACK_NSIS_WELCOME_TITLE "Welcome to Glass Player Setup")
+set(CPACK_NSIS_WELCOME_TITLE_3LINES ON)
+set(CPACK_NSIS_MUI_FINISHPAGE_RUN "bin\\\\GlassPlayer.exe")
+set(CPACK_NSIS_ENABLE_UNINSTALL_BEFORE_INSTALL ON)
+set(CPACK_NSIS_MODIFY_PATH OFF)
+set(CPACK_NSIS_COMPRESSOR "/SOLID lzma")
 
 # Shortcut creation
 set(CPACK_NSIS_CREATE_ICONS_EXTRA "
@@ -139,8 +150,13 @@ if(WIN32)
     find_program(WINDEPLOYQT_EXECUTABLE windeployqt HINTS "${_qt_bin_dir}")
     
     if(WINDEPLOYQT_EXECUTABLE)
-        install(CODE "execute_process(COMMAND ${WINDEPLOYQT_EXECUTABLE} --no-translations --no-compiler-runtime --no-opengl-sw \"\${CMAKE_INSTALL_PREFIX}/bin/GlassPlayer.exe\")")
+        install(CODE "execute_process(COMMAND ${WINDEPLOYQT_EXECUTABLE} --no-translations --no-opengl-sw \"\${CMAKE_INSTALL_PREFIX}/bin/GlassPlayer.exe\")")
     endif()
+endif()
+
+if(WIN32)
+    set(CMAKE_INSTALL_SYSTEM_RUNTIME_DESTINATION bin)
+    include(InstallRequiredSystemLibraries)
 endif()
 
 include(CPack)

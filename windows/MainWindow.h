@@ -154,6 +154,7 @@ private slots:
     void onOpenClicked();
     void onSettingsClicked();
     void onFileLoaded();
+    void onStartFile();    // Resets UI when a new file begins loading
     void onRcloneClicked();
     void onSliderMoved(int position);
     void onVolumeChanged(int volume);
@@ -246,6 +247,7 @@ private:
     QTimer *m_hudTimer;
     QTimer *m_systemSyncTimer;
     QTimer *m_clickTimer;
+    QTimer *m_stallWatchdog;     // Fires if playback stalls for > 5 s
 
     double m_duration = 0;
     bool m_isPlaying = true;
@@ -277,5 +279,6 @@ private:
     double m_lastHoverTime = 0;
     bool m_isSeeking = false;
     qint64 m_lastSeekTime = 0;
+    qint64 m_lastPositionTime = 0;  // ms timestamp of last positionChanged signal
 };
 

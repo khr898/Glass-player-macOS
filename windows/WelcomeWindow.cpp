@@ -5,6 +5,26 @@
 #include <QGraphicsDropShadowEffect>
 #include <QIcon>
 #include <QApplication>
+#include <QFileInfo>
+#include <QMimeData>
+#include <QDragEnterEvent>
+#include <QDropEvent>
+#include <QPropertyAnimation>
+#include <QShowEvent>
+#include "Theme.h"
+
+static bool isPlayableFile(const QString& filePath) {
+    if (filePath.contains("://")) {
+        return true;
+    }
+    static const QStringList kSupportedExtensions = {
+        "mp4", "mkv", "avi", "mov", "flv", "webm", "wmv", "m4v", "3gp", "ts", "mts", "m2ts", "vob", "ogv", "asf",
+        "mp3", "m4a", "aac", "flac", "wav", "ac3", "dts", "ogg", "opus", "wma", "mka"
+    };
+    QFileInfo info(filePath);
+    QString ext = info.suffix().toLower();
+    return kSupportedExtensions.contains(ext);
+}
 
 WelcomeWindow::WelcomeWindow(QWidget *parent)
     : QDialog(parent)
@@ -36,20 +56,20 @@ void WelcomeWindow::setupUi()
     m_mainFrame = new QFrame(this);
     m_mainFrame->setObjectName("mainFrame");
     m_mainFrame->setStyleSheet(
-        "QFrame#mainFrame { "
-        "  background: qlineargradient(spread:pad, x1:0, y1:0, x2:0, y2:1, "
-        "                              stop:0 rgba(28, 28, 38, 245), "
-        "                              stop:1 rgba(15, 15, 20, 250)); "
-        "  border: 1px solid rgba(255, 255, 255, 30); "
-        "  border-radius: 20px; "
-        "}"
+        QString(
+            "QFrame#mainFrame { "
+            "  background-color: %1; "
+            "  border: 1px solid %2; "
+            "  border-radius: 8px; "
+            "}"
+        ).arg(Theme::kBgSurface, Theme::kBorderElevated)
     );
 
     // Breathtaking Drop Shadow Effect
-    QGraphicsDropShadowEffect *shadow = new QGraphicsDropShadowEffect(this);
-    shadow->setBlurRadius(24);
+    QGraphicsDropShadowEffect *shadow = new QGraphicsDropShadowEffect(m_mainFrame);
+    shadow->setBlurRadius(16);
     shadow->setXOffset(0);
-    shadow->setYOffset(8);
+    shadow->setYOffset(4);
     shadow->setColor(QColor(0, 0, 0, 180));
     m_mainFrame->setGraphicsEffect(shadow);
 
@@ -65,31 +85,34 @@ void WelcomeWindow::setupUi()
     QHBoxLayout *titleBarLayout = new QHBoxLayout();
     titleBarLayout->setContentsMargins(0, 0, 0, 0);
     
-    m_closeBtn = new QPushButton("✕", m_mainFrame);
+    m_closeBtn = new QPushButton("⨉", m_mainFrame);
     m_closeBtn->setObjectName("closeBtn");
     m_closeBtn->setCursor(Qt::PointingHandCursor);
     m_closeBtn->setStyleSheet(
-        "QPushButton#closeBtn { "
-        "  background: transparent; "
-        "  color: rgba(255, 255, 255, 130); "
-        "  border: none; "
-        "  font-size: 14px; "
-        "  font-weight: bold; "
-        "  min-width: 26px; "
-        "  max-width: 26px; "
-        "  min-height: 26px; "
-        "  max-height: 26px; "
-        "  border-radius: 13px; "
-        "  margin-top: -2px; "
-        "  margin-right: -2px; "
-        "} "
-        "QPushButton#closeBtn:hover { "
-        "  background-color: rgba(232, 17, 35, 220); "
-        "  color: white; "
-        "} "
-        "QPushButton#closeBtn:pressed { "
-        "  background-color: rgba(232, 17, 35, 160); "
-        "}"
+        QString(
+            "QPushButton#closeBtn { "
+            "  background: transparent; "
+            "  color: %1; "
+            "  border: none; "
+            "  font-size: 14px; "
+            "  font-weight: bold; "
+            "  min-width: 32px; "
+            "  max-width: 32px; "
+            "  min-height: 32px; "
+            "  max-height: 32px; "
+            "  border-radius: 4px; "
+            "  margin-top: -2px; "
+            "  margin-right: -2px; "
+            "} "
+            "QPushButton#closeBtn:hover { "
+            "  background-color: %2; "
+            "  color: #ffffff; "
+            "} "
+            "QPushButton#closeBtn:pressed { "
+            "  background-color: %3; "
+            "  color: #ffffff; "
+            "}"
+        ).arg(Theme::kTextSecondary, Theme::kCloseHover, Theme::kClosePressed)
     );
     connect(m_closeBtn, &QPushButton::clicked, this, &WelcomeWindow::reject);
     
@@ -110,12 +133,14 @@ void WelcomeWindow::setupUi()
     }
     
     iconLabel->setStyleSheet(
-        "QLabel#appIconLabel { "
-        "  background-color: rgba(255, 255, 255, 10); "
-        "  border: 1px solid rgba(255, 255, 255, 36); "
-        "  border-radius: 18px; "
-        "  padding: 8px; "
-        "}"
+        QString(
+            "QLabel#appIconLabel { "
+            "  background-color: %1; "
+            "  border: 1px solid %2; "
+            "  border-radius: 12px; "
+            "  padding: 8px; "
+            "}"
+        ).arg(Theme::kBgSurfaceSecondary, Theme::kBorderDefault)
     );
     
     mainLayout->addWidget(iconLabel, 0, Qt::AlignHCenter);
@@ -125,14 +150,16 @@ void WelcomeWindow::setupUi()
     QLabel *titleLabel = new QLabel("Glass Player", m_mainFrame);
     titleLabel->setAlignment(Qt::AlignCenter);
     titleLabel->setStyleSheet(
-        "QLabel { "
-        "  color: #ffffff; "
-        "  font-family: 'Segoe UI', -apple-system, sans-serif; "
-        "  font-size: 24px; "
-        "  font-weight: 700; "
-        "  letter-spacing: 0.5px; "
-        "  background: transparent; "
-        "}"
+        QString(
+            "QLabel { "
+            "  color: %1; "
+            "  font-family: %2; "
+            "  font-size: 22px; "
+            "  font-weight: 600; "
+            "  letter-spacing: 0.5px; "
+            "  background: transparent; "
+            "}"
+        ).arg(Theme::kTextPrimary, Theme::kFontFamily)
     );
     mainLayout->addWidget(titleLabel);
 
@@ -140,13 +167,15 @@ void WelcomeWindow::setupUi()
     QLabel *subtitleLabel = new QLabel("Drop a video file here, or choose an option below", m_mainFrame);
     subtitleLabel->setAlignment(Qt::AlignCenter);
     subtitleLabel->setStyleSheet(
-        "QLabel { "
-        "  color: rgba(255, 255, 255, 140); "
-        "  font-family: 'Segoe UI', -apple-system, sans-serif; "
-        "  font-size: 13px; "
-        "  font-weight: 400; "
-        "  background: transparent; "
-        "}"
+        QString(
+            "QLabel { "
+            "  color: %1; "
+            "  font-family: %2; "
+            "  font-size: 13px; "
+            "  font-weight: 400; "
+            "  background: transparent; "
+            "}"
+        ).arg(Theme::kTextSecondary, Theme::kFontFamily)
     );
     mainLayout->addWidget(subtitleLabel);
     
@@ -158,25 +187,28 @@ void WelcomeWindow::setupUi()
     buttonsLayout->setSpacing(24);
 
     QString buttonStyle = 
-        "QToolButton { "
-        "  background-color: rgba(255, 255, 255, 14); "
-        "  color: #ffffff; "
-        "  border: 1px solid rgba(255, 255, 255, 24); "
-        "  border-radius: 16px; "
-        "  font-family: 'Segoe UI', -apple-system, sans-serif; "
-        "  font-size: 13px; "
-        "  font-weight: 600; "
-        "  padding-top: 18px; "
-        "  padding-bottom: 14px; "
-        "} "
-        "QToolButton:hover { "
-        "  background-color: rgba(255, 255, 255, 28); "
-        "  border: 1px solid rgba(255, 255, 255, 48); "
-        "} "
-        "QToolButton:pressed { "
-        "  background-color: rgba(255, 255, 255, 18); "
-        "  border: 1px solid rgba(255, 255, 255, 32); "
-        "}";
+        QString(
+            "QToolButton { "
+            "  background-color: %1; "
+            "  color: %2; "
+            "  border: 1px solid %3; "
+            "  border-radius: 8px; "
+            "  font-family: %4; "
+            "  font-size: 13px; "
+            "  font-weight: 600; "
+            "  padding-top: 18px; "
+            "  padding-bottom: 14px; "
+            "} "
+            "QToolButton:hover { "
+            "  background-color: %5; "
+            "  border: 1px solid %6; "
+            "} "
+            "QToolButton:pressed { "
+            "  background-color: %7; "
+            "  border: 1px solid %8; "
+            "}"
+        ).arg(Theme::kBgSurfaceSecondary, Theme::kTextPrimary, Theme::kBorderDefault, Theme::kFontFamily,
+              Theme::kBgHover, Theme::kBorderElevated, Theme::kBgPressed, Theme::kBorderDefault);
 
     // 1. Open File Card Button
     m_openFileBtn = new QToolButton(m_mainFrame);
@@ -211,8 +243,16 @@ void WelcomeWindow::setupUi()
 void WelcomeWindow::dragEnterEvent(QDragEnterEvent *event)
 {
     if (event->mimeData()->hasUrls()) {
-        event->acceptProposedAction();
+        QList<QUrl> urls = event->mimeData()->urls();
+        if (!urls.isEmpty()) {
+            QString filePath = urls.first().toLocalFile();
+            if (isPlayableFile(filePath)) {
+                event->acceptProposedAction();
+                return;
+            }
+        }
     }
+    event->ignore();
 }
 
 void WelcomeWindow::dropEvent(QDropEvent *event)
@@ -222,8 +262,10 @@ void WelcomeWindow::dropEvent(QDropEvent *event)
         QList<QUrl> urlList = mimeData->urls();
         if (!urlList.isEmpty()) {
             QString filePath = urlList.first().toLocalFile();
-            emit fileOpened(filePath);
-            accept();
+            if (isPlayableFile(filePath)) {
+                emit fileOpened(filePath);
+                accept();
+            }
         }
     }
 }
@@ -254,7 +296,8 @@ void WelcomeWindow::mouseReleaseEvent(QMouseEvent *event)
 // ── Slots ──
 void WelcomeWindow::onOpenFileClicked()
 {
-    QString file = QFileDialog::getOpenFileName(this, "Open Video");
+    QString file = QFileDialog::getOpenFileName(this, "Open Video", "",
+        "Media Files (*.mp4 *.mkv *.avi *.mov *.flv *.webm *.wmv *.m4v *.3gp *.ts *.mts *.m2ts *.vob *.ogv *.asf *.mp3 *.m4a *.aac *.flac *.wav *.ac3 *.dts *.ogg *.opus *.wma *.mka);;Video Files (*.mp4 *.mkv *.avi *.mov *.flv *.webm *.wmv *.m4v *.3gp *.ts *.mts *.m2ts *.vob *.ogv *.asf);;Audio Files (*.mp3 *.m4a *.aac *.flac *.wav *.ac3 *.dts *.ogg *.opus *.wma *.mka);;All Files (*.*)");
     if (!file.isEmpty()) {
         emit fileOpened(file);
         accept();
@@ -265,4 +308,14 @@ void WelcomeWindow::onRcloneClicked()
 {
     emit openRcloneBrowser();
     accept();
+}
+
+void WelcomeWindow::showEvent(QShowEvent *event)
+{
+    QDialog::showEvent(event);
+    QPropertyAnimation *anim = new QPropertyAnimation(this, "windowOpacity");
+    anim->setDuration(200);
+    anim->setStartValue(0.0);
+    anim->setEndValue(1.0);
+    anim->start(QAbstractAnimation::DeleteWhenStopped);
 }

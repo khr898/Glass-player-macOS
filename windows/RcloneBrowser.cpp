@@ -2,6 +2,7 @@
 #include <QRegularExpression>
 #include <QDebug>
 #include <QUrl>
+#include "Theme.h"
 
 RcloneBrowser::RcloneBrowser(QWidget *parent)
     : QDialog(parent), m_networkManager(new QNetworkAccessManager(this))
@@ -19,13 +20,83 @@ void RcloneBrowser::setupUi()
     setWindowTitle("Remote Browser");
     setMinimumSize(520, 600);
 
+    setStyleSheet(
+        QString(
+            "QDialog { "
+            "  background-color: %1; "
+            "} "
+            "QLineEdit { "
+            "  background: %2; "
+            "  color: %3; "
+            "  border: 1px solid %4; "
+            "  border-radius: 4px; "
+            "  padding: 6px 10px; "
+            "  font-family: %5; "
+            "  font-size: 13px; "
+            "} "
+            "QLineEdit:focus { "
+            "  border: 1px solid %6; "
+            "} "
+            "QPushButton { "
+            "  background-color: %2; "
+            "  color: %3; "
+            "  border: 1px solid %4; "
+            "  border-radius: 4px; "
+            "  padding: 6px 12px; "
+            "  font-family: %5; "
+            "  font-size: 13px; "
+            "  font-weight: 600; "
+            "} "
+            "QPushButton:hover { "
+            "  background-color: %7; "
+            "  border-color: %8; "
+            "} "
+            "QPushButton:pressed { "
+            "  background-color: %9; "
+            "  border-color: %4; "
+            "} "
+            "QPushButton:disabled { "
+            "  background-color: transparent; "
+            "  color: rgba(255, 255, 255, 60); "
+            "  border-color: rgba(255, 255, 255, 15); "
+            "} "
+            "QListWidget { "
+            "  background-color: %1; "
+            "  border: 1px solid %4; "
+            "  border-radius: 4px; "
+            "  outline: none; "
+            "} "
+            "QListWidget::item { "
+            "  height: 32px; "
+            "  padding-left: 10px; "
+            "  color: %3; "
+            "  font-family: %5; "
+            "  font-size: 13px; "
+            "  border-radius: 4px; "
+            "  margin: 2px 4px; "
+            "} "
+            "QListWidget::item:hover { "
+            "  background-color: %7; "
+            "} "
+            "QListWidget::item:selected { "
+            "  background-color: %11; "
+            "  color: %6; "
+            "  font-weight: bold; "
+            "} "
+        ).arg(Theme::kBgSurface, Theme::kBgSurfaceSecondary, Theme::kTextPrimary, Theme::kBorderDefault, Theme::kFontFamily,
+              Theme::kAccent, Theme::kBgHover, Theme::kBorderElevated, Theme::kBgPressed, Theme::kCloseHover, Theme::kAccentSubtle)
+    );
+
     QVBoxLayout *mainLayout = new QVBoxLayout(this);
+    mainLayout->setContentsMargins(16, 16, 16, 16);
+    mainLayout->setSpacing(12);
 
     // Connection Bar
     QHBoxLayout *connLayout = new QHBoxLayout();
     m_urlField = new QLineEdit(this);
     m_urlField->setPlaceholderText("http://localhost:8080");
     m_connectBtn = new QPushButton("Connect", this);
+    m_connectBtn->setCursor(Qt::PointingHandCursor);
     connect(m_connectBtn, &QPushButton::clicked, this, &RcloneBrowser::onConnectClicked);
     
     connLayout->addWidget(m_urlField);
@@ -34,13 +105,17 @@ void RcloneBrowser::setupUi()
 
     // Nav Bar
     QHBoxLayout *navLayout = new QHBoxLayout();
-    m_backBtn = new QPushButton("<", this);
-    m_upBtn = new QPushButton("^", this);
-    m_refreshBtn = new QPushButton("R", this);
+    m_backBtn = new QPushButton("←", this);
+    m_upBtn = new QPushButton("↑", this);
+    m_refreshBtn = new QPushButton("⟳", this);
     
-    m_backBtn->setFixedWidth(30);
-    m_upBtn->setFixedWidth(30);
-    m_refreshBtn->setFixedWidth(30);
+    m_backBtn->setCursor(Qt::PointingHandCursor);
+    m_upBtn->setCursor(Qt::PointingHandCursor);
+    m_refreshBtn->setCursor(Qt::PointingHandCursor);
+
+    m_backBtn->setFixedWidth(36);
+    m_upBtn->setFixedWidth(36);
+    m_refreshBtn->setFixedWidth(36);
 
     connect(m_backBtn, &QPushButton::clicked, this, &RcloneBrowser::onBackClicked);
     connect(m_upBtn, &QPushButton::clicked, this, &RcloneBrowser::onUpClicked);
@@ -58,6 +133,7 @@ void RcloneBrowser::setupUi()
 
     // List View
     m_listWidget = new QListWidget(this);
+    m_listWidget->setFrameShape(QFrame::NoFrame);
     connect(m_listWidget, &QListWidget::itemDoubleClicked, this, &RcloneBrowser::onItemDoubleClicked);
     mainLayout->addWidget(m_listWidget);
 }

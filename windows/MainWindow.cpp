@@ -1,8 +1,8 @@
 #include "MainWindow.h"
-#ifdef _WIN32
-#include <windows.h>
-#endif
+
+#include "Theme.h"
 #include "WinOSIntegration.h"
+#include <QApplication>
 #include <QFileDialog>
 #include <QKeyEvent>
 #include <QFile>
@@ -18,6 +18,8 @@
 #include <QGraphicsDropShadowEffect>
 #include <QShortcut>
 #include <QGuiApplication>
+#include <QFileInfo>
+#include <QMessageBox>
 #include <QStyleHints>
 #include <QScreen>
 #include <algorithm>
@@ -34,22 +36,28 @@ public:
         
         // Semi-transparent dark background with rounded corners matching premium visual effect
         setStyleSheet(
-            "QWidget { "
-            "  background-color: rgba(30, 30, 30, 230); "
-            "  border: 1px solid rgba(255, 255, 255, 40); "
-            "  border-radius: 8px; "
-            "}"
+            QString(
+                "QWidget { "
+                "  background-color: %1; "
+                "  border: 1px solid %2; "
+                "  border-radius: 8px; "
+                "}"
+            ).arg(Theme::kBgSurface, Theme::kBorderElevated)
         );
 
         m_imgLabel = new QLabel(this);
         m_imgLabel->setGeometry(4, 4, 172, 94); // fit beautifully inside
-        m_imgLabel->setStyleSheet("background-color: rgba(0, 0, 0, 80); border-radius: 4px; border: none;");
+        m_imgLabel->setStyleSheet("background-color: rgba(0, 0, 0, 120); border-radius: 4px; border: none;");
         m_imgLabel->setScaledContents(true);
 
         m_timeLabel = new QLabel(this);
         m_timeLabel->setGeometry(0, 100, 180, 18);
         m_timeLabel->setAlignment(Qt::AlignCenter);
-        m_timeLabel->setStyleSheet("color: white; font-family: monospace; font-size: 11px; font-weight: bold; background: transparent; border: none;");
+        m_timeLabel->setStyleSheet(
+            QString(
+                "color: %1; font-family: %2; font-size: 11px; font-weight: bold; background: transparent; border: none;"
+            ).arg(Theme::kTextPrimary, Theme::kFontMono)
+        );
         
         hide();
     }
@@ -179,29 +187,7 @@ private:
 };
 
 
-static const QString kMenuStyle = QStringLiteral(
-    "QMenu { "
-    "  background-color: rgba(30, 30, 30, 230); "
-    "  color: white; "
-    "  border: 1px solid rgba(255, 255, 255, 40); "
-    "  border-radius: 8px; "
-    "  padding: 4px 0px; "
-    "}"
-    "QMenu::item { "
-    "  padding: 6px 20px 6px 25px; "
-    "  margin: 2px 6px; "
-    "  border-radius: 4px; "
-    "  font-size: 13px; "
-    "}"
-    "QMenu::item:selected { "
-    "  background-color: rgba(255, 255, 255, 30); "
-    "}"
-    "QMenu::separator { "
-    "  height: 1px; "
-    "  background: rgba(255, 255, 255, 25); "
-    "  margin: 4px 0px; "
-    "}"
-);
+static const QString kMenuStyle = Theme::kMenuStyle;
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent), m_settings("GlassPlayer", "Settings")
@@ -211,6 +197,7 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_mpvWidget, &MpvWidget::positionChanged, this, &MainWindow::updatePosition);
     connect(m_mpvWidget, &MpvWidget::durationChanged, this, &MainWindow::updateDuration);
     connect(m_mpvWidget, &MpvWidget::fileLoaded, this, &MainWindow::onFileLoaded);
+    connect(m_mpvWidget, &MpvWidget::startFile, this, &MainWindow::onStartFile);
     connect(m_brightnessSlider, &QSlider::sliderReleased, this, &MainWindow::updateHoverBars);
     connect(m_volumeHoverSlider, &QSlider::sliderReleased, this, &MainWindow::updateHoverBars);
     connect(m_mpvWidget, &MpvWidget::pauseChanged, this, [this](bool paused) {
@@ -218,6 +205,8 @@ MainWindow::MainWindow(QWidget *parent)
         m_playPauseBtn->setIcon(QIcon(paused ? ":/icons/play.svg" : ":/icons/pause.svg"));
         if (!paused) {
             hideHud();
+            // Reset watchdog baseline so a fresh file doesn't trigger immediately
+            m_lastPositionTime = QDateTime::currentMSecsSinceEpoch();
         } else {
             showHud();
         }
@@ -236,7 +225,7 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_welcomeWindow, &WelcomeWindow::fileOpened, this, &MainWindow::openFile);
     connect(m_welcomeWindow, &WelcomeWindow::openRcloneBrowser, this, &MainWindow::onRcloneClicked);
 
-    m_settingsWindow = new SettingsWindow(nullptr);
+    m_settingsWindow = new SettingsWindow(this);
     m_settingsWindow->setWindowModality(Qt::ApplicationModal);
     m_settingsWindow->setWindowFlags(Qt::Dialog | Qt::WindowStaysOnTopHint);
     connect(m_settingsWindow, &SettingsWindow::settingChanged, this, &MainWindow::applySettingToMpv);
@@ -263,11 +252,26 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_systemSyncTimer, &QTimer::timeout, this, &MainWindow::syncSystemControls);
     m_systemSyncTimer->start();
 
+    // Stall watchdog: if playback is active but no position updates arrive for
+    // > 5 s, nudge mpv with a zero-delta seek to unblock stuck demuxer/decoder.
+    m_stallWatchdog = new QTimer(this);
+    m_stallWatchdog->setInterval(5000);
+    connect(m_stallWatchdog, &QTimer::timeout, this, [this]() {
+        if (!m_isPlaying || m_isSeeking || m_duration <= 0) return;
+        qint64 elapsed = QDateTime::currentMSecsSinceEpoch() - m_lastPositionTime;
+        if (elapsed > 4500) {
+            qDebug() << "[MainWindow] Stall watchdog: no position for" << elapsed << "ms, nudging mpv";
+            m_mpvWidget->command(QVariantList() << "seek" << 0 << "relative+exact");
+            m_lastPositionTime = QDateTime::currentMSecsSinceEpoch();
+        }
+    });
+    m_stallWatchdog->start();
+
     setMouseTracking(true);
     centralWidget()->setMouseTracking(true);
     m_mpvWidget->setMouseTracking(true);
     m_mpvWidget->installEventFilter(this);
-    m_rcloneBrowser = new RcloneBrowser(nullptr);
+    m_rcloneBrowser = new RcloneBrowser(this);
     m_rcloneBrowser->setWindowModality(Qt::ApplicationModal);
     m_rcloneBrowser->setWindowFlags(Qt::Dialog | Qt::WindowStaysOnTopHint);
     connect(m_rcloneBrowser, &RcloneBrowser::fileSelected, this, &MainWindow::openFile);
@@ -362,39 +366,50 @@ void MainWindow::setupUi()
 
 void MainWindow::setupTopBar()
 {
-    m_topBar = new QWidget(m_centralWidget);
+    m_topBar = new QWidget(m_mpvWidget);
     m_topBar->setObjectName("topBar");
     m_topBar->setFixedHeight(44);
     m_topBar->setStyleSheet(
-        "QWidget#topBar { "
-        "  background-color: rgba(30, 30, 30, 180); "
-        "  border-bottom-left-radius: 0px; "
-        "  border-bottom-right-radius: 0px; "
-        "}"
-        "QPushButton { "
-        "  background: transparent; color: white; border: none; font-size: 16px; padding: 5px; "
-        "}"
-        "QPushButton:hover { color: #aaa; }"
-        "QLabel { color: white; font-weight: 500; font-size: 13px; }"
+        QString(
+            "QWidget#topBar { "
+            "  background-color: %1; "
+            "}"
+            "QPushButton { "
+            "  background: transparent; color: %2; border: none; font-size: 16px; padding: 6px; border-radius: 4px; "
+            "}"
+            "QPushButton:hover { "
+            "  background-color: %3; "
+            "  color: %4; "
+            "}"
+            "QLabel { "
+            "  color: %2; font-family: %5; font-weight: 500; font-size: 13px; "
+            "}"
+        ).arg(Theme::kBgSurface, Theme::kTextPrimary, Theme::kBgHover, Theme::kAccent, Theme::kFontFamily)
     );
 
     QHBoxLayout *layout = new QHBoxLayout(m_topBar);
     layout->setContentsMargins(15, 0, 15, 0);
 
+    m_titleLabel = new QLabel(m_topBar);
+    m_titleLabel->setStyleSheet(QString("QLabel { color: %1; font-family: %2; font-weight: 400; font-size: 13px; }").arg(Theme::kTextSecondary, Theme::kFontFamily));
+    layout->addWidget(m_titleLabel);
+
     m_urlEdit = new QLineEdit(m_topBar);
     m_urlEdit->setPlaceholderText("Paste URL (YouTube, HTTP, etc.)");
     m_urlEdit->setStyleSheet(
-        "QLineEdit { "
-        "  background: rgba(255, 255, 255, 20); "
-        "  color: white; "
-        "  border: 1px solid rgba(255, 255, 255, 40); "
-        "  border-radius: 6px; "
-        "  padding: 4px 10px; "
-        "  font-size: 13px; "
-        "}"
-        "QLineEdit:focus { "
-        "  border: 1px solid #0078d4; "
-        "}"
+        QString(
+            "QLineEdit { "
+            "  background: %1; "
+            "  color: %2; "
+            "  border: 1px solid %3; "
+            "  border-radius: 4px; "
+            "  padding: 4px 10px; "
+            "  font-size: 13px; "
+            "}"
+            "QLineEdit:focus { "
+            "  border: 1px solid %4; "
+            "}"
+        ).arg(Theme::kBgSurfaceSecondary, Theme::kTextPrimary, Theme::kBorderDefault, Theme::kAccent)
     );
     m_urlEdit->setFixedWidth(350);
     m_urlEdit->hide();
@@ -432,26 +447,27 @@ void MainWindow::setupTopBar()
 
 void MainWindow::setupBottomBar()
 {
-    m_bottomBar = new QWidget(m_centralWidget);
+    m_bottomBar = new QWidget(m_mpvWidget);
     m_bottomBar->setObjectName("bottomBar");
     m_bottomBar->setFixedHeight(90);
     m_bottomBar->setStyleSheet(
-        "QWidget#bottomBar { "
-        "  background-color: rgba(30, 30, 30, 180); "
-        "  border-radius: 12px; "
-        "}"
-        "QPushButton { "
-        "  background: transparent; color: white; border: none; font-size: 18px; min-width: 30px; "
-        "}"
-        "QPushButton#playPause { "
-        "  background: rgba(255, 255, 255, 40); border-radius: 20px; min-width: 40px; min-height: 40px; font-size: 20px; "
-        "}"
-        "QPushButton:hover { background: rgba(255, 255, 255, 20); }"
-        "QLabel { color: white; font-size: 11px; font-family: 'Segoe UI', sans-serif; }"
-        "QSlider::horizontal { height: 16px; background: transparent; }"
-        "QSlider::groove:horizontal { height: 4px; background: rgba(255, 255, 255, 50); border-radius: 2px; }"
-        "QSlider::handle:horizontal { width: 12px; height: 12px; background: white; margin-top: -4px; margin-bottom: -4px; border-radius: 6px; border: none; }"
-        "QSlider::sub-page:horizontal { background: white; border-radius: 2px; }"
+        QString(
+            "QWidget#bottomBar { "
+            "  background-color: %1; "
+            "  border: 1px solid %2; "
+            "  border-radius: 8px; "
+            "}"
+            "QPushButton { "
+            "  background: transparent; color: %3; border: none; font-size: 18px; min-width: 30px; border-radius: 4px; "
+            "}"
+            "QPushButton#playPause { "
+            "  background-color: %4; border-radius: 20px; min-width: 40px; min-height: 40px; font-size: 20px; "
+            "}"
+            "QPushButton#playPause:hover { background-color: rgba(96, 205, 255, 80); }"
+            "QPushButton:hover { background: %5; }"
+            "QLabel { color: %3; font-size: 11px; font-family: %6; }"
+        ).arg(Theme::kBgSurface, Theme::kBorderElevated, Theme::kTextPrimary, Theme::kAccentSubtle, Theme::kBgHover, Theme::kFontMono)
+        + Theme::kSliderHorizontalStyle
     );
 
     m_currentTimeLabel = new QLabel("0:00", m_bottomBar);
@@ -509,14 +525,15 @@ void MainWindow::setupBottomBar()
     m_volumeSlider->setFixedWidth(70);
     m_volumeSlider->setStyleSheet(
         "QSlider::horizontal { height: 16px; background: transparent; }"
-        "QSlider::groove:horizontal { height: 4px; background: rgba(255, 255, 255, 55); border-radius: 2px; }"
+        "QSlider::groove:horizontal { height: 4px; background: rgba(255, 255, 255, 46); border-radius: 2px; }"
+        "QSlider::sub-page:horizontal { background: #60CDFF; border-radius: 2px; }"
         "QSlider::handle:horizontal { width: 10px; height: 10px; background: white; margin-top: -3px; margin-bottom: -3px; border-radius: 5px; border: none; }"
-        "QSlider::sub-page:horizontal { background: white; border-radius: 2px; }"
+        "QSlider::handle:horizontal:hover { width: 12px; height: 12px; background: white; border: 2px solid #60CDFF; margin-top: -4px; margin-bottom: -4px; border-radius: 6px; }"
     );
     connect(m_volumeSlider, &QSlider::valueChanged, this, &MainWindow::onVolumeChanged);
 
     m_speedBtn = new QPushButton("1x", m_bottomBar);
-    m_speedBtn->setStyleSheet("font-weight: 700; font-size: 12px; font-family: 'Consolas', 'Segoe UI', sans-serif;");
+    m_speedBtn->setStyleSheet(QString("font-weight: 600; font-size: 12px; font-family: %1;").arg(Theme::kFontFamily));
     connect(m_speedBtn, &QPushButton::clicked, this, &MainWindow::onSpeedClicked);
     
     m_aspectBtn = new QPushButton(m_bottomBar);
@@ -537,19 +554,18 @@ void MainWindow::setupBottomBar()
 
 void MainWindow::setupBrightnessBar()
 {
-    m_brightnessBar = new QWidget(m_centralWidget);
+    m_brightnessBar = new QWidget(m_mpvWidget);
     m_brightnessBar->setObjectName("brightnessBar");
     m_brightnessBar->setFixedWidth(40);
     m_brightnessBar->setFixedHeight(200);
     m_brightnessBar->setStyleSheet(
-        "QWidget#brightnessBar { "
-        "  background-color: rgba(30, 30, 30, 180); "
-        "  border-radius: 10px; "
-        "}"
-        "QSlider::vertical { width: 16px; background: transparent; }"
-        "QSlider::groove:vertical { width: 4px; background: rgba(255, 255, 255, 50); border-radius: 2px; }"
-        "QSlider::handle:vertical { width: 12px; height: 12px; background: white; margin-left: -4px; margin-right: -4px; border-radius: 6px; border: none; }"
-        "QSlider::add-page:vertical { background: white; border-radius: 2px; }"
+        QString(
+            "QWidget#brightnessBar { "
+            "  background-color: %1; "
+            "  border: 1px solid %2; "
+            "  border-radius: 8px; "
+            "} "
+        ).arg(Theme::kBgSurface, Theme::kBorderElevated) + Theme::kSliderVerticalStyle
     );
 
     QVBoxLayout *layout = new QVBoxLayout(m_brightnessBar);
@@ -574,19 +590,18 @@ void MainWindow::setupBrightnessBar()
 
 void MainWindow::setupVolumeBar()
 {
-    m_volumeBar = new QWidget(m_centralWidget);
+    m_volumeBar = new QWidget(m_mpvWidget);
     m_volumeBar->setObjectName("volumeBar");
     m_volumeBar->setFixedWidth(40);
     m_volumeBar->setFixedHeight(200);
     m_volumeBar->setStyleSheet(
-        "QWidget#volumeBar { "
-        "  background-color: rgba(30, 30, 30, 180); "
-        "  border-radius: 10px; "
-        "}"
-        "QSlider::vertical { width: 16px; background: transparent; }"
-        "QSlider::groove:vertical { width: 4px; background: rgba(255, 255, 255, 50); border-radius: 2px; }"
-        "QSlider::handle:vertical { width: 12px; height: 12px; background: white; margin-left: -4px; margin-right: -4px; border-radius: 6px; border: none; }"
-        "QSlider::add-page:vertical { background: white; border-radius: 2px; }"
+        QString(
+            "QWidget#volumeBar { "
+            "  background-color: %1; "
+            "  border: 1px solid %2; "
+            "  border-radius: 8px; "
+            "} "
+        ).arg(Theme::kBgSurface, Theme::kBorderElevated) + Theme::kSliderVerticalStyle
     );
 
     QVBoxLayout *layout = new QVBoxLayout(m_volumeBar);
@@ -693,6 +708,20 @@ void MainWindow::updateHudPositions()
 
 void MainWindow::openFile(const QString &file)
 {
+    if (!file.isEmpty() && !file.contains("://")) {
+        static const QStringList kSupportedExtensions = {
+            "mp4", "mkv", "avi", "mov", "flv", "webm", "wmv", "m4v", "3gp", "ts", "mts", "m2ts", "vob", "ogv", "asf",
+            "mp3", "m4a", "aac", "flac", "wav", "ac3", "dts", "ogg", "opus", "wma", "mka"
+        };
+        QFileInfo info(file);
+        QString ext = info.suffix().toLower();
+        if (!kSupportedExtensions.contains(ext)) {
+            QMessageBox::warning(this, "Unsupported Format",
+                QString("The file format '.%1' is not supported by Glass Player.\n\nPlease choose a compatible video or audio file.").arg(ext));
+            return;
+        }
+    }
+
     if (!m_currentFile.isEmpty()) {
         MainWindow *newWin = new MainWindow();
         newWin->setAttribute(Qt::WA_DeleteOnClose);
@@ -705,6 +734,15 @@ void MainWindow::openFile(const QString &file)
     }
 
     m_currentFile = file;
+    QFileInfo fileInfo(file);
+    QString displayName = fileInfo.fileName();
+    if (displayName.isEmpty()) {
+        displayName = file;
+    }
+    if (m_titleLabel) {
+        m_titleLabel->setText(displayName);
+    }
+
     m_thumbnailCache.clear();
     m_isGeneratingThumbnail = false;
     m_pendingThumbnailTime = -1;
@@ -723,17 +761,9 @@ void MainWindow::openFile(const QString &file)
 
 void MainWindow::onOpenClicked()
 {
-    QFileDialog dialog(nullptr, "Open Video");
+    QFileDialog dialog(this, "Open Video");
     dialog.setWindowModality(Qt::ApplicationModal);
-    dialog.setWindowFlags(Qt::Dialog | Qt::WindowStaysOnTopHint);
-    dialog.setOption(QFileDialog::DontUseNativeDialog, true);
-    dialog.show();
-    dialog.raise();
-    dialog.activateWindow();
-#ifdef _WIN32
-    HWND hwnd = (HWND)dialog.winId();
-    SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
-#endif
+    dialog.setNameFilter("Media Files (*.mp4 *.mkv *.avi *.mov *.flv *.webm *.wmv *.m4v *.3gp *.ts *.mts *.m2ts *.vob *.ogv *.asf *.mp3 *.m4a *.aac *.flac *.wav *.ac3 *.dts *.ogg *.opus *.wma *.mka);;Video Files (*.mp4 *.mkv *.avi *.mov *.flv *.webm *.wmv *.m4v *.3gp *.ts *.mts *.m2ts *.vob *.ogv *.asf);;Audio Files (*.mp3 *.m4a *.aac *.flac *.wav *.ac3 *.dts *.ogg *.opus *.wma *.mka);;All Files (*.*)");
     if (dialog.exec() == QDialog::Accepted) {
         QString file = dialog.selectedFiles().first();
         if (!file.isEmpty()) {
@@ -744,27 +774,11 @@ void MainWindow::onOpenClicked()
 
 void MainWindow::onRcloneClicked()
 {
-    m_rcloneBrowser->setWindowFlags(Qt::Dialog | Qt::WindowStaysOnTopHint);
-    m_rcloneBrowser->show();
-    m_rcloneBrowser->raise();
-    m_rcloneBrowser->activateWindow();
-#ifdef _WIN32
-    HWND hwnd = (HWND)m_rcloneBrowser->winId();
-    SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
-#endif
     m_rcloneBrowser->exec();
 }
 
 void MainWindow::onSettingsClicked()
 {
-    m_settingsWindow->setWindowFlags(Qt::Dialog | Qt::WindowStaysOnTopHint);
-    m_settingsWindow->show();
-    m_settingsWindow->raise();
-    m_settingsWindow->activateWindow();
-#ifdef _WIN32
-    HWND hwnd = (HWND)m_settingsWindow->winId();
-    SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
-#endif
     m_settingsWindow->exec();
 }
 
@@ -1142,18 +1156,20 @@ void MainWindow::applyShaderPreset(const QString& preset)
 
     m_mpvWidget->command(QVariantList() << "change-list" << "glsl-shaders" << "set" << shaderStr);
 
-    // Apply beautiful pink glow to the shader button when one is active
-    QGraphicsDropShadowEffect *glow = new QGraphicsDropShadowEffect(this);
+    // Apply beautiful accent blue glow to the shader button when one is active
+    QGraphicsDropShadowEffect *glow = new QGraphicsDropShadowEffect(m_shaderBtn);
     glow->setBlurRadius(15);
-    glow->setColor(QColor(255, 105, 180, 200)); // vibrant pink glow (#FF69B4)
+    glow->setColor(QColor(96, 205, 255, 200)); // vibrant accent blue glow (#60CDFF)
     glow->setOffset(0, 0);
     m_shaderBtn->setGraphicsEffect(glow);
     m_shaderBtn->setStyleSheet(
-        "QPushButton { "
-        "  background: rgba(255, 105, 180, 40); "
-        "  border: 1px solid rgba(255, 105, 180, 180); "
-        "  border-radius: 4px; "
-        "}"
+        QString(
+            "QPushButton { "
+            "  background: %1; "
+            "  border: 1px solid %2; "
+            "  border-radius: 4px; "
+            "}"
+        ).arg(Theme::kAccentSubtle, Theme::kAccent)
     );
 }
 
@@ -1170,6 +1186,7 @@ QString MainWindow::formatTime(double seconds)
 
 void MainWindow::updatePosition(double position)
 {
+    m_lastPositionTime = QDateTime::currentMSecsSinceEpoch();
     if (m_isSeeking) return;
     if (!m_seekSlider->isSliderDown() && m_duration > 0) {
         m_seekSlider->setValue((position / m_duration) * 1000000.0);
@@ -1181,6 +1198,33 @@ void MainWindow::updatePosition(double position)
 void MainWindow::updateDuration(double duration)
 {
     m_duration = duration;
+    m_lastPositionTime = QDateTime::currentMSecsSinceEpoch();
+}
+
+void MainWindow::onStartFile()
+{
+    // Reset UI state for the new file that is beginning to load.
+    // Clears stale slider position, labels, seeking flag, and thumbnail cache
+    // so the player feels fresh for every new file.
+    m_isSeeking = false;
+    m_duration = 0;
+    m_lastPositionTime = QDateTime::currentMSecsSinceEpoch();
+
+    {
+        QSignalBlocker blocker(m_seekSlider);
+        m_seekSlider->setValue(0);
+    }
+    m_currentTimeLabel->setText(QStringLiteral("0:00"));
+    m_remainingTimeLabel->setText(QStringLiteral("-0:00"));
+
+    m_thumbnailCache.clear();
+    m_pendingThumbnailTime = -1;
+    m_isGeneratingThumbnail = false;
+    hideTimelinePreview();
+
+    // Mark playing so the watchdog baseline is refreshed
+    m_isPlaying = true;
+    m_playPauseBtn->setIcon(QIcon(":/icons/pause.svg"));
 }
 
 void MainWindow::resizeEvent(QResizeEvent *event)
@@ -1196,8 +1240,9 @@ void MainWindow::onNextClicked() { m_mpvWidget->command(QVariantList() << "playl
 void MainWindow::onSpeedClicked()
 {
     QMenu menu(this);
-    menu.setWindowFlags(menu.windowFlags() | Qt::FramelessWindowHint | Qt::NoDropShadowWindowHint);
+    menu.setWindowFlags(menu.windowFlags() | Qt::WindowStaysOnTopHint | Qt::FramelessWindowHint | Qt::NoDropShadowWindowHint);
     menu.setAttribute(Qt::WA_TranslucentBackground);
+
     menu.setStyleSheet(kMenuStyle);
 
     double currentSpeed = m_mpvWidget->getProperty("speed").toDouble();
@@ -1221,8 +1266,9 @@ void MainWindow::onSpeedClicked()
 void MainWindow::onAspectClicked()
 {
     QMenu menu(this);
-    menu.setWindowFlags(menu.windowFlags() | Qt::FramelessWindowHint | Qt::NoDropShadowWindowHint);
+    menu.setWindowFlags(menu.windowFlags() | Qt::WindowStaysOnTopHint | Qt::FramelessWindowHint | Qt::NoDropShadowWindowHint);
     menu.setAttribute(Qt::WA_TranslucentBackground);
+
     menu.setStyleSheet(kMenuStyle);
 
     QString currentAspect = m_mpvWidget->getProperty("video-aspect-override").toString();
@@ -1249,8 +1295,9 @@ void MainWindow::onAspectClicked()
 void MainWindow::onSubtitleClicked()
 {
     QMenu menu(this);
-    menu.setWindowFlags(menu.windowFlags() | Qt::FramelessWindowHint | Qt::NoDropShadowWindowHint);
+    menu.setWindowFlags(menu.windowFlags() | Qt::WindowStaysOnTopHint | Qt::FramelessWindowHint | Qt::NoDropShadowWindowHint);
     menu.setAttribute(Qt::WA_TranslucentBackground);
+
     menu.setStyleSheet(kMenuStyle);
 
     QList<TrackInfo> subTracks;
@@ -1286,8 +1333,9 @@ void MainWindow::onSubtitleClicked()
 void MainWindow::onAudioClicked()
 {
     QMenu menu(this);
-    menu.setWindowFlags(menu.windowFlags() | Qt::FramelessWindowHint | Qt::NoDropShadowWindowHint);
+    menu.setWindowFlags(menu.windowFlags() | Qt::WindowStaysOnTopHint | Qt::FramelessWindowHint | Qt::NoDropShadowWindowHint);
     menu.setAttribute(Qt::WA_TranslucentBackground);
+
     menu.setStyleSheet(kMenuStyle);
 
     QList<TrackInfo> audioTracks;
@@ -1314,36 +1362,10 @@ void MainWindow::onAudioClicked()
 void MainWindow::onShaderClicked()
 {
     QMenu menu(this);
-    menu.setWindowFlags(menu.windowFlags() | Qt::FramelessWindowHint | Qt::NoDropShadowWindowHint);
+    menu.setWindowFlags(menu.windowFlags() | Qt::WindowStaysOnTopHint | Qt::FramelessWindowHint | Qt::NoDropShadowWindowHint);
     menu.setAttribute(Qt::WA_TranslucentBackground);
-    menu.setStyleSheet(
-        "QMenu { "
-        "  background-color: rgba(30, 30, 30, 230); "
-        "  color: white; "
-        "  border: 1px solid rgba(255, 255, 255, 40); "
-        "  border-radius: 8px; "
-        "  padding: 4px 0px; "
-        "}"
-        "QMenu::item { "
-        "  padding: 6px 20px 6px 25px; "
-        "  margin: 2px 6px; "
-        "  border-radius: 4px; "
-        "  font-size: 13px; "
-        "}"
-        "QMenu::item:selected { "
-        "  background-color: rgba(255, 105, 180, 50); "
-        "  border: 1px solid rgba(255, 105, 180, 100); "
-        "}"
-        "QMenu::item:checked { "
-        "  color: #ff69b4; "
-        "  font-weight: bold; "
-        "}"
-        "QMenu::separator { "
-        "  height: 1px; "
-        "  background: rgba(255, 255, 255, 25); "
-        "  margin: 4px 0px; "
-        "}"
-    );
+
+    menu.setStyleSheet(kMenuStyle);
 
     QString currentPreset = m_settings.value("defaultShaderPreset", "Off").toString();
 #if defined(_M_ARM64) || defined(__aarch64__)
@@ -1506,6 +1528,7 @@ void MainWindow::onBrightnessChanged(int level)
 
 void MainWindow::updateHoverBars()
 {
+    if (QApplication::activePopupWidget() || QApplication::activeModalWidget()) return;
     if (!m_mpvWidget) return;
     
     // Protect sliders while actively dragging (avoid getting stuck)
@@ -1568,6 +1591,10 @@ void MainWindow::mouseDoubleClickEvent(QMouseEvent *event)
 
 bool MainWindow::eventFilter(QObject *watched, QEvent *event)
 {
+    if (QApplication::activePopupWidget() || QApplication::activeModalWidget()) {
+        return QMainWindow::eventFilter(watched, event);
+    }
+
     if (watched == m_seekSlider) {
         if (event->type() == QEvent::MouseMove) {
             QMouseEvent *mouseEvent = static_cast<QMouseEvent*>(event);
@@ -1632,6 +1659,8 @@ void MainWindow::showHud()
 
 void MainWindow::hideHud()
 {
+    if (QApplication::activePopupWidget() || QApplication::activeModalWidget()) return;
+    
     m_topBar->hide();
     m_bottomBar->hide();
     m_brightnessBar->hide();
@@ -1694,7 +1723,6 @@ void MainWindow::syncSystemControls()
 
 void MainWindow::toggleFullscreen()
 {
-    m_mpvWidget->setUpdatesEnabled(false);
     if (isFullScreen()) {
         showNormal();
         m_fullscreenBtn->setIcon(QIcon(":/icons/fullscreen.svg"));
@@ -1702,12 +1730,7 @@ void MainWindow::toggleFullscreen()
         showFullScreen();
         m_fullscreenBtn->setIcon(QIcon(":/icons/fullscreen_exit.svg"));
     }
-
-    QTimer::singleShot(250, this, [this]() {
-        m_mpvWidget->setUpdatesEnabled(true);
-        m_mpvWidget->update();
-        updateHudPositions();
-    });
+    updateHudPositions();
 }
 
 void MainWindow::keyPressEvent(QKeyEvent *event)
@@ -2019,7 +2042,7 @@ void MainWindow::handleTimelineHover(QPoint pos)
 
     bool isNewHover = false;
     if (!m_previewWidget) {
-        m_previewWidget = new TimelinePreviewWidget(m_centralWidget);
+        m_previewWidget = new TimelinePreviewWidget(m_mpvWidget);
         isNewHover = true;
     } else if (!m_previewWidget->isVisible()) {
         isNewHover = true;

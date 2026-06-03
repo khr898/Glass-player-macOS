@@ -78,7 +78,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func openFile(_ path: String) {
         welcomeWindow?.close()
         // If the current player already has a video loaded, open a new window
-        if let existing = playerWindow, existing.filePath != nil {
+        if let existing = playerWindow, existing.currentMediaSource != nil {
             // When the existing window is fullscreen, creating a new window
             // here would place it on the fullscreen space (wrong).
             // Instead, re-invoke via Launch Services (`open -b`), which makes
@@ -107,6 +107,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 playerWindow = newPlayer
             }
             playerWindow?.loadFile(path)
+        }
+    }
+
+    func openURL(_ url: String) {
+        welcomeWindow?.close()
+        // If the current player already has a video loaded, open a new window
+        if let existing = playerWindow, existing.currentMediaSource != nil {
+            let newPlayer = PlayerWindow()
+            newPlayer.loadUrl(url)
+            playerWindows.append(newPlayer)
+            playerWindow = newPlayer
+        } else {
+            if playerWindow == nil {
+                let newPlayer = PlayerWindow()
+                playerWindows.append(newPlayer)
+                playerWindow = newPlayer
+            }
+            playerWindow?.loadUrl(url)
         }
     }
 
@@ -515,7 +533,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         rcloneBrowser?.onFileSelected = { [weak self] url in
             guard let self = self else { return }
             // If current player already has a video, open in new window
-            if let existing = self.playerWindow, existing.filePath != nil {
+            if let existing = self.playerWindow, existing.currentMediaSource != nil {
                 let newPlayer = PlayerWindow()
                 self.playerWindows.append(newPlayer)
                 self.playerWindow = newPlayer

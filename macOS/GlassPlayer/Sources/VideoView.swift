@@ -74,8 +74,10 @@ class VideoView: NSView {
             return false
         }
 
-        // Find the player window and load the file
-        if let playerWindow = window?.windowController as? PlayerWindow {
+        // Find the AppDelegate and load the file (to ensure correct new window opening)
+        if let appDelegate = NSApp.delegate as? AppDelegate {
+            appDelegate.openFile(url.path)
+        } else if let playerWindow = window?.windowController as? PlayerWindow {
             playerWindow.loadFile(url.path)
         }
         return true

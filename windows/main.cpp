@@ -4,7 +4,11 @@
 #include <QLocalServer>
 #include <QLocalSocket>
 #include <QDebug>
+#include <QFont>
+#include <QPalette>
+#include <QColor>
 #include "MainWindow.h"
+#include "Theme.h"
 
 int main(int argc, char *argv[])
 {
@@ -15,6 +19,34 @@ int main(int argc, char *argv[])
     app.setApplicationName("Glass Player");
     app.setOrganizationName("Glass Player");
     app.setWindowIcon(QIcon(":/icons/app.svg"));
+
+    // Set application-wide font matching WinUI Segoe UI Variable Text (or Segoe UI fallback)
+    QFont font("Segoe UI Variable Text", 10);
+    font.setFamilies(QStringList() << "Segoe UI Variable Text" << "Segoe UI" << "Arial");
+    app.setFont(font);
+
+    // Dark Fluent Palette
+    QPalette darkPalette;
+    darkPalette.setColor(QPalette::Window, QColor(32, 32, 32));
+    darkPalette.setColor(QPalette::WindowText, QColor(255, 255, 255, 237));
+    darkPalette.setColor(QPalette::Base, QColor(20, 20, 20));
+    darkPalette.setColor(QPalette::AlternateBase, QColor(32, 32, 32));
+    darkPalette.setColor(QPalette::ToolTipBase, QColor(32, 32, 32));
+    darkPalette.setColor(QPalette::ToolTipText, QColor(255, 255, 255, 237));
+    darkPalette.setColor(QPalette::Text, QColor(255, 255, 255, 237));
+    darkPalette.setColor(QPalette::Button, QColor(45, 45, 45));
+    darkPalette.setColor(QPalette::ButtonText, QColor(255, 255, 255, 237));
+    darkPalette.setColor(QPalette::BrightText, Qt::white);
+    darkPalette.setColor(QPalette::Link, QColor(96, 205, 255));
+    darkPalette.setColor(QPalette::Highlight, QColor(96, 205, 255, 51));
+    darkPalette.setColor(QPalette::HighlightedText, QColor(96, 205, 255));
+    darkPalette.setColor(QPalette::Disabled, QPalette::WindowText, QColor(255, 255, 255, 115));
+    darkPalette.setColor(QPalette::Disabled, QPalette::Text, QColor(255, 255, 255, 115));
+    darkPalette.setColor(QPalette::Disabled, QPalette::ButtonText, QColor(255, 255, 255, 115));
+    app.setPalette(darkPalette);
+
+    // Global QToolTip style
+    app.setStyleSheet("QToolTip { color: rgba(255, 255, 255, 237); background-color: rgba(32, 32, 32, 240); border: 1px solid rgba(255, 255, 255, 46); border-radius: 4px; padding: 4px 8px; }");
 
     const QString serverName = "GlassPlayerIPCServer";
     

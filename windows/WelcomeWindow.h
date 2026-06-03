@@ -28,6 +28,7 @@ protected:
     void mousePressEvent(QMouseEvent *event) override;
     void mouseMoveEvent(QMouseEvent *event) override;
     void mouseReleaseEvent(QMouseEvent *event) override;
+    void showEvent(QShowEvent *event) override;
 
 private slots:
     void onOpenFileClicked();

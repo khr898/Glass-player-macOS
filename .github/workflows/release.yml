@@ -1,5 +1,5 @@
 # ═══════════════════════════════════════════════════════════════════════
-# Glass Player — Release Build
+# Glass Player — Unified Cross-platform Release Build
 # ═══════════════════════════════════════════════════════════════════════
 name: Release
 
@@ -13,74 +13,174 @@ permissions:
   contents: write
 
 jobs:
-  build:
-    name: Build & Release
-    runs-on: macos-14 
-    timeout-minutes: 30
-
+  get-version:
+    name: Determine Target Release Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag_name: ${{ steps.version.outputs.tag_name }}
     steps:
-      - name: Checkout
+      - name: Checkout Code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Install dependencies
-        run: |
-          brew install mpv
-
-      - name: Build Glass Player
-        run: |
-          cd GlassPlayer
-          chmod +x build.sh
-          NO_INSTALL=1 SKIP_SIGN=1 CREATE_DMG=1 BUILD_PROFILE=optimized ./build.sh
-
-      - name: Verify build
-        run: |
-          APP="GlassPlayer/build/optimized/Glass Player.app"
-          echo "=== Binary info ==="
-          file "$APP/Contents/MacOS/Glass Player"
-          echo "=== Size ==="
-          du -sh "$APP"
-          echo "=== Frameworks ==="
-          ls "$APP/Contents/Frameworks/" | wc -l | xargs echo "Bundled libraries:"
-
-      - name: Get version from tag
+      - name: Resolve Tag Version
         id: version
         run: |
           if [[ "${{ github.ref_type }}" == "tag" ]]; then
-            VERSION="${{ github.ref_name }}"
+            TAG_NAME="${{ github.ref_name }}"
           else
-            VERSION="dev-$(date +%Y%m%d-%H%M%S)"
+            # Fetch tags to ensure all are available locally
+            git fetch --tags --force
+            TAG_NAME=$(git describe --tags --abbrev=0 2>/dev/null || echo "v2.2.07042026")
           fi
+          # Strip leading 'v' to get version number in X.X.date format
+          VERSION="${TAG_NAME#v}"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag_name=$TAG_NAME" >> "$GITHUB_OUTPUT"
+          echo "Resolved version: $VERSION"
+          echo "Resolved tag: $TAG_NAME"
 
-      - name: Rename DMG with version
+  build:
+    name: Build (${{ matrix.name }})
+    needs: get-version
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows x64
+            runner: windows-latest
+            target: windows
+            arch: x64
+            qt_arch: win64_msvc2019_64
+            artifact_name: GlassPlayer-Windows-x64
+            mpv_dll: vendor/mpv-dev/x64/libmpv-2.dll
+          - name: Windows ARM64
+            runner: windows-latest
+            target: windows
+            arch: ARM64
+            qt_arch: win64_msvc2019_arm64
+            artifact_name: GlassPlayer-Windows-arm64
+            mpv_dll: vendor/mpv-dev/arm64/libmpv-2.dll
+          - name: macOS arm64
+            runner: macos-14
+            target: macos
+            artifact_name: GlassPlayer-macOS-arm64
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # ─── Windows Build Strategy ──────────────────────────────────────────
+      - name: Set up MSVC Command Prompt
+        if: matrix.target == 'windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: ${{ matrix.arch }}
+
+      - name: Install Qt 6.5.3 (Windows)
+        if: matrix.target == 'windows'
+        uses: jurplel/install-qt-action@v3
+        with:
+          version: '6.5.3'
+          host: 'windows'
+          target: 'desktop'
+          arch: ${{ matrix.qt_arch }}
+
+      - name: Configure CMake with Custom Version (Windows)
+        if: matrix.target == 'windows'
+        run: >
+          cmake -S windows -B build-win-${{ matrix.arch }}
+          -G "Visual Studio 17 2022"
+          -A ${{ matrix.arch }}
+          -DCPACK_PACKAGE_VERSION=${{ needs.get-version.outputs.version }}
+
+      - name: Compile Release Build (Windows)
+        if: matrix.target == 'windows'
+        run: cmake --build build-win-${{ matrix.arch }} --config Release
+
+      - name: Install and Stage Files (Windows)
+        if: matrix.target == 'windows'
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          mv "GlassPlayer/build/optimized/GlassPlayer.dmg" \
-             "GlassPlayer/build/optimized/GlassPlayer-${VERSION}.dmg"
+          cmake --install build-win-${{ matrix.arch }} --prefix windows/dist
 
-      - name: Upload DMG artifact
+      - name: Compile Inno Setup Installer (Windows)
+        if: matrix.target == 'windows'
+        shell: pwsh
+        run: |
+          iscc /DAppVersion="${{ needs.get-version.outputs.version }}" /DSourceDir="dist" /DAppArch="${{ matrix.arch }}" windows/installer.iss
+
+      # ─── macOS Build Strategy ─────────────────────────────────────────────
+      - name: Install mpv (macOS)
+        if: matrix.target == 'macos'
+        run: brew install mpv
+
+      - name: Set App Version in Info.plist (macOS)
+        if: matrix.target == 'macos'
+        run: |
+          plutil -replace CFBundleShortVersionString -string "${{ needs.get-version.outputs.version }}" macOS/GlassPlayer/Info.plist
+
+      - name: Build App & Generate DMG Bundle (macOS)
+        if: matrix.target == 'macos'
+        run: |
+          cd macOS/GlassPlayer
+          chmod +x build.sh
+          NO_INSTALL=1 SKIP_SIGN=1 CREATE_DMG=1 BUILD_PROFILE=optimized ./build.sh
+
+      - name: Rename DMG Package (macOS)
+        if: matrix.target == 'macos'
+        run: |
+          mv macOS/GlassPlayer/build/optimized/GlassPlayer.dmg macOS/GlassPlayer/build/optimized/GlassPlayer-${{ needs.get-version.outputs.version }}-macOS-arm64.dmg
+
+      # ─── Upload Artifacts ────────────────────────────────────────────────
+      - name: Upload Windows Installer Artifact
+        if: matrix.target == 'windows'
         uses: actions/upload-artifact@v4
         with:
-          name: GlassPlayer-${{ steps.version.outputs.version }}
-          path: GlassPlayer/build/optimized/GlassPlayer-${{ steps.version.outputs.version }}.dmg
+          name: ${{ matrix.artifact_name }}
+          path: windows/GlassPlayer-*.exe
 
-      - name: Create GitHub Release
-        if: github.ref_type == 'tag'
+      - name: Upload macOS DMG Artifact
+        if: matrix.target == 'macos'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: macOS/GlassPlayer/build/optimized/GlassPlayer-*.dmg
+
+  release:
+    name: Create/Update GitHub Release
+    needs: [get-version, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Built Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Display Downloader Files
+        run: find artifacts -type f
+
+      - name: Publish to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: Glass Player ${{ steps.version.outputs.version }}
+          tag_name: ${{ needs.get-version.outputs.tag_name }}
+          name: Glass Player ${{ needs.get-version.outputs.version }}
           draft: false
           prerelease: false
           generate_release_notes: true
           files: |
-            GlassPlayer/build/optimized/GlassPlayer-${{ steps.version.outputs.version }}.dmg
+            artifacts/**/*.exe
+            artifacts/**/*.dmg
           body: |
-            ## Glass Player ${{ steps.version.outputs.version }}
+            ## Glass Player ${{ needs.get-version.outputs.version }}
 
             ### Installation
-            1. Download `GlassPlayer-${{ steps.version.outputs.version }}.dmg`
-            2. Open the DMG and drag Glass Player to your Applications folder.
+            - **macOS (Apple Silicon)**: Download `GlassPlayer-${{ needs.get-version.outputs.version }}-macOS-arm64.dmg`
+            - **Windows x64**: Download `GlassPlayer-${{ needs.get-version.outputs.version }}-Windows-x64.exe`
+            - **Windows ARM64**: Download `GlassPlayer-${{ needs.get-version.outputs.version }}-Windows-ARM64.exe`
 
             ### Requirements
-            - macOS 14.0 (Sonoma) or later
-            - Apple Silicon (M-series)
+            - **macOS**: macOS 14.0 (Sonoma) or later
+            - **Windows**: Windows 10/11 64-bit

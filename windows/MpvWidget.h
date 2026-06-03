@@ -37,6 +37,7 @@ signals:
     void eofReached();
     void pauseChanged(bool paused);
     void fileLoaded();
+    void startFile();    // Emitted when mpv begins loading a new file
 
 protected:
     void initializeGL() override;

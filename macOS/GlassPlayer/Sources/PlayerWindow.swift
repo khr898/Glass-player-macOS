@@ -17,19 +17,34 @@ import MediaPlayer
 //   • Comprehensive keyboard shortcuts
 // ---------------------------------------------------------------------------
 
+func createLiquidGlassView(material: NSVisualEffectView.Material = .hudWindow, blendingMode: NSVisualEffectView.BlendingMode = .withinWindow) -> NSView {
+    if #available(macOS 14.0, *) {
+        let vev = NSVisualEffectView()
+        vev.material = material
+        vev.blendingMode = blendingMode
+        vev.state = .active
+        return vev
+    } else {
+        let view = NSView()
+        view.wantsLayer = true
+        view.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.75).cgColor
+        return view
+    }
+}
+
 class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate, NSTextFieldDelegate {
 
     let mpv = MPVController()
     let videoView: VideoView
     var filePath: String?
-    private var currentMediaSource: String?
+    var currentMediaSource: String?
     private var currentMediaIsURL = false
 
     // ── Bottom controls bar ──
-    private let controlsContainer = NSVisualEffectView()
+    private let controlsContainer = createLiquidGlassView()
 
     // Timeline row
-    private let timelineSlider = NSSlider()
+    private let timelineSlider = GlassSlider()
     private let currentTimeLabel = NSTextField(labelWithString: "0:00")
     private let remainingTimeLabel = NSTextField(labelWithString: "-0:00")
 
@@ -47,13 +62,13 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
 
     // Right group: volume, speed, fullscreen
     private let volumeButton = NSButton()
-    private let volumeSlider = NSSlider()
+    private let volumeSlider = GlassSlider()
     private let speedButton = NSButton()
     private let aspectButton = NSButton()
     private let fullscreenButton = NSButton()
 
     // ── Top bar ──
-    private let topBar = NSVisualEffectView()
+    private let topBar = createLiquidGlassView()
     private let titleLabel = NSTextField(labelWithString: "Glass Player")
     private let urlButton = NSButton()
     private let openFileButton = NSButton()
@@ -99,10 +114,10 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
     private var isSleepPrevented = false
 
     // ── Hover bars (brightness left, volume right) ──
-    private var brightnessHoverBar: NSVisualEffectView?
-    private var volumeHoverBar: NSVisualEffectView?
-    private var brightnessSliderV: NSSlider?
-    private var volumeSliderV: NSSlider?
+    private var brightnessHoverBar: NSView?
+    private var volumeHoverBar: NSView?
+    private var brightnessSliderV: GlassSlider?
+    private var volumeSliderV: GlassSlider?
     private var brightnessHoverVisible = false
     private var volumeHoverVisible = false
     private var leftTrackingArea: NSTrackingArea?
@@ -118,16 +133,22 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
     private var currentBadges: FormatBadges? = nil
 
     // ── Timeline preview thumbnail ──
-    private var previewContainer: NSVisualEffectView?
+    private var previewContainer: NSView?
     private var previewImageView: NSImageView?
     private var previewTimeLabel: NSTextField?
     private var lastThumbnailTime: Double = -1
-    private var thumbnailCache: [Int: NSImage] = [:]   // keyed by second
+    private var thumbnailCache: [Int: NSImage] = [:]   // keyed by millisecond
+    private var thumbnailTimes: [Int: Double] = [:]    // exact time per cache key
+    private var lastConfirmedThumbnailTime: Double = -1 // time matching the shown thumbnail
     private var pendingThumbnailTime: Double = -1
     private var isGeneratingThumbnail = false
     private var thumbnailMPV: ThumbnailMPV?
     private var isHoveringTimeline = false
     private let thumbnailCacheLimit: Int
+
+    // ── Stall watchdog ──
+    private var idleWatchdog: Timer?
+    private var lastTimePosReceived: CFTimeInterval = 0
 
     // ── System brightness/volume sync ──
     private var systemSyncTimer: Timer?
@@ -275,9 +296,6 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
     private func setupTopBar() {
         guard let contentView = window?.contentView else { return }
 
-        topBar.material = .hudWindow
-        topBar.blendingMode = .withinWindow
-        topBar.state = .active
         topBar.wantsLayer = true
         topBar.layer?.cornerRadius = 0
         topBar.layer?.masksToBounds = true
@@ -402,7 +420,11 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
     @objc private func urlSubmitted() {
         let url = urlTextField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         if !url.isEmpty {
-            loadUrl(url)
+            if let appDelegate = NSApp.delegate as? AppDelegate {
+                appDelegate.openURL(url)
+            } else {
+                loadUrl(url)
+            }
         }
         urlInputVisible = false
         urlTextField.isHidden = true
@@ -454,9 +476,6 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
         guard let contentView = window?.contentView else { return }
 
         // Glass container for bottom controls
-        controlsContainer.material = .hudWindow
-        controlsContainer.blendingMode = .withinWindow
-        controlsContainer.state = .active
         controlsContainer.wantsLayer = true
         controlsContainer.layer?.cornerRadius = 12
         controlsContainer.layer?.masksToBounds = true
@@ -470,10 +489,38 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
         timelineSlider.minValue = 0
         timelineSlider.maxValue = 100
         timelineSlider.doubleValue = 0
-        timelineSlider.target = self
-        timelineSlider.action = #selector(timelineAction(_:))
-        timelineSlider.isContinuous = true
         timelineSlider.translatesAutoresizingMaskIntoConstraints = false
+        // During drag: fast scrub seek + show preview
+        timelineSlider.onValueChanged = { [weak self] value in
+            guard let self = self else { return }
+            guard self.duration > 0 else { return }
+            let position = value / 100.0
+            let time = position * self.duration
+            self.currentTimeLabel.stringValue = self.formatTimePrecise(time)
+            self.remainingTimeLabel.stringValue = "-" + self.formatTimePrecise(self.duration - time)
+            self.isSeeking = true
+            self.showTimelinePreview(atPosition: position, time: time)
+            let now = CACurrentMediaTime()
+            if now - self.lastSeekTime > 0.03 {
+                self.lastSeekTime = now
+                self.mpv.seek(to: time)
+            }
+        }
+        // On release: final exact seek (use exact thumbnail time if available)
+        timelineSlider.onDragEnded = { [weak self] value in
+            guard let self = self else { return }
+            self.hideTimelinePreview()
+            self.isHoveringTimeline = false
+            let seekTarget = (self.lastConfirmedThumbnailTime >= 0)
+                ? self.lastConfirmedThumbnailTime
+                : (value / 100.0) * self.duration
+            self.mpv.seek(to: seekTarget)
+            self.lastConfirmedThumbnailTime = -1
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+                self?.isSeeking = false
+                self?.lastDisplayedSecond = -1
+            }
+        }
         controlsContainer.addSubview(timelineSlider)
 
         configureTimeLabel(remainingTimeLabel)
@@ -563,10 +610,13 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
         volumeSlider.minValue = 0
         volumeSlider.maxValue = 200
         volumeSlider.doubleValue = 100
-        volumeSlider.target = self
-        volumeSlider.action = #selector(volumeAction(_:))
-        volumeSlider.isContinuous = true
         volumeSlider.translatesAutoresizingMaskIntoConstraints = false
+        volumeSlider.onValueChanged = { [weak self] value in
+            guard let self = self else { return }
+            self.currentVolume = value
+            self.mpv.setVolume(value)
+            self.updateVolumeIcon()
+        }
         controlsContainer.addSubview(volumeSlider)
 
         // Speed button (text)
@@ -1148,15 +1198,13 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
         }
         totalH += pad   // bottom padding
 
-        let panel = NSVisualEffectView(frame: NSRect(
+        let panel = createLiquidGlassView()
+        panel.frame = NSRect(
             x: 20,
             y: contentView.bounds.height - totalH - 50,
             width: panelWidth,
             height: totalH
-        ))
-        panel.material = .hudWindow
-        panel.blendingMode = .withinWindow
-        panel.state = .active
+        )
         panel.wantsLayer = true
         panel.layer?.cornerRadius = 12
         panel.layer?.masksToBounds = true
@@ -1484,48 +1532,6 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
         mpv.nextFile()
     }
 
-    @objc private func timelineAction(_ sender: NSSlider) {
-        let position = sender.doubleValue / 100.0
-        let time = position * duration
-
-        // Immediately update time labels (ms-accurate display)
-        currentTimeLabel.stringValue = formatTimePrecise(time)
-        remainingTimeLabel.stringValue = "-" + formatTimePrecise(duration - time)
-
-        let event = NSApp.currentEvent
-        let isDragging = event?.type != .leftMouseUp
-
-        if isDragging {
-            // ── During drag: show preview + fast seek ──
-            isSeeking = true
-            showTimelinePreview(atPosition: position, time: time)
-
-            // Seek at high frequency for smooth scrubbing (exact, not keyframe)
-            let now = CACurrentMediaTime()
-            if now - lastSeekTime > 0.03 {  // ~33fps seek rate
-                lastSeekTime = now
-                mpv.seek(to: time)
-            }
-        } else {
-            // ── Mouse released: final exact seek + hide preview ──
-            hideTimelinePreview()
-            isHoveringTimeline = false
-            mpv.seek(to: time)
-
-            // Brief delay before accepting time-pos updates again
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
-                self?.isSeeking = false
-                self?.lastDisplayedSecond = -1
-            }
-        }
-    }
-
-    @objc private func volumeAction(_ sender: NSSlider) {
-        currentVolume = sender.doubleValue
-        mpv.setVolume(currentVolume)
-        updateVolumeIcon()
-    }
-
     @objc private func toggleMuteAction() {
         mpv.toggleMute()
     }
@@ -1810,6 +1816,7 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
         switch name {
         case "time-pos":
             if let time = value as? Double, !isSeeking {
+                lastTimePosReceived = CACurrentMediaTime()
                 currentTime = time
                 // Coalesce: only update labels when displayed second changes
                 let sec = Int(time)
@@ -1843,9 +1850,11 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
                 if isPaused {
                     showControls()
                     allowSleep()
+                    stopIdleWatchdog()
                 } else {
                     resetHideTimer()
                     preventSleep()
+                    startIdleWatchdog()
                 }
                 // Update Now Playing state
                 updateNowPlayingInfo()
@@ -1891,6 +1900,7 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
     func mpvFileLoaded() {
         print("[PlayerWindow] File loaded")
         isFirstPause = true  // reset for new file
+        lastTimePosReceived = CACurrentMediaTime()
 
         let shouldAutoApply = UserDefaults.standard.bool(forKey: "autoApplyShaders")
         if shouldAutoApply && mpv.shadersAvailable {
@@ -1916,6 +1926,21 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
             self?.updateFormatBadges()
             self?.updateNowPlayingInfo()
         }
+    }
+
+    func mpvStartFile() {
+        // Reset UI state when a new file begins loading
+        isSeeking = false
+        lastDisplayedSecond = -1
+        lastConfirmedThumbnailTime = -1
+        thumbnailCache.removeAll(keepingCapacity: true)
+        thumbnailTimes.removeAll(keepingCapacity: true)
+        lastThumbnailTime = -1
+        timelineSlider.doubleValue = 0
+        currentTimeLabel.stringValue = "0:00"
+        remainingTimeLabel.stringValue = "-0:00"
+        hideTimelinePreview()
+        stopIdleWatchdog()
     }
 
     func mpvPlaybackEnded() {
@@ -2015,6 +2040,7 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
         resizeDebounceTimer?.invalidate()
         singleClickWorkItem?.cancel()
         allowSleep()
+        stopIdleWatchdog()
         if let monitor = keyMonitor {
             NSEvent.removeMonitor(monitor)
             keyMonitor = nil
@@ -2101,10 +2127,7 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
         guard let contentView = window?.contentView else { return }
 
         // ── Brightness bar (left edge) ──
-        let bBar = NSVisualEffectView()
-        bBar.material = .hudWindow
-        bBar.blendingMode = .withinWindow
-        bBar.state = .active
+        let bBar = createLiquidGlassView()
         bBar.wantsLayer = true
         bBar.layer?.cornerRadius = 10
         bBar.layer?.masksToBounds = true
@@ -2119,7 +2142,7 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
         bIcon.contentTintColor = .white
         bBar.addSubview(bIcon)
 
-        let bSlider = NSSlider(frame: NSRect(x: 8, y: 10, width: 20, height: 155))
+        let bSlider = GlassSlider(frame: NSRect(x: 8, y: 10, width: 20, height: 155))
         bSlider.isVertical = true
         bSlider.minValue = 0
         bSlider.maxValue = 100
@@ -2129,9 +2152,9 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
         } else {
             bSlider.doubleValue = 50
         }
-        bSlider.target = self
-        bSlider.action = #selector(brightnessSliderAction(_:))
-        bSlider.isContinuous = true
+        bSlider.onValueChanged = { [weak self] value in
+            self?.setDisplayBrightness(Float(value / 100.0))
+        }
         bBar.addSubview(bSlider)
         brightnessSliderV = bSlider
 
@@ -2139,10 +2162,7 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
         brightnessHoverBar = bBar
 
         // ── Volume bar (right edge) ──
-        let vBar = NSVisualEffectView()
-        vBar.material = .hudWindow
-        vBar.blendingMode = .withinWindow
-        vBar.state = .active
+        let vBar = createLiquidGlassView()
         vBar.wantsLayer = true
         vBar.layer?.cornerRadius = 10
         vBar.layer?.masksToBounds = true
@@ -2157,15 +2177,15 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
         vIcon.contentTintColor = .white
         vBar.addSubview(vIcon)
 
-        let vSlider = NSSlider(frame: NSRect(x: 8, y: 10, width: 20, height: 155))
+        let vSlider = GlassSlider(frame: NSRect(x: 8, y: 10, width: 20, height: 155))
         vSlider.isVertical = true
         vSlider.minValue = 0
         vSlider.maxValue = 100
         // Read initial system volume
         vSlider.doubleValue = Double(getSystemVolume()) * 100
-        vSlider.target = self
-        vSlider.action = #selector(volumeHoverAction(_:))
-        vSlider.isContinuous = true
+        vSlider.onValueChanged = { [weak self] value in
+            self?.setSystemVolume(Float(value / 100.0))
+        }
         vBar.addSubview(vSlider)
         volumeSliderV = vSlider
 
@@ -2203,7 +2223,7 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
         setSystemVolume(Float(sender.doubleValue / 100.0))
     }
 
-    private func showHoverBar(_ bar: NSVisualEffectView?, show: Bool) {
+    private func showHoverBar(_ bar: NSView?, show: Bool) {
         guard let bar = bar else { return }
         if show {
             // Instant appear — no animation delay
@@ -2275,10 +2295,8 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
     private func ensurePreviewView() {
         guard previewContainer == nil else { return }
 
-        let container = NSVisualEffectView(frame: NSRect(x: 0, y: 0, width: 180, height: 120))
-        container.material = .hudWindow
-        container.blendingMode = .withinWindow
-        container.state = .active
+        let container = createLiquidGlassView()
+        container.frame = NSRect(x: 0, y: 0, width: 180, height: 120)
         container.wantsLayer = true
         container.layer?.cornerRadius = 8
         container.layer?.masksToBounds = true
@@ -2369,7 +2387,7 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
 
         container.frame = NSRect(x: x, y: y, width: previewW, height: previewH)
 
-        // Update time label (always ms-accurate)
+            // Update time label (always ms-accurate)
         previewTimeLabel?.stringValue = formatTimePrecise(time)
 
         // Fade in
@@ -2380,13 +2398,14 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
             }
         }
 
-        // Generate thumbnail every 0.5s (throttled, cached)
-        let halfSec = Int(time * 2)   // cache key per half-second
-        if let cached = thumbnailCache[halfSec] {
+        // Generate thumbnail (millisecond-precision cache to avoid stale frame on click)
+        let msKey = Int(time * 1000)   // cache key per millisecond
+        if let cached = thumbnailCache[msKey] {
             previewImageView?.image = cached
-        } else if halfSec != Int(lastThumbnailTime * 2) {
+            lastConfirmedThumbnailTime = thumbnailTimes[msKey] ?? time
+        } else if msKey != Int(lastThumbnailTime * 1000) {
             lastThumbnailTime = time
-            generateThumbnail(at: time, cacheKey: halfSec)
+            generateThumbnail(at: time, cacheKey: msKey)
         }
     }
 
@@ -2398,29 +2417,32 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
         }
         guard let thumbMPV = thumbnailMPV else { return }
         isGeneratingThumbnail = true
+        let capturedTime = time  // capture exact requested time
 
         // Dispatch to background: seek the thumbnail mpv + screenshot (no main player disruption)
         UniversalSiliconQoS.heavy.async { [weak self] in
             guard let self = self else { return }
 
-            let image = thumbMPV.generateThumbnail(at: time)
+            let image = thumbMPV.generateThumbnail(at: capturedTime)
 
             DispatchQueue.main.async {
                 if let image = image {
                     // Cap cache size — simple eviction: clear when over limit
-                    // avoids O(n log n) sort on every eviction
                     if self.thumbnailCache.count > self.thumbnailCacheLimit {
                         self.thumbnailCache.removeAll(keepingCapacity: true)
+                        self.thumbnailTimes.removeAll(keepingCapacity: true)
                     }
                     self.thumbnailCache[cacheKey] = image
+                    self.thumbnailTimes[cacheKey] = capturedTime  // store exact time
                     self.previewImageView?.image = image
+                    self.lastConfirmedThumbnailTime = capturedTime
                 }
                 self.isGeneratingThumbnail = false
 
                 if self.pendingThumbnailTime >= 0 {
                     let pending = self.pendingThumbnailTime
                     self.pendingThumbnailTime = -1
-                    self.generateThumbnail(at: pending, cacheKey: Int(pending * 2))
+                    self.generateThumbnail(at: pending, cacheKey: Int(pending * 1000))
                 }
             }
         }
@@ -2447,6 +2469,7 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
             container.removeFromSuperview()
         }
         lastThumbnailTime = -1
+        lastConfirmedThumbnailTime = -1
     }
 
     /// Format time with milliseconds: "H:MM:SS.mmm" or "M:SS.mmm"
@@ -2493,6 +2516,32 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
         guard isSleepPrevented else { return }
         IOPMAssertionRelease(sleepAssertionID)
         isSleepPrevented = false
+    }
+
+    // ───────────────────────────────────────────────────────────────────
+    // MARK: - Idle (Stall) Watchdog
+    // Fires after 5 s of no time-pos events while playing.
+    // A "seek 0 relative+exact" nudge unblocks mpv on network stalls / codec hiccups.
+    // ───────────────────────────────────────────────────────────────────
+
+    private func startIdleWatchdog() {
+        stopIdleWatchdog()
+        idleWatchdog = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
+            guard let self = self, !self.isPaused else { return }
+            let elapsed = CACurrentMediaTime() - self.lastTimePosReceived
+            if elapsed > 4.5 {
+                NSLog("[PlayerWindow] Stall watchdog: no time-pos for %.1f s, nudging mpv", elapsed)
+                // Option 1: zero-delta relative seek — wakes up stuck demuxer
+                self.mpv.seek(by: 0)
+                // Restart grace period
+                self.lastTimePosReceived = CACurrentMediaTime()
+            }
+        }
+    }
+
+    private func stopIdleWatchdog() {
+        idleWatchdog?.invalidate()
+        idleWatchdog = nil
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -2810,15 +2859,19 @@ private class ThumbnailMPV {
         guard let handle = handle else { return nil }
 
         return queue.sync {
-            // Seek to the requested time (keyframe for speed)
-            mpv_command_string(handle, "seek \(time) absolute+exact")
+            // Keyframe seek — snaps to nearest I-frame, avoids partial-decode black frames.
+            // "exact" on a headless null-vo instance causes frequent black outputs because
+            // inter-frames require the preceding keyframe to be decoded first, and the
+            // event loop exits before that completes.
+            mpv_command_string(handle, "seek \(time) absolute+keyframes")
 
-            // Wait for seek to complete
-            for _ in 0..<15 {
-                guard let event = mpv_wait_event(handle, 0.03) else { continue }
-                let eid = event.pointee.event_id
-                if eid == MPV_EVENT_PLAYBACK_RESTART { break }
-                if eid == MPV_EVENT_NONE { break }
+            // Wait for PLAYBACK_RESTART with a hard wall-clock deadline (300 ms).
+            // Do NOT break on MPV_EVENT_NONE — that event fires when the queue is
+            // momentarily empty, NOT when the seek is done.
+            let deadline = CACurrentMediaTime() + 0.3
+            while CACurrentMediaTime() < deadline {
+                guard let event = mpv_wait_event(handle, 0.05) else { break }
+                if event.pointee.event_id == MPV_EVENT_PLAYBACK_RESTART { break }
             }
 
             // Take screenshot — stack-based withCString to avoid heap alloc
@@ -2830,6 +2883,9 @@ private class ThumbnailMPV {
                     }
                 }
             }
+
+            // Give mpv time to flush the JPEG write to disk before we read it.
+            Thread.sleep(forTimeInterval: 0.015)
 
             // Load the image
             var result: NSImage? = nil
@@ -2872,4 +2928,225 @@ private class ThumbnailMPV {
         }
         try? FileManager.default.removeItem(atPath: tmpPath)
     }
+}
+
+// ---------------------------------------------------------------------------
+// GlassSlider – Liquid Glass style slider (replaces NSSlider)
+//
+// Renders a frosted-glass pill track with a glass-drop knob matching the
+// macOS 26 Liquid Glass design language.  Drop-in replacement for NSSlider
+// via the `doubleValue` / `onValueChanged` API.
+// ---------------------------------------------------------------------------
+
+class GlassSlider: NSView {
+
+    // ── Public API ──
+    var minValue: Double = 0     { didSet { needsDisplay = true } }
+    var maxValue: Double = 100   { didSet { needsDisplay = true } }
+    var isVertical: Bool = false { didSet { setupLayers() } }
+    var onValueChanged: ((Double) -> Void)?
+    /// Called once when the user lifts the mouse/finger (drag end).
+    var onDragEnded: ((Double) -> Void)?
+
+    var doubleValue: Double {
+        get { _value }
+        set {
+            _value = min(maxValue, max(minValue, newValue))
+            updateKnobPosition()
+        }
+    }
+
+    // ── Private state ──
+    private var _value: Double = 0
+    private var trackView: NSView!
+    private let fillView    = NSView()
+    private var knobView: NSView!
+    private var isDragging  = false
+
+    // ── Geometry constants ──
+    private let knobDiameter: CGFloat = 18
+    private let trackThickness: CGFloat = 6
+
+    // MARK: - Init
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        setupLayers()
+        setupGestures()
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        setupLayers()
+        setupGestures()
+    }
+
+    // MARK: - Layout
+
+    private func setupLayers() {
+        // Remove any existing subviews on re-configuration
+        subviews.forEach { $0.removeFromSuperview() }
+        wantsLayer = true
+
+        if #available(macOS 14.0, *) {
+            let tView = NSVisualEffectView()
+            tView.material = .hudWindow
+            tView.blendingMode = .withinWindow
+            tView.state = .active
+            tView.wantsLayer = true
+            tView.layer?.masksToBounds = true
+            trackView = tView
+
+            let kView = NSVisualEffectView()
+            kView.material = .hudWindow
+            kView.blendingMode = .withinWindow
+            kView.state = .active
+            kView.wantsLayer = true
+            kView.layer?.masksToBounds = false
+            kView.layer?.cornerRadius = knobDiameter / 2
+            kView.layer?.shadowColor = NSColor.black.cgColor
+            kView.layer?.shadowOpacity = 0.35
+            kView.layer?.shadowRadius = 4
+            kView.layer?.shadowOffset = CGSize(width: 0, height: -2)
+            kView.layer?.borderColor = NSColor.white.withAlphaComponent(0.6).cgColor
+            kView.layer?.borderWidth = 1.0
+            knobView = kView
+        } else {
+            let tView = NSView()
+            tView.wantsLayer = true
+            tView.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.25).cgColor
+            tView.layer?.masksToBounds = true
+            trackView = tView
+
+            let kView = NSView()
+            kView.wantsLayer = true
+            kView.layer?.backgroundColor = NSColor(white: 0.9, alpha: 1.0).cgColor
+            kView.layer?.masksToBounds = false
+            kView.layer?.cornerRadius = knobDiameter / 2
+            kView.layer?.shadowColor = NSColor.black.cgColor
+            kView.layer?.shadowOpacity = 0.35
+            kView.layer?.shadowRadius = 4
+            kView.layer?.shadowOffset = CGSize(width: 0, height: -2)
+            kView.layer?.borderColor = NSColor.white.withAlphaComponent(0.6).cgColor
+            kView.layer?.borderWidth = 1.0
+            knobView = kView
+        }
+
+        addSubview(trackView)
+
+        // ── Fill (accent-tinted sub-layer inside track) ──
+        fillView.wantsLayer = true
+        fillView.layer?.backgroundColor = NSColor(red: 0.37, green: 0.80, blue: 1.0,
+                                                   alpha: 0.65).cgColor
+        trackView.addSubview(fillView)
+
+        addSubview(knobView)
+
+        updateKnobPosition()
+    }
+
+    override func layout() {
+        super.layout()
+        positionTrack()
+        updateKnobPosition()
+    }
+
+    private func positionTrack() {
+        let b = bounds
+        if isVertical {
+            let tx = (b.width - trackThickness) / 2
+            trackView.frame = NSRect(x: tx, y: knobDiameter / 2,
+                                     width: trackThickness,
+                                     height: b.height - knobDiameter)
+            trackView.layer?.cornerRadius = trackThickness / 2
+        } else {
+            let ty = (b.height - trackThickness) / 2
+            trackView.frame = NSRect(x: knobDiameter / 2, y: ty,
+                                     width: b.width - knobDiameter,
+                                     height: trackThickness)
+            trackView.layer?.cornerRadius = trackThickness / 2
+        }
+    }
+
+    private func fraction() -> CGFloat {
+        guard maxValue > minValue else { return 0 }
+        return CGFloat((_value - minValue) / (maxValue - minValue))
+    }
+
+    private func updateKnobPosition() {
+        let b = bounds
+        let f = fraction()
+        if isVertical {
+            let trackH = b.height - knobDiameter
+            let cy = knobDiameter / 2 + f * trackH
+            knobView.frame = NSRect(x: (b.width - knobDiameter) / 2,
+                                    y: cy - knobDiameter / 2,
+                                    width: knobDiameter, height: knobDiameter)
+            // Fill = from bottom to knob
+            fillView.frame = NSRect(x: 0, y: 0,
+                                    width: trackThickness,
+                                    height: cy - knobDiameter / 2 - trackView.frame.origin.y + knobDiameter / 2)
+        } else {
+            let trackW = b.width - knobDiameter
+            let cx = knobDiameter / 2 + f * trackW
+            knobView.frame = NSRect(x: cx - knobDiameter / 2,
+                                    y: (b.height - knobDiameter) / 2,
+                                    width: knobDiameter, height: knobDiameter)
+            // Fill = from left to knob
+            fillView.frame = NSRect(x: 0, y: 0,
+                                    width: cx - knobDiameter / 2,
+                                    height: trackThickness)
+        }
+        knobView.layer?.cornerRadius = knobDiameter / 2
+    }
+
+    // MARK: - Gestures
+
+    private func setupGestures() {
+        let pan = NSPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
+        addGestureRecognizer(pan)
+    }
+
+    @objc private func handlePan(_ g: NSPanGestureRecognizer) {
+        let loc = g.location(in: self)
+        setValue(fromPoint: loc)
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        isDragging = true
+        let loc = convert(event.locationInWindow, from: nil)
+        setValue(fromPoint: loc)
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        let loc = convert(event.locationInWindow, from: nil)
+        setValue(fromPoint: loc)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        isDragging = false
+        onDragEnded?(_value)
+    }
+
+    private func setValue(fromPoint point: NSPoint) {
+        let b = bounds
+        var f: CGFloat
+        if isVertical {
+            let trackH = b.height - knobDiameter
+            f = (point.y - knobDiameter / 2) / max(1, trackH)
+        } else {
+            let trackW = b.width - knobDiameter
+            f = (point.x - knobDiameter / 2) / max(1, trackW)
+        }
+        f = max(0, min(1, f))
+        _value = minValue + Double(f) * (maxValue - minValue)
+        updateKnobPosition()
+        onValueChanged?(_value)
+    }
+
+    // MARK: - Accessibility
+
+    override func accessibilityRole() -> NSAccessibility.Role? { .slider }
+    override func accessibilityValue() -> Any? { _value }
+    override func isAccessibilityElement() -> Bool { true }
 }

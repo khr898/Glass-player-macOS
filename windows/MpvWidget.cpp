@@ -87,6 +87,11 @@ void MpvWidget::initializeGL()
 {
     initializeOpenGLFunctions();
 
+    if (m_mpv_gl) {
+        mpv_render_context_free(m_mpv_gl);
+        m_mpv_gl = nullptr;
+    }
+
     mpv_opengl_init_params gl_init_params{get_proc_address, nullptr};
     mpv_render_param params[] = {
         {MPV_RENDER_PARAM_API_TYPE, const_cast<char *>(MPV_RENDER_API_TYPE_OPENGL)},
@@ -171,6 +176,9 @@ void MpvWidget::onMpvEvents()
 void MpvWidget::handleEvent(mpv_event *event)
 {
     switch (event->event_id) {
+    case MPV_EVENT_START_FILE:
+        emit startFile();
+        break;
     case MPV_EVENT_FILE_LOADED:
         applyHwdecFallbackIfNeeded();
         emit fileLoaded();
@@ -261,6 +269,13 @@ void MpvWidget::loadFile(const QString &file)
     } else {
         command(QVariantList() << "loadfile" << QDir::toNativeSeparators(file));
     }
+
+    // Ensure playback starts immediately.
+    // Some containers (TS, VOB, MKV with certain codecs) leave mpv in a
+    // paused state after loadfile when keep-open=yes is set.
+    // Sending 'set pause no' here guarantees auto-play without the user
+    // needing to scrub first.
+    mpv_command_string(m_mpv, "set pause no");
 }
 
 void MpvWidget::play()
@@ -275,7 +290,7 @@ void MpvWidget::pause()
 
 void MpvWidget::seek(double offset)
 {
-    command(QVariantList() << "seek" << QString::number(offset) << "relative");
+    command(QVariantList() << "seek" << QString::number(offset) << "relative+exact");
 }
 
 void MpvWidget::setVolume(int volume)

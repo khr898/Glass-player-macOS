@@ -13,6 +13,8 @@
 #include <QKeyEvent>
 #include <QKeySequence>
 
+#include "Theme.h"
+
 class ShortcutButton : public QPushButton
 {
     Q_OBJECT
@@ -23,9 +25,11 @@ public:
         setCursor(Qt::PointingHandCursor);
         setFixedWidth(150);
         setStyleSheet(
-            "QPushButton { background: #fdfdfd; border: 1px solid #ccc; border-radius: 4px; padding: 4px 8px; font-weight: bold; color: black; }"
-            "QPushButton:hover { background: #e8e8e8; border-color: #999; }"
-            "QPushButton:checked { background: #0078d4; color: white; border-color: #0078d4; }"
+            QString(
+                "QPushButton { background: %1; border: 1px solid %2; border-radius: 4px; padding: 4px 8px; font-weight: bold; color: %3; }"
+                "QPushButton:hover { background: %4; border-color: %5; }"
+                "QPushButton:checked { background: %6; color: #1c1c1c; border-color: %6; }"
+            ).arg(Theme::kBgSurfaceSecondary, Theme::kBorderDefault, Theme::kTextPrimary, Theme::kBgHover, Theme::kBorderElevated, Theme::kAccent)
         );
         setCheckable(true);
         connect(this, &QPushButton::toggled, this, &ShortcutButton::onToggled);

@@ -21,6 +21,108 @@ void SettingsWindow::setupUi()
     setWindowTitle("Settings");
     setMinimumSize(720, 560);
 
+    setStyleSheet(
+        QString(
+            "QDialog { "
+            "  background-color: %1; "
+            "  color: %2; "
+            "} "
+            "QListWidget { "
+            "  background-color: %1; "
+            "  border: none; "
+            "  border-right: 1px solid %3; "
+            "  outline: none; "
+            "  padding-top: 10px; "
+            "} "
+            "QListWidget::item { "
+            "  height: 36px; "
+            "  padding-left: 15px; "
+            "  border-left: 3px solid transparent; "
+            "  color: %4; "
+            "  font-family: %5; "
+            "  font-size: 13px; "
+            "} "
+            "QListWidget::item:hover { "
+            "  background-color: %6; "
+            "  color: %2; "
+            "} "
+            "QListWidget::item:selected { "
+            "  background-color: %7; "
+            "  border-left: 3px solid %8; "
+            "  color: %8; "
+            "  font-weight: bold; "
+            "} "
+            "QScrollArea { "
+            "  background: transparent; "
+            "  border: none; "
+            "} "
+            "QScrollBar:vertical { "
+            "  background: transparent; "
+            "  width: 8px; "
+            "  margin: 0px; "
+            "} "
+            "QScrollBar::handle:vertical { "
+            "  background: %3; "
+            "  min-height: 20px; "
+            "  border-radius: 4px; "
+            "} "
+            "QScrollBar::handle:vertical:hover { "
+            "  background: %4; "
+            "} "
+            "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { "
+            "  height: 0px; "
+            "} "
+            "QLabel { "
+            "  color: %2; "
+            "  font-family: %5; "
+            "  font-size: 13px; "
+            "} "
+            "QLabel#headerLabel { "
+            "  font-size: 20px; "
+            "  font-weight: 600; "
+            "  color: %2; "
+            "  margin-top: 10px; "
+            "  margin-bottom: 5px; "
+            "} "
+            "QLabel#subHeaderLabel { "
+            "  font-size: 16px; "
+            "  font-weight: 600; "
+            "  color: %2; "
+            "  margin-top: 10px; "
+            "  margin-bottom: 5px; "
+            "} "
+            "QCheckBox { "
+            "  color: %2; "
+            "  font-family: %5; "
+            "  font-size: 13px; "
+            "  spacing: 8px; "
+            "} "
+            "QComboBox { "
+            "  background-color: %9; "
+            "  color: %2; "
+            "  border: 1px solid %3; "
+            "  border-radius: 4px; "
+            "  padding: 4px 28px 4px 10px; "
+            "  min-width: 120px; "
+            "  font-family: %5; "
+            "  font-size: 13px; "
+            "} "
+            "QComboBox:hover { "
+            "  background-color: %6; "
+            "  border-color: %10; "
+            "} "
+            "QComboBox QAbstractItemView { "
+            "  background-color: rgb(40, 40, 40); "
+            "  color: %2; "
+            "  border: 1px solid %10; "
+            "  selection-background-color: %7; "
+            "  selection-color: %8; "
+            "  outline: none; "
+            "} "
+        ).arg(Theme::kBgSurface, Theme::kTextPrimary, Theme::kBorderDefault, Theme::kTextSecondary, Theme::kFontFamily,
+              Theme::kBgHover, Theme::kAccentSubtle, Theme::kAccent, Theme::kBgSurfaceSecondary, Theme::kBorderElevated)
+    );
+
     QHBoxLayout *mainLayout = new QHBoxLayout(this);
     mainLayout->setContentsMargins(0, 0, 0, 0);
     mainLayout->setSpacing(0);
@@ -28,9 +130,7 @@ void SettingsWindow::setupUi()
     m_sidebar = new QListWidget(this);
     m_sidebar->setFixedWidth(180);
     m_sidebar->setStyleSheet(
-        "QListWidget { background: #f0f0f0; border: none; outline: none; padding-top: 10px; }"
-        "QListWidget::item { height: 36px; padding-left: 15px; border-left: 3px solid transparent; color: #333; }"
-        "QListWidget::item:selected { background: #e0e0e0; border-left: 3px solid #0078d4; color: #000; }"
+        "QListWidget { background: transparent; border: none; outline: none; padding-top: 10px; }"
     );
     connect(m_sidebar, &QListWidget::currentRowChanged, this, &SettingsWindow::onSidebarItemChanged);
     mainLayout->addWidget(m_sidebar);
@@ -122,7 +222,8 @@ void SettingsWindow::buildGeneralSection()
     QWidget *container = createSectionWidget();
     QVBoxLayout *layout = qobject_cast<QVBoxLayout*>(container->layout());
 
-    QLabel *header = new QLabel("<h2>General</h2>", container);
+    QLabel *header = new QLabel("General", container);
+    header->setObjectName("headerLabel");
     layout->addWidget(header);
 
     addToggle(container, layout, "Resume playback where you left off", "resumePlayback", true);
@@ -144,7 +245,8 @@ void SettingsWindow::buildVideoSection()
     QWidget *container = createSectionWidget();
     QVBoxLayout *layout = qobject_cast<QVBoxLayout*>(container->layout());
 
-    QLabel *header = new QLabel("<h2>Video</h2>", container);
+    QLabel *header = new QLabel("Video", container);
+    header->setObjectName("headerLabel");
     layout->addWidget(header);
 
     addCombo(container, layout, "Hardware Decoding", "hwdec", 
@@ -163,7 +265,8 @@ void SettingsWindow::buildVideoSection()
              {"50", "70", "85", "95", "100"}, "85");
 
     layout->addSpacing(10);
-    QLabel *debandHeader = new QLabel("<h3>Debanding</h3>", container);
+    QLabel *debandHeader = new QLabel("Debanding", container);
+    debandHeader->setObjectName("subHeaderLabel");
     layout->addWidget(debandHeader);
 
     addToggle(container, layout, "Enable debanding", "debandEnabled", false);
@@ -187,7 +290,8 @@ void SettingsWindow::buildAudioSection()
     QWidget *container = createSectionWidget();
     QVBoxLayout *layout = qobject_cast<QVBoxLayout*>(container->layout());
 
-    QLabel *header = new QLabel("<h2>Audio</h2>", container);
+    QLabel *header = new QLabel("Audio", container);
+    header->setObjectName("headerLabel");
     layout->addWidget(header);
 
     addCombo(container, layout, "Maximum Volume", "volumeMax", 
@@ -217,7 +321,8 @@ void SettingsWindow::buildSubtitlesSection()
     QWidget *container = createSectionWidget();
     QVBoxLayout *layout = qobject_cast<QVBoxLayout*>(container->layout());
 
-    QLabel *header = new QLabel("<h2>Subtitles</h2>", container);
+    QLabel *header = new QLabel("Subtitles", container);
+    header->setObjectName("headerLabel");
     layout->addWidget(header);
 
     addToggle(container, layout, "Auto-load external subtitles", "subAutoLoad", true);
@@ -249,7 +354,8 @@ void SettingsWindow::buildNetworkSection()
     QWidget *container = createSectionWidget();
     QVBoxLayout *layout = qobject_cast<QVBoxLayout*>(container->layout());
 
-    QLabel *header = new QLabel("<h2>Network & Streaming</h2>", container);
+    QLabel *header = new QLabel("Network & Streaming", container);
+    header->setObjectName("headerLabel");
     layout->addWidget(header);
 
     addToggle(container, layout, "Enable cache", "cacheEnabled", true);
@@ -282,7 +388,8 @@ void SettingsWindow::buildScalingSection()
     QWidget *container = createSectionWidget();
     QVBoxLayout *layout = qobject_cast<QVBoxLayout*>(container->layout());
 
-    QLabel *header = new QLabel("<h2>Scaling & Rendering</h2>", container);
+    QLabel *header = new QLabel("Scaling & Rendering", container);
+    header->setObjectName("headerLabel");
     layout->addWidget(header);
 
     addCombo(container, layout, "Video Profile", "videoProfile", 
@@ -314,7 +421,8 @@ void SettingsWindow::buildColorSection()
     QWidget *container = createSectionWidget();
     QVBoxLayout *layout = qobject_cast<QVBoxLayout*>(container->layout());
 
-    QLabel *header = new QLabel("<h2>Color & HDR</h2>", container);
+    QLabel *header = new QLabel("Color & HDR", container);
+    header->setObjectName("headerLabel");
     layout->addWidget(header);
 
     addCombo(container, layout, "Tone Mapping", "toneMapping", 
@@ -342,7 +450,8 @@ void SettingsWindow::buildAnime4KSection()
     QWidget *container = createSectionWidget();
     QVBoxLayout *layout = qobject_cast<QVBoxLayout*>(container->layout());
 
-    QLabel *header = new QLabel("<h2>Anime4K</h2>", container);
+    QLabel *header = new QLabel("Anime4K", container);
+    header->setObjectName("headerLabel");
     layout->addWidget(header);
 
     addCombo(container, layout, "Default Preset", "defaultShaderPreset", {
@@ -360,11 +469,12 @@ void SettingsWindow::buildShortcutsSection()
     QWidget *container = createSectionWidget();
     QVBoxLayout *layout = qobject_cast<QVBoxLayout*>(container->layout());
 
-    QLabel *header = new QLabel("<h2>Keyboard Shortcuts</h2>", container);
+    QLabel *header = new QLabel("Keyboard Shortcuts", container);
+    header->setObjectName("headerLabel");
     layout->addWidget(header);
 
     QLabel *desc = new QLabel("Click any shortcut button below and press a new key combination to change it. Press Escape to cancel.", container);
-    desc->setStyleSheet("color: #555; font-size: 12px; margin-bottom: 8px;");
+    desc->setStyleSheet(QString("color: %1; font-size: 12px; margin-bottom: 8px;").arg(Theme::kTextTertiary));
     layout->addWidget(desc);
 
     // Scrollable area for shortcut definitions
@@ -409,7 +519,7 @@ void SettingsWindow::buildShortcutsSection()
     int row = 0;
     for (const auto &sh : shortcutDefs) {
         QLabel *lbl = new QLabel(sh.description, gridContainer);
-        lbl->setStyleSheet("font-size: 13px; font-weight: 500; color: black;");
+        lbl->setStyleSheet(QString("font-size: 13px; font-weight: 500; color: %1;").arg(Theme::kTextPrimary));
         
         QString currentSeq = m_settings.value("shortcut" + sh.key, sh.defaultKey).toString();
         ShortcutButton *btn = new ShortcutButton(sh.key, currentSeq, gridContainer);

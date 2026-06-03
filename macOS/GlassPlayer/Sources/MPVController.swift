@@ -75,6 +75,7 @@ struct FormatBadges {
 protocol MPVControllerDelegate: AnyObject {
     func mpvPropertyChanged(_ name: String, value: Any?)
     func mpvFileLoaded()
+    func mpvStartFile()       // Called when mpv begins loading a new file
     func mpvPlaybackEnded()
     func mpvTracksChanged(_ tracks: [TrackInfo])
 }
@@ -203,6 +204,8 @@ class MPVController {
     private var eventThread: Thread?
     private var lastTimePosDispatch: CFTimeInterval = 0
     private var eventLoopRunning = true
+    /// Grace period after a new file starts — bypass time-pos throttle for first 2 s
+    private var fileLoadedAt: CFTimeInterval = 0
 
     // Parsed track list
     var tracks: [TrackInfo] = []
@@ -751,7 +754,11 @@ class MPVController {
                 if eventID == MPV_EVENT_NONE { continue }
 
                 switch eventID {
+                case MPV_EVENT_START_FILE:
+                    DispatchQueue.main.async { [weak self] in self?.delegate?.mpvStartFile() }
+
                 case MPV_EVENT_FILE_LOADED:
+                    self.fileLoadedAt = CACurrentMediaTime()
                     self.refreshTrackList()
                     DispatchQueue.main.async { [weak self] in self?.delegate?.mpvFileLoaded() }
 
@@ -771,10 +778,12 @@ class MPVController {
                     switch prop.format {
                     case MPV_FORMAT_DOUBLE:
                         let val = prop.data?.assumingMemoryBound(to: Double.self).pointee
-                        // Hot path: time-pos fires ~30fps — throttle and avoid String alloc
+                        // Hot path: time-pos fires ~30fps — throttle except during the
+                        // 2-second grace window after file load (avoid missing first event).
                         if strcmp(cName, "time-pos") == 0 {
                             let now = CACurrentMediaTime()
-                            if now - self.lastTimePosDispatch < 0.033 { break }
+                            let inGrace = (now - self.fileLoadedAt) < 2.0
+                            if !inGrace && now - self.lastTimePosDispatch < 0.033 { break }
                             self.lastTimePosDispatch = now
                         }
                         let name = String(cString: cName)
