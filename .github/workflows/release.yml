@@ -161,34 +161,28 @@ jobs:
 
           # 3. Run windeployqt
           if [ "${{ matrix.arch }}" = "ARM64" ]; then
-            host_qt_dir=""
-            for candidate in "$QT_HOST_PATH" "${{ github.workspace }}/../Qt_host/Qt/6.5.3/msvc2019_64"; do
-              if [ -n "$candidate" ] && [ -d "$candidate" ]; then
-                host_qt_dir="$candidate"
-                break
-              fi
-            done
-            host_qt_dir="${host_qt_dir//\\//}"
-            HOST_QT_BIN="$host_qt_dir/bin"
-            
-            QTPATHS_BIN=""
-            if [ -f "$TARGET_QT_BIN/qtpaths.bat" ]; then
-              QTPATHS_BIN="$TARGET_QT_BIN/qtpaths.bat"
-            else
-              QTPATHS_BIN="$TARGET_QT_BIN/qtpaths.exe"
-            fi
-            
-            echo "Running cross-windeployqt..."
-            echo "Host QT Bin: $HOST_QT_BIN"
-            echo "Target QT Bin: $TARGET_QT_BIN"
-            echo "Qtpaths path: $QTPATHS_BIN"
-            
-            MSYS_NO_PATHCONV=1 "$HOST_QT_BIN/windeployqt.exe" \
-              --qtpaths "$QTPATHS_BIN" \
-              --no-translations \
-              --no-opengl-sw \
-              windows/dist/bin/GlassPlayer.exe
-              
+            echo "Staging Qt6 ARM64 DLLs manually..."
+            cp "$TARGET_QT_BIN"/Qt6Core.dll \
+               "$TARGET_QT_BIN"/Qt6Gui.dll \
+               "$TARGET_QT_BIN"/Qt6Widgets.dll \
+               "$TARGET_QT_BIN"/Qt6OpenGLWidgets.dll \
+               "$TARGET_QT_BIN"/Qt6OpenGL.dll \
+               "$TARGET_QT_BIN"/Qt6Network.dll \
+               "$TARGET_QT_BIN"/Qt6Svg.dll \
+               "$TARGET_QT_BIN"/Qt6SvgWidgets.dll \
+               windows/dist/bin/
+
+            echo "Staging Qt6 ARM64 Plugins manually..."
+            mkdir -p windows/dist/bin/platforms \
+                     windows/dist/bin/imageformats \
+                     windows/dist/bin/styles \
+                     windows/dist/bin/tls
+
+            cp "$target_qt_dir"/plugins/platforms/qwindows.dll windows/dist/bin/platforms/
+            cp "$target_qt_dir"/plugins/imageformats/qsvg.dll windows/dist/bin/imageformats/
+            cp "$target_qt_dir"/plugins/styles/qwindowsvistastyle.dll windows/dist/bin/styles/
+            cp "$target_qt_dir"/plugins/tls/*.dll windows/dist/bin/tls/ 2>/dev/null || true
+
             # 4. Copy ARM64 Visual C++ Runtime libraries
             REDIST_DIR="${VCToolsRedistDir//\\//}"
             echo "Copying ARM64 VC runtimes from $REDIST_DIR..."
