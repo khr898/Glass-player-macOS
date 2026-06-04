@@ -2966,6 +2966,7 @@ private struct LiquidGlassSliderView: View {
             GeometryReader { geo in
                 Slider(value: $value, in: minValue...maxValue)
                     .glassEffect(.regular.interactive())
+                    .focusable(false)
                     // Make the slider as wide as the container is tall
                     .frame(width: geo.size.height, height: geo.size.width)
                     // Rotate so it stands vertically; -90° puts max at the top
@@ -2983,6 +2984,7 @@ private struct LiquidGlassSliderView: View {
                 // exactly what Control Center uses. The OS handles all three
                 // states (normal, hover, drag) automatically.
                 .glassEffect(.regular.interactive())
+                .focusable(false)
                 .simultaneousGesture(
                     DragGesture(minimumDistance: 0)
                         .onEnded { _ in onDragEnded?(value) }
@@ -3060,6 +3062,7 @@ private class LegacyGlassNSSlider: NSSlider {
         self.cell = LegacyGlassSliderCell()
         isContinuous  = true
         focusRingType = .none
+        refusesFirstResponder = true
         legacyCell.barHeight = 4
     }
 
@@ -3191,6 +3194,9 @@ class GlassSlider: NSView {
         // three states (normal, hover, drag) automatically.
         let hosting = NSHostingView(rootView: makeTahoeView())
         hosting.translatesAutoresizingMaskIntoConstraints = false
+        hosting.focusRingType = .none
+        hosting.wantsLayer = true
+        hosting.layer?.backgroundColor = NSColor.clear.cgColor
         addSubview(hosting)
         NSLayoutConstraint.activate([
             hosting.topAnchor.constraint(equalTo: topAnchor),
