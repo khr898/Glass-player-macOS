@@ -2991,6 +2991,8 @@ private struct LiquidGlassSliderView: View {
     }
 }
 
+
+
 // MARK: – Legacy bar-only cell for older macOS (native knob, custom bar)
 private class LegacyGlassSliderCell: NSSliderCell {
     // Simple animated bar height — driven by the parent slider
@@ -3263,6 +3265,23 @@ private extension Double {
         return Swift.min(Swift.max(self, range.lowerBound), range.upperBound)
     }
 }
+
+#if !compiler(>=7.0)
+@available(macOS 26.0, *)
+struct GlassEffectStyle {
+    static var regular: GlassEffectStyle { GlassEffectStyle() }
+    func interactive() -> GlassEffectStyle { self }
+}
+
+@available(macOS 26.0, *)
+extension View {
+    @_disfavoredOverload
+    func glassEffect(_ style: GlassEffectStyle) -> some View {
+        return self
+    }
+}
+#endif
+
 
 
 

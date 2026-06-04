@@ -65,7 +65,7 @@ jobs:
             artifact_name: GlassPlayer-Windows-arm64
             mpv_dll: vendor/mpv-dev/arm64/libmpv-2.dll
           - name: macOS arm64
-            runner: macos-14
+            runner: macos-26
             target: macos
             artifact_name: GlassPlayer-macOS-arm64
 
