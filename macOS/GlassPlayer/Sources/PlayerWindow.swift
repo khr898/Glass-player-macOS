@@ -5,6 +5,8 @@ import AVFoundation
 import CoreAudio
 import MediaPlayer
 import SwiftUI
+import Combine
+
 
 // ---------------------------------------------------------------------------
 // PlayerWindow – full-featured player window with glass overlay controls
@@ -2949,49 +2951,99 @@ private class ThumbnailMPV {
 //              the native system knob (always clearly visible).
 // ---------------------------------------------------------------------------
 // MARK: – SwiftUI bridge for the Tahoe liquid-glass slider (macOS 26+ only)
-@available(macOS 26.0, *)
+@available(macOS 10.15, *)
+class SliderCoordinator: ObservableObject {
+    @Published var value: Double = 0
+    @Published var minValue: Double = 0
+    @Published var maxValue: Double = 1
+    @Published var isVertical: Bool = false
+
+    var onValueChanged: ((Double) -> Void)?
+    var onDragEnded:    ((Double) -> Void)?
+}
+
+@available(macOS 10.15, *)
 private struct LiquidGlassSliderView: View {
-    @Binding var value: Double
-    let minValue: Double
-    let maxValue: Double
-    let isVertical: Bool
-    let onDragEnded: ((Double) -> Void)?
+    @ObservedObject var coordinator: SliderCoordinator
+
+    @State private var isHovered = false
+    @State private var isDragging = false
 
     var body: some View {
-        if isVertical {
-            // GeometryReader gives us the container size (e.g. 20x155).
-            // We create a Slider at width=containerHeight, rotate -90°, then
-            // reposition it at the container centre. SwiftUI's rotationEffect
-            // is fully hit-test-aware, so dragging up/down works correctly.
-            GeometryReader { geo in
-                Slider(value: $value, in: minValue...maxValue)
-                    .glassEffect(.regular.interactive())
-                    .focusable(false)
-                    // Make the slider as wide as the container is tall
-                    .frame(width: geo.size.height, height: geo.size.width)
-                    // Rotate so it stands vertically; -90° puts max at the top
-                    .rotationEffect(.degrees(-90))
-                    // Re-centre in the GeometryReader frame
-                    .position(x: geo.size.width / 2, y: geo.size.height / 2)
-                    .simultaneousGesture(
-                        DragGesture(minimumDistance: 0)
-                            .onEnded { _ in onDragEnded?(value) }
-                    )
+        GeometryReader { geo in
+            let thickness: CGFloat = isHovered || isDragging ? 20 : 4
+            let range = max(0.001, coordinator.maxValue - coordinator.minValue)
+            let fraction = (coordinator.value - coordinator.minValue) / range
+            let clampedFraction = max(0, min(1, fraction))
+
+            ZStack(alignment: coordinator.isVertical ? .bottom : .leading) {
+                // Background Track
+                if isDragging {
+                    Capsule()
+                        .fill(.ultraThinMaterial)
+                        .frame(
+                            width: coordinator.isVertical ? thickness : geo.size.width,
+                            height: coordinator.isVertical ? geo.size.height : thickness
+                        )
+                } else {
+                    Capsule()
+                        .fill(Color.white.opacity(isHovered ? 0.25 : 0.15))
+                        .frame(
+                            width: coordinator.isVertical ? thickness : geo.size.width,
+                            height: coordinator.isVertical ? geo.size.height : thickness
+                        )
+                }
+
+                // Progress Fill
+                if isDragging {
+                    Capsule()
+                        .fill(Color.white.opacity(0.55))
+                        .frame(
+                            width: coordinator.isVertical ? thickness : geo.size.width * clampedFraction,
+                            height: coordinator.isVertical ? geo.size.height * clampedFraction : thickness
+                        )
+                } else {
+                    Capsule()
+                        .fill(Color.white.opacity(isHovered ? 0.95 : 0.85))
+                        .frame(
+                            width: coordinator.isVertical ? thickness : geo.size.width * clampedFraction,
+                            height: coordinator.isVertical ? geo.size.height * clampedFraction : thickness
+                        )
+                }
             }
-        } else {
-            Slider(value: $value, in: minValue...maxValue)
-                // Apply the native Tahoe liquid glass appearance — this is
-                // exactly what Control Center uses. The OS handles all three
-                // states (normal, hover, drag) automatically.
-                .glassEffect(.regular.interactive())
-                .focusable(false)
-                .simultaneousGesture(
-                    DragGesture(minimumDistance: 0)
-                        .onEnded { _ in onDragEnded?(value) }
-                )
+            .frame(width: geo.size.width, height: geo.size.height, alignment: .center)
+            .contentShape(Rectangle())
+            .onHover { hover in
+                withAnimation(.spring(response: 0.2, dampingFraction: 0.8)) {
+                    isHovered = hover
+                }
+            }
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { gesture in
+                        isDragging = true
+                        let rawFraction: Double
+                        if coordinator.isVertical {
+                            rawFraction = Double(1 - (gesture.location.y / geo.size.height))
+                        } else {
+                            rawFraction = Double(gesture.location.x / geo.size.width)
+                        }
+                        let newFraction = max(0, min(1, rawFraction))
+                        let newVal = coordinator.minValue + newFraction * range
+                        coordinator.value = newVal
+                        coordinator.onValueChanged?(newVal)
+                    }
+                    .onEnded { gesture in
+                        withAnimation(.spring(response: 0.2, dampingFraction: 0.8)) {
+                            isDragging = false
+                        }
+                        coordinator.onDragEnded?(coordinator.value)
+                    }
+            )
         }
     }
 }
+
 
 
 
@@ -3132,7 +3184,7 @@ private class LegacyGlassNSSlider: NSSlider {
 // MARK: – GlassSlider: public API surface
 //
 // Drop-in replacement for NSSlider with:
-//   • macOS 26+: exact native Tahoe liquid glass (SwiftUI + .glassEffect)
+//   • macOS 26+: exact native Tahoe liquid glass (SwiftUI custom view, no shrunk border)
 //   • macOS < 26: native knob + white translucent bar (LegacyGlassNSSlider)
 //
 // Callers set .doubleValue / .minValue / .maxValue and receive callbacks via
@@ -3144,19 +3196,26 @@ class GlassSlider: NSView {
     var onValueChanged: ((Double) -> Void)?
     var onDragEnded:    ((Double) -> Void)?
 
-    var minValue: Double = 0   { didSet { applyBounds() } }
-    var maxValue: Double = 1   { didSet { applyBounds() } }
+    var minValue: Double = 0   { didSet { coordinator.minValue = minValue } }
+    var maxValue: Double = 1   { didSet { coordinator.maxValue = maxValue } }
     var doubleValue: Double = 0 {
         didSet {
             let clamped = doubleValue.clamped(to: minValue...maxValue)
             if clamped != doubleValue { doubleValue = clamped; return }
+            coordinator.value = doubleValue
             applyValue()
         }
     }
-    var isVertical: Bool = false { didSet { rebuildImpl() } }
+    var isVertical: Bool = false {
+        didSet {
+            coordinator.isVertical = isVertical
+            rebuildImpl()
+        }
+    }
     override var mouseDownCanMoveWindow: Bool { false }
 
     // MARK: – Implementation (set once at init / OS check)
+    private let coordinator = SliderCoordinator()
     private var hostView: NSView?   // either NSHostingView (Tahoe) or LegacyGlassNSSlider
 
     // MARK: – Init
@@ -3171,9 +3230,6 @@ class GlassSlider: NSView {
     convenience init() { self.init(frame: .zero) }
 
     // MARK: – Build the correct implementation
-    // All sliders use the native Tahoe liquid glass path on macOS 26+.
-    // Vertical sliders use GeometryReader + rotationEffect inside SwiftUI so
-    // hit-testing is fully correct (SwiftUI transforms hit-tests with the view).
     private func buildImpl() {
         hostView?.removeFromSuperview()
         hostView = nil
@@ -3188,11 +3244,20 @@ class GlassSlider: NSView {
 
     @available(macOS 26.0, *)
     private func buildTahoeImpl() {
-        // Wrap a SwiftUI LiquidGlassSliderView in NSHostingView.
-        // The SwiftUI Slider with .glassEffect(.regular.interactive()) IS the
-        // exact same control used by macOS Control Center — the OS handles all
-        // three states (normal, hover, drag) automatically.
-        let hosting = NSHostingView(rootView: makeTahoeView())
+        coordinator.minValue = minValue
+        coordinator.maxValue = maxValue
+        coordinator.value = doubleValue
+        coordinator.isVertical = isVertical
+        coordinator.onValueChanged = { [weak self] v in
+            guard let self = self else { return }
+            self.doubleValue = v
+            self.onValueChanged?(v)
+        }
+        coordinator.onDragEnded = { [weak self] v in
+            self?.onDragEnded?(v)
+        }
+
+        let hosting = NSHostingView(rootView: LiquidGlassSliderView(coordinator: coordinator))
         hosting.translatesAutoresizingMaskIntoConstraints = false
         hosting.focusRingType = .none
         hosting.wantsLayer = true
@@ -3229,8 +3294,7 @@ class GlassSlider: NSView {
     // MARK: – Value / bounds propagation
     private func applyValue() {
         if #available(macOS 26.0, *) {
-            // The SwiftUI Binding picks up doubleValue automatically on next render.
-            (hostView as? NSHostingView<LiquidGlassSliderView>)?.rootView = makeTahoeView()
+            // Already updated coordinator.value directly in doubleValue's didSet
         } else {
             (hostView as? LegacyGlassNSSlider)?.doubleValue = doubleValue
         }
@@ -3238,30 +3302,12 @@ class GlassSlider: NSView {
 
     private func applyBounds() {
         if #available(macOS 26.0, *) {
-            (hostView as? NSHostingView<LiquidGlassSliderView>)?.rootView = makeTahoeView()
+            coordinator.minValue = minValue
+            coordinator.maxValue = maxValue
         } else {
             let l = hostView as? LegacyGlassNSSlider
             l?.minValue = minValue; l?.maxValue = maxValue
         }
-    }
-
-    @available(macOS 26.0, *)
-    private func makeTahoeView() -> LiquidGlassSliderView {
-        let binding = Binding<Double>(
-            get: { [weak self] in self?.doubleValue ?? 0 },
-            set: { [weak self] newVal in
-                guard let self = self else { return }
-                self.doubleValue = newVal
-                self.onValueChanged?(newVal)
-            }
-        )
-        return LiquidGlassSliderView(
-            value: binding,
-            minValue: minValue,
-            maxValue: maxValue,
-            isVertical: isVertical,
-            onDragEnded: { [weak self] val in self?.onDragEnded?(val) }
-        )
     }
 }
 
@@ -3272,21 +3318,6 @@ private extension Double {
     }
 }
 
-#if !compiler(>=7.0)
-@available(macOS 26.0, *)
-struct GlassEffectStyle {
-    static var regular: GlassEffectStyle { GlassEffectStyle() }
-    func interactive() -> GlassEffectStyle { self }
-}
-
-@available(macOS 26.0, *)
-extension View {
-    @_disfavoredOverload
-    func glassEffect(_ style: GlassEffectStyle) -> some View {
-        return self
-    }
-}
-#endif
 
 
 
