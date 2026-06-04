@@ -1925,24 +1925,9 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
             self?.updateFormatBadges()
             self?.updateNowPlayingInfo()
-            self?.updateFileThumbnailIfNeeded()
-        }
-    }
-
-    /// Extract a poster frame and set it as the file icon in Finder
-    private func updateFileThumbnailIfNeeded() {
-        guard let path = filePath, !currentMediaIsURL else { return }
-        guard let thumbMPV = thumbnailMPV else { return }
-        
-        let posterTime = min(5.0, duration > 0 ? duration * 0.1 : 5.0)
-        
-        UniversalSiliconQoS.heavy.async { [weak self] in
-            guard let self = self else { return }
-            if let image = thumbMPV.generateThumbnail(at: posterTime) {
-                DispatchQueue.main.async {
-                    NSWorkspace.shared.setIcon(image, forFile: path, options: [])
-                    NSLog("[PlayerWindow] Set video thumbnail as Finder file icon for: %@", path)
-                }
+            // Clear any custom Finder thumbnail/icon set on the file so it displays the standard Glass Player icon instead
+            if let path = self?.filePath, !(self?.currentMediaIsURL ?? true) {
+                NSWorkspace.shared.setIcon(nil, forFile: path, options: [])
             }
         }
     }
@@ -3013,10 +2998,23 @@ class GlassSlider: NSSlider {
         self.target = self
         self.action = #selector(sliderAction(_:))
         self.isContinuous = true
+        self.focusRingType = .none
 
-        // Create track and knob views
-        trackView = createEffectView()
-        knobView = createEffectView()
+        // Create track view: dynamically try NSGlassEffectView on macOS 26+, fallback to plain translucent white NSView
+        if #available(macOS 26.0, *),
+           let glassClass = NSClassFromString("NSGlassEffectView") as? NSView.Type {
+            trackView = glassClass.init()
+        } else {
+            let fallbackTrack = NSView()
+            fallbackTrack.wantsLayer = true
+            fallbackTrack.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.25).cgColor
+            trackView = fallbackTrack
+        }
+
+        // Create knob view: standard solid white NSView to avoid visual effect clipping issues
+        knobView = NSView()
+        knobView.wantsLayer = true
+        knobView.layer?.backgroundColor = NSColor.white.cgColor
 
         self.addSubview(trackView)
         trackView.addSubview(fillView)
@@ -3027,21 +3025,6 @@ class GlassSlider: NSSlider {
         fillView.layer?.backgroundColor = NSColor(red: 0.37, green: 0.80, blue: 1.0, alpha: 0.65).cgColor
 
         self.needsLayout = true
-    }
-
-    private func createEffectView() -> NSView {
-        if #available(macOS 26.0, *),
-           let glassClass = NSClassFromString("NSGlassEffectView") as? NSView.Type {
-            return glassClass.init()
-        } else if #available(macOS 10.10, *) {
-            let vev = NSVisualEffectView()
-            vev.material = .hudWindow
-            vev.blendingMode = .withinWindow
-            vev.state = .active
-            return vev
-        } else {
-            return NSView()
-        }
     }
 
     private func applyCornerRadius(_ view: NSView, radius: CGFloat, maskToBounds: Bool = false) {
