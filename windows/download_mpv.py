@@ -6,12 +6,19 @@ import xml.etree.ElementTree as ET
 import subprocess
 import shutil
 
+def check_arch(val):
+    val_lower = val.lower()
+    if val_lower not in ["x64", "arm64"]:
+        raise argparse.ArgumentTypeError(f"Invalid arch: '{val}'. Choose from 'x64', 'arm64'.")
+    return val_lower
+
 def main():
     parser = argparse.ArgumentParser(description="Download and extract libmpv binaries for Windows.")
-    parser.add_argument("--arch", required=True, choices=["x64", "arm64"], help="Target architecture (x64 or arm64)")
+    parser.add_argument("--arch", required=True, type=check_arch, help="Target architecture (x64 or arm64)")
     args = parser.parse_args()
 
-    arch_lower = args.arch.lower()
+    arch_lower = args.arch
+
     if arch_lower == "x64":
         search_pattern = "mpv-dev-x86_64"
         exclude_pattern = "v3"
