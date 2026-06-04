@@ -116,9 +116,10 @@ jobs:
           target: 'desktop'
           arch: ${{ matrix.qt_arch }}
 
-      - name: Download libmpv ARM64 (Windows ARM64)
-        if: matrix.target == 'windows' && matrix.arch == 'ARM64'
-        run: python windows/download_mpv_arm64.py
+      - name: Download libmpv Binaries (Windows)
+        if: matrix.target == 'windows'
+        run: python windows/download_mpv.py --arch ${{ matrix.arch }}
+
 
       - name: Configure CMake with Custom Version (Windows)
         if: matrix.target == 'windows'

@@ -80,7 +80,9 @@ ui_*.h
 *.7z
 
 # Dependency directories (locally downloaded)
+vendor/mpv-dev/x64/
 vendor/mpv-dev/arm64/
+
 
 # App logs & caches
 *.log
