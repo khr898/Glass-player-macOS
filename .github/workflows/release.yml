@@ -143,8 +143,38 @@ jobs:
 
       - name: Install and Stage Files (Windows)
         if: matrix.target == 'windows'
+        shell: bash
         run: |
+          # 1. Install via CMake
           cmake --install build-win-${{ matrix.arch }} --prefix windows/dist
+
+          # 2. Run windeployqt
+          if [ "${{ matrix.arch }}" = "ARM64" ]; then
+            # Resolve paths using forward slashes
+            HOST_QT_BIN="${QT_HOST_PATH//\\//}/bin"
+            TARGET_QT_BIN="${QT_ROOT_DIR//\\//}/bin"
+            
+            echo "Running cross-windeployqt..."
+            "$HOST_QT_BIN/windeployqt.exe" \
+              --qtpaths "$TARGET_QT_BIN/qtpaths.exe" \
+              --no-translations \
+              --no-opengl-sw \
+              windows/dist/bin/GlassPlayer.exe
+              
+            # 3. Copy ARM64 Visual C++ Runtime libraries
+            REDIST_DIR="${VCToolsRedistDir//\\//}"
+            echo "Copying ARM64 VC runtimes from $REDIST_DIR..."
+            cp "$REDIST_DIR"/arm64/Microsoft.VC*.CRT/*.dll windows/dist/bin/
+          else
+            # Native x64 build
+            TARGET_QT_BIN="${QT_ROOT_DIR//\\//}/bin"
+            echo "Running native windeployqt..."
+            "$TARGET_QT_BIN/windeployqt.exe" \
+              --no-translations \
+              --no-opengl-sw \
+              windows/dist/bin/GlassPlayer.exe
+          fi
+
 
       - name: Compile Inno Setup Installer (Windows)
         if: matrix.target == 'windows'

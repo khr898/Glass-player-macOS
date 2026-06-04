@@ -149,7 +149,7 @@ if(WIN32)
     get_filename_component(_qt_bin_dir "${_qmake_executable}" DIRECTORY)
     find_program(WINDEPLOYQT_EXECUTABLE windeployqt HINTS "${_qt_bin_dir}")
     
-    if(WINDEPLOYQT_EXECUTABLE)
+    if(NOT CMAKE_CROSSCOMPILING AND WINDEPLOYQT_EXECUTABLE)
         install(CODE "execute_process(COMMAND ${WINDEPLOYQT_EXECUTABLE} --no-translations --no-opengl-sw \"\${CMAKE_INSTALL_PREFIX}/bin/GlassPlayer.exe\")")
     endif()
 endif()
