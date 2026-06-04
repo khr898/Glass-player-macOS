@@ -2954,34 +2954,22 @@ private struct LiquidGlassSliderView: View {
     @Binding var value: Double
     let minValue: Double
     let maxValue: Double
-    let isVertical: Bool
-    let onValueChanged: ((Double) -> Void)?
     let onDragEnded: ((Double) -> Void)?
-
-    @State private var isDragging = false
 
     var body: some View {
         Slider(
             value: Binding(
                 get: { value },
-                set: { newVal in
-                    value = newVal
-                    onValueChanged?(newVal)
-                }
+                set: { newVal in value = newVal }
             ),
             in: minValue...maxValue
         )
         // Apply the native Tahoe liquid glass appearance — this is exactly what
         // Control Center uses. The OS handles normal / hover / drag states.
         .glassEffect(.regular.interactive())
-        .if(isVertical) { $0.rotationEffect(.degrees(-90)) }
-        .gesture(
+        .simultaneousGesture(
             DragGesture(minimumDistance: 0)
-                .onChanged { _ in isDragging = true }
-                .onEnded { _ in
-                    isDragging = false
-                    onDragEnded?(value)
-                }
+                .onEnded { _ in onDragEnded?(value) }
         )
     }
 }
@@ -3157,13 +3145,6 @@ class GlassSlider: NSView {
     // MARK: – Implementation (set once at init / OS check)
     private var hostView: NSView?   // either NSHostingView (Tahoe) or LegacyGlassNSSlider
 
-    // Tahoe-only binding
-    @available(macOS 26.0, *)
-    private var swiftUIValue: Double {
-        get { doubleValue }
-        set { doubleValue = newValue }
-    }
-
     // MARK: – Init
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -3176,11 +3157,14 @@ class GlassSlider: NSView {
     convenience init() { self.init(frame: .zero) }
 
     // MARK: – Build the correct implementation
+    // Vertical sliders always use the legacy NSSlider path. SwiftUI's Slider
+    // is horizontal-only; rotation workarounds break hit-testing on Tahoe.
+    // Horizontal sliders on macOS 26+ use the native SwiftUI liquid glass path.
     private func buildImpl() {
         hostView?.removeFromSuperview()
         hostView = nil
 
-        if #available(macOS 26.0, *) {
+        if !isVertical, #available(macOS 26.0, *) {
             buildTahoeImpl()
         } else {
             buildLegacyImpl()
@@ -3194,23 +3178,7 @@ class GlassSlider: NSView {
         // The SwiftUI Slider with .glassEffect(.regular.interactive()) IS the
         // exact same control used by macOS Control Center — the OS handles all
         // three states (normal, hover, drag) automatically.
-        let binding = Binding<Double>(
-            get: { [weak self] in self?.doubleValue ?? 0 },
-            set: { [weak self] newVal in
-                guard let self = self else { return }
-                self.doubleValue = newVal
-                self.onValueChanged?(newVal)
-            }
-        )
-        let swiftUIView = LiquidGlassSliderView(
-            value: binding,
-            minValue: minValue,
-            maxValue: maxValue,
-            isVertical: isVertical,
-            onValueChanged: nil,   // handled by the Binding setter above
-            onDragEnded: { [weak self] val in self?.onDragEnded?(val) }
-        )
-        let hosting = NSHostingView(rootView: swiftUIView)
+        let hosting = NSHostingView(rootView: makeTahoeView())
         hosting.translatesAutoresizingMaskIntoConstraints = false
         addSubview(hosting)
         NSLayoutConstraint.activate([
@@ -3274,8 +3242,6 @@ class GlassSlider: NSView {
             value: binding,
             minValue: minValue,
             maxValue: maxValue,
-            isVertical: isVertical,
-            onValueChanged: nil,
             onDragEnded: { [weak self] val in self?.onDragEnded?(val) }
         )
     }
