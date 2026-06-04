@@ -79,5 +79,9 @@ ui_*.h
 *.tar.gz
 *.7z
 
+# Dependency directories (locally downloaded)
+vendor/mpv-dev/arm64/
+
 # App logs & caches
 *.log
+
