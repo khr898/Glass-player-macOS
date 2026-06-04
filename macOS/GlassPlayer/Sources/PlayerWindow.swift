@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 import AVFoundation
 import CoreAudio
 import MediaPlayer
+import SwiftUI
 
 // ---------------------------------------------------------------------------
 // PlayerWindow – full-featured player window with glass overlay controls
@@ -2936,265 +2937,356 @@ private class ThumbnailMPV {
 }
 
 // ---------------------------------------------------------------------------
-// GlassSliderCell – Custom NSSliderCell that:
-//   • Draws a custom glass track (bar) with state-aware height
-//   • Lets AppKit draw the native knob — always clearly visible on all macOS
-//     versions (gets the Tahoe Liquid Glass knob automatically on macOS 26+)
+// GlassSlider – Slider that uses the exact native macOS Tahoe liquid glass
+// appearance on macOS 26+, with a clean fallback on older macOS versions.
+//
+// macOS 26+  → SwiftUI Slider + .glassEffect(.regular.interactive())
+//              hosted via NSHostingView. This is identical to the Control
+//              Center slider: thin track at rest, expands to bright white pill
+//              on hover, liquid-glass knob while dragging. Zero custom drawing.
+//
+// macOS < 26 → Plain NSSlider with a simple rounded white translucent bar and
+//              the native system knob (always clearly visible).
 // ---------------------------------------------------------------------------
-class GlassSliderCell: NSSliderCell {
+// MARK: – SwiftUI bridge for the Tahoe liquid-glass slider (macOS 26+ only)
+@available(macOS 26.0, *)
+private struct LiquidGlassSliderView: View {
+    @Binding var value: Double
+    let minValue: Double
+    let maxValue: Double
+    let isVertical: Bool
+    let onValueChanged: ((Double) -> Void)?
+    let onDragEnded: ((Double) -> Void)?
 
-    // State flags set by GlassSlider to drive bar appearance
-    var isExpanded: Bool = false  // true when hovered or dragging
-    var isDragging: Bool = false
+    @State private var isDragging = false
 
-    // How tall the bar should be (animated by GlassSlider)
+    var body: some View {
+        Slider(
+            value: Binding(
+                get: { value },
+                set: { newVal in
+                    value = newVal
+                    onValueChanged?(newVal)
+                }
+            ),
+            in: minValue...maxValue
+        )
+        // Apply the native Tahoe liquid glass appearance — this is exactly what
+        // Control Center uses. The OS handles normal / hover / drag states.
+        .glassEffect(.regular.interactive())
+        .if(isVertical) { $0.rotationEffect(.degrees(-90)) }
+        .gesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { _ in isDragging = true }
+                .onEnded { _ in
+                    isDragging = false
+                    onDragEnded?(value)
+                }
+        )
+    }
+}
+
+// SwiftUI View extension helper for conditional modifier
+private extension View {
+    @ViewBuilder
+    func `if`<Content: View>(_ condition: Bool, transform: (Self) -> Content) -> some View {
+        if condition { transform(self) } else { self }
+    }
+}
+
+// MARK: – Legacy bar-only cell for older macOS (native knob, custom bar)
+private class LegacyGlassSliderCell: NSSliderCell {
+    // Simple animated bar height — driven by the parent slider
     var barHeight: CGFloat = 4
 
-    // MARK: – Bar rect: returns a rect with our custom height, centered on the slider
     override func barRect(flipped: Bool) -> NSRect {
         guard let cv = controlView else { return super.barRect(flipped: flipped) }
         let b = cv.bounds
-        // Use a fixed knob reservation size to avoid recursion.
-        // NSSlider's standard knob is ~17pt wide/tall on macOS.
-        let knobReserve: CGFloat = 17
+        let knobReserve: CGFloat = 17   // standard NSSlider knob width
 
-        if (controlView as? NSSlider)?.isVertical == true {
-            return NSRect(
-                x: (b.width - barHeight) / 2,
-                y: knobReserve / 2,
-                width: barHeight,
-                height: max(0, b.height - knobReserve)
-            )
+        if (cv as? NSSlider)?.isVertical == true {
+            return NSRect(x: (b.width - barHeight) / 2, y: knobReserve / 2,
+                          width: barHeight, height: max(0, b.height - knobReserve))
         } else {
-            return NSRect(
-                x: knobReserve / 2,
-                y: (b.height - barHeight) / 2,
-                width: max(0, b.width - knobReserve),
-                height: barHeight
-            )
+            return NSRect(x: knobReserve / 2, y: (b.height - barHeight) / 2,
+                          width: max(0, b.width - knobReserve), height: barHeight)
         }
     }
 
-    // MARK: – Bar drawing: custom glass track + fill portion
     override func drawBar(inside aRect: NSRect, flipped: Bool) {
-        let radius = min(aRect.height, aRect.width) / 2
-
-        // ── Track background ──
-        let bgAlpha: CGFloat = isExpanded ? 0.90 : 0.25
-        let bgColor = NSColor.white.withAlphaComponent(bgAlpha)
-        bgColor.setFill()
-        NSBezierPath(roundedRect: aRect, xRadius: radius, yRadius: radius).fill()
-
-        // ── Filled portion (value progress) ──
-        let fraction: Double
+        let r = min(aRect.height, aRect.width) / 2
+        // Track background
+        NSColor.white.withAlphaComponent(barHeight > 8 ? 0.88 : 0.22).setFill()
+        NSBezierPath(roundedRect: aRect, xRadius: r, yRadius: r).fill()
+        // Fill (progress)
         let range = maxValue - minValue
-        if range > 0 {
-            fraction = (doubleValue - minValue) / range
-        } else {
-            fraction = 0
-        }
-
-        var fillRect = aRect
+        let frac = range > 0 ? (doubleValue - minValue) / range : 0
+        var fill = aRect
         if (controlView as? NSSlider)?.isVertical == true {
-            let fillH = aRect.height * CGFloat(fraction)
-            fillRect = NSRect(x: aRect.minX, y: aRect.minY, width: aRect.width, height: fillH)
+            fill.size.height = aRect.height * CGFloat(frac)
         } else {
-            fillRect.size.width = aRect.width * CGFloat(fraction)
+            fill.size.width = aRect.width * CGFloat(frac)
         }
-
-        let fillColor: NSColor
-        if isDragging {
-            fillColor = NSColor(red: 0.37, green: 0.80, blue: 1.0, alpha: 0.75)
-        } else if isExpanded {
-            fillColor = NSColor.white.withAlphaComponent(0.45)
-        } else {
-            fillColor = NSColor.white.withAlphaComponent(0.65)
-        }
-        fillColor.setFill()
-        NSBezierPath(roundedRect: fillRect, xRadius: radius, yRadius: radius).fill()
+        NSColor.white.withAlphaComponent(0.65).setFill()
+        NSBezierPath(roundedRect: fill, xRadius: r, yRadius: r).fill()
     }
 
-    // Suppress the focus ring – we don't want the blue outline
     override func drawFocusRingMask(withFrame cellFrame: NSRect, in controlView: NSView) {}
 }
 
-// ---------------------------------------------------------------------------
-// GlassSlider – Native NSSlider with Tahoe-style state machine:
-//
-//   • normal   – thin 4 pt track, native knob (clearly visible, system styled)
-//   • hover    – track expands to 20 pt pill (white pill, like Control Center)
-//   • dragging – same pill geometry, fill turns accent-tinted blue glass
-//
-// The native NSSlider cell draws the knob on all macOS versions.
-// On macOS 26 (Tahoe) the knob automatically gets the liquid glass appearance.
-// On older macOS the standard round shadow knob is used — always clearly visible.
-// ---------------------------------------------------------------------------
-class GlassSlider: NSSlider {
-
-    // MARK: – Public callbacks
+// MARK: – Legacy NSSlider wrapper for older macOS
+private class LegacyGlassNSSlider: NSSlider {
     var onValueChanged: ((Double) -> Void)?
     var onDragEnded:    ((Double) -> Void)?
 
-    // MARK: – State
-    private enum SliderState { case normal, hover, dragging }
-    private var sliderState: SliderState = .normal {
-        didSet {
-            guard sliderState != oldValue else { return }
-            animateBarToCurrentState()
+    private var legacyCell: LegacyGlassSliderCell { cell as! LegacyGlassSliderCell }
+    private var currentBarHeight: CGFloat = 4 {
+        didSet { legacyCell.barHeight = currentBarHeight; needsDisplay = true }
+    }
+    private var hoverTA: NSTrackingArea?
+    private var isHovering = false
+
+    override var mouseDownCanMoveWindow: Bool { false }
+    override var doubleValue: Double { didSet { needsDisplay = true } }
+
+    override var intrinsicContentSize: NSSize {
+        isVertical ? NSSize(width: 24, height: NSView.noIntrinsicMetric)
+                   : NSSize(width: NSView.noIntrinsicMetric, height: 24)
+    }
+
+    override init(frame frameRect: NSRect) { super.init(frame: frameRect); setup() }
+    required init?(coder: NSCoder) { super.init(coder: coder); setup() }
+
+    private func setup() {
+        self.cell = LegacyGlassSliderCell()
+        isContinuous  = true
+        focusRingType = .none
+        legacyCell.barHeight = 4
+    }
+
+    // Hover
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let ta = hoverTA { removeTrackingArea(ta) }
+        let opts: NSTrackingArea.Options = [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect]
+        hoverTA = NSTrackingArea(rect: bounds, options: opts, owner: self, userInfo: nil)
+        addTrackingArea(hoverTA!)
+    }
+    override func mouseEntered(with event: NSEvent) {
+        super.mouseEntered(with: event)
+        isHovering = true; animateBar(to: 20)
+    }
+    override func mouseExited(with event: NSEvent) {
+        super.mouseExited(with: event)
+        isHovering = false; animateBar(to: 4)
+    }
+
+    // Drag
+    override func mouseDown(with event: NSEvent) {
+        animateBar(to: 20)
+        window?.trackEvents(matching: [.leftMouseDragged, .leftMouseUp],
+                            timeout: .infinity, mode: .eventTracking) { [weak self] ev, stop in
+            guard let self = self, let ev = ev else { stop.pointee = true; return }
+            let pt = self.convert(ev.locationInWindow, from: nil)
+            let reserve: CGFloat = 17
+            let fraction: CGFloat
+            if self.isVertical {
+                let u = self.bounds.height - reserve
+                fraction = u > 0 ? max(0, min(1, (pt.y - reserve / 2) / u)) : 0
+            } else {
+                let u = self.bounds.width - reserve
+                fraction = u > 0 ? max(0, min(1, (pt.x - reserve / 2) / u)) : 0
+            }
+            self.doubleValue = self.minValue + Double(fraction) * (self.maxValue - self.minValue)
+            self.onValueChanged?(self.doubleValue)
+            if ev.type == .leftMouseUp { stop.pointee = true }
+        }
+        onDragEnded?(doubleValue)
+        // Restore bar state
+        if let wp = window?.mouseLocationOutsideOfEventStream {
+            let lp = convert(wp, from: nil)
+            animateBar(to: bounds.contains(lp) && isHovering ? 20 : 4)
+        } else {
+            animateBar(to: 4)
         }
     }
 
-    // MARK: – Animated bar height (drives the cell's barHeight)
-    private var currentBarHeight: CGFloat = 4 {
-        didSet { glassCell.barHeight = currentBarHeight; needsDisplay = true }
+    override func hitTest(_ point: NSPoint) -> NSView? { bounds.contains(point) ? self : nil }
+
+    private func animateBar(to target: CGFloat) {
+        let start = currentBarHeight; let delta = target - start
+        guard abs(delta) > 0.5 else { currentBarHeight = target; return }
+        var step = 0; let steps = 9
+        Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] t in
+            guard let self = self else { t.invalidate(); return }
+            step += 1
+            let eased = 1 - pow(1 - CGFloat(step) / CGFloat(steps), 3)
+            self.currentBarHeight = start + delta * eased
+            if step >= steps { self.currentBarHeight = target; t.invalidate() }
+        }
     }
-    private var glassCell: GlassSliderCell { cell as! GlassSliderCell }
+}
 
-    // Hover tracking
-    private var hoverTrackingArea: NSTrackingArea?
+// MARK: – GlassSlider: public API surface
+//
+// Drop-in replacement for NSSlider with:
+//   • macOS 26+: exact native Tahoe liquid glass (SwiftUI + .glassEffect)
+//   • macOS < 26: native knob + white translucent bar (LegacyGlassNSSlider)
+//
+// Callers set .doubleValue / .minValue / .maxValue and receive callbacks via
+// onValueChanged and onDragEnded exactly like before.
+// ---------------------------------------------------------------------------
+class GlassSlider: NSView {
 
-    // MARK: – Prevent window dragging
+    // MARK: – Public interface (mirrors NSSlider API used in the codebase)
+    var onValueChanged: ((Double) -> Void)?
+    var onDragEnded:    ((Double) -> Void)?
+
+    var minValue: Double = 0   { didSet { applyBounds() } }
+    var maxValue: Double = 1   { didSet { applyBounds() } }
+    var doubleValue: Double = 0 {
+        didSet {
+            let clamped = doubleValue.clamped(to: minValue...maxValue)
+            if clamped != doubleValue { doubleValue = clamped; return }
+            applyValue()
+        }
+    }
+    var isVertical: Bool = false { didSet { rebuildImpl() } }
     override var mouseDownCanMoveWindow: Bool { false }
+
+    // MARK: – Implementation (set once at init / OS check)
+    private var hostView: NSView?   // either NSHostingView (Tahoe) or LegacyGlassNSSlider
+
+    // Tahoe-only binding
+    @available(macOS 26.0, *)
+    private var swiftUIValue: Double {
+        get { doubleValue }
+        set { doubleValue = newValue }
+    }
 
     // MARK: – Init
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
-        setup()
+        buildImpl()
     }
     required init?(coder: NSCoder) {
         super.init(coder: coder)
-        setup()
+        buildImpl()
     }
+    convenience init() { self.init(frame: .zero) }
 
-    private func setup() {
-        self.cell = GlassSliderCell()
-        self.isContinuous  = true
-        self.focusRingType = .none
-        glassCell.barHeight = 4
-    }
+    // MARK: – Build the correct implementation
+    private func buildImpl() {
+        hostView?.removeFromSuperview()
+        hostView = nil
 
-    // MARK: – Value update: only redraw; onValueChanged is fired explicitly by the drag loop
-    // Overriding doubleValue only to ensure the cell redraws when set programmatically.
-    override var doubleValue: Double {
-        didSet { needsDisplay = true }
-    }
-
-    // MARK: – Intrinsic size — give the slider enough height for the expanded pill
-    override var intrinsicContentSize: NSSize {
-        if isVertical {
-            return NSSize(width: 28, height: NSView.noIntrinsicMetric)
+        if #available(macOS 26.0, *) {
+            buildTahoeImpl()
         } else {
-            return NSSize(width: NSView.noIntrinsicMetric, height: 24)
+            buildLegacyImpl()
         }
     }
+    private func rebuildImpl() { buildImpl() }
 
-    // MARK: – Hover tracking area
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        if let ta = hoverTrackingArea { removeTrackingArea(ta) }
-        let opts: NSTrackingArea.Options = [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect]
-        hoverTrackingArea = NSTrackingArea(rect: bounds, options: opts, owner: self, userInfo: nil)
-        addTrackingArea(hoverTrackingArea!)
-    }
-
-    override func mouseEntered(with event: NSEvent) {
-        super.mouseEntered(with: event)
-        if sliderState == .normal { sliderState = .hover }
-    }
-
-    override func mouseExited(with event: NSEvent) {
-        super.mouseExited(with: event)
-        if sliderState == .hover { sliderState = .normal }
-    }
-
-    // MARK: – Custom tracking loop: prevents layout stalls during drag
-    override func mouseDown(with event: NSEvent) {
-        sliderState = .dragging
-        glassCell.isDragging = true
-        needsDisplay = true
-
-        window?.trackEvents(
-            matching: [.leftMouseDragged, .leftMouseUp],
-            timeout: .infinity,
-            mode: .eventTracking
-        ) { [weak self] trackEvent, stop in
-            guard let self = self, let trackEvent = trackEvent else { stop.pointee = true; return }
-
-            let localPt = self.convert(trackEvent.locationInWindow, from: nil)
-            // knobReserve matches the value used in barRect – the native knob is ~17pt
-            let knobReserve: CGFloat = 17
-            let fraction: CGFloat
-            if self.isVertical {
-                let usable = self.bounds.height - knobReserve
-                let clamped = max(0, min(usable, localPt.y - knobReserve / 2))
-                fraction = usable > 0 ? clamped / usable : 0
-            } else {
-                let usable = self.bounds.width - knobReserve
-                let clamped = max(0, min(usable, localPt.x - knobReserve / 2))
-                fraction = usable > 0 ? clamped / usable : 0
+    @available(macOS 26.0, *)
+    private func buildTahoeImpl() {
+        // Wrap a SwiftUI LiquidGlassSliderView in NSHostingView.
+        // The SwiftUI Slider with .glassEffect(.regular.interactive()) IS the
+        // exact same control used by macOS Control Center — the OS handles all
+        // three states (normal, hover, drag) automatically.
+        let binding = Binding<Double>(
+            get: { [weak self] in self?.doubleValue ?? 0 },
+            set: { [weak self] newVal in
+                guard let self = self else { return }
+                self.doubleValue = newVal
+                self.onValueChanged?(newVal)
             }
-            self.doubleValue = self.minValue + Double(fraction) * (self.maxValue - self.minValue)
-            self.needsDisplay = true
-            self.onValueChanged?(self.doubleValue)
+        )
+        let swiftUIView = LiquidGlassSliderView(
+            value: binding,
+            minValue: minValue,
+            maxValue: maxValue,
+            isVertical: isVertical,
+            onValueChanged: nil,   // handled by the Binding setter above
+            onDragEnded: { [weak self] val in self?.onDragEnded?(val) }
+        )
+        let hosting = NSHostingView(rootView: swiftUIView)
+        hosting.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(hosting)
+        NSLayoutConstraint.activate([
+            hosting.topAnchor.constraint(equalTo: topAnchor),
+            hosting.bottomAnchor.constraint(equalTo: bottomAnchor),
+            hosting.leadingAnchor.constraint(equalTo: leadingAnchor),
+            hosting.trailingAnchor.constraint(equalTo: trailingAnchor),
+        ])
+        hostView = hosting
+    }
 
-            if trackEvent.type == .leftMouseUp {
-                stop.pointee = true
-            }
-        }
+    private func buildLegacyImpl() {
+        let legacy = LegacyGlassNSSlider()
+        legacy.translatesAutoresizingMaskIntoConstraints = false
+        legacy.minValue    = minValue
+        legacy.maxValue    = maxValue
+        legacy.doubleValue = doubleValue
+        if isVertical { legacy.isVertical = true }
+        legacy.onValueChanged = { [weak self] v in self?.onValueChanged?(v) }
+        legacy.onDragEnded    = { [weak self] v in self?.onDragEnded?(v) }
+        addSubview(legacy)
+        NSLayoutConstraint.activate([
+            legacy.topAnchor.constraint(equalTo: topAnchor),
+            legacy.bottomAnchor.constraint(equalTo: bottomAnchor),
+            legacy.leadingAnchor.constraint(equalTo: leadingAnchor),
+            legacy.trailingAnchor.constraint(equalTo: trailingAnchor),
+        ])
+        hostView = legacy
+    }
 
-
-        glassCell.isDragging = false
-        onDragEnded?(doubleValue)
-
-        // Restore state based on cursor position
-        if let winPt = window?.mouseLocationOutsideOfEventStream {
-            let localPt = convert(winPt, from: nil)
-            sliderState = bounds.contains(localPt) ? .hover : .normal
+    // MARK: – Value / bounds propagation
+    private func applyValue() {
+        if #available(macOS 26.0, *) {
+            // The SwiftUI Binding picks up doubleValue automatically on next render.
+            (hostView as? NSHostingView<LiquidGlassSliderView>)?.rootView = makeTahoeView()
         } else {
-            sliderState = .normal
+            (hostView as? LegacyGlassNSSlider)?.doubleValue = doubleValue
         }
-        needsDisplay = true
     }
 
-    // MARK: – Bar height animation
-    private func animateBarToCurrentState() {
-        let targetHeight: CGFloat
-        switch sliderState {
-        case .normal:   targetHeight = 4
-        case .hover:    targetHeight = 20
-        case .dragging: targetHeight = 20
+    private func applyBounds() {
+        if #available(macOS 26.0, *) {
+            (hostView as? NSHostingView<LiquidGlassSliderView>)?.rootView = makeTahoeView()
+        } else {
+            let l = hostView as? LegacyGlassNSSlider
+            l?.minValue = minValue; l?.maxValue = maxValue
         }
-        glassCell.isExpanded = (sliderState != .normal)
-        glassCell.isDragging = (sliderState == .dragging)
+    }
 
-        // Animate the bar height using a display-link-friendly approach
-        let startHeight = currentBarHeight
-        let delta = targetHeight - startHeight
-        guard abs(delta) > 0.5 else {
-            currentBarHeight = targetHeight
-            return
-        }
-
-        let steps = 9
-        var step = 0
-        // Use a repeated timer on the main run loop with very short interval
-        Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] timer in
-            guard let self = self else { timer.invalidate(); return }
-            step += 1
-            let t = CGFloat(step) / CGFloat(steps)
-            // Ease-out cubic
-            let eased = 1 - pow(1 - t, 3)
-            self.currentBarHeight = startHeight + delta * eased
-            if step >= steps {
-                self.currentBarHeight = targetHeight
-                timer.invalidate()
+    @available(macOS 26.0, *)
+    private func makeTahoeView() -> LiquidGlassSliderView {
+        let binding = Binding<Double>(
+            get: { [weak self] in self?.doubleValue ?? 0 },
+            set: { [weak self] newVal in
+                guard let self = self else { return }
+                self.doubleValue = newVal
+                self.onValueChanged?(newVal)
             }
-        }
-    }
-
-    // MARK: – Hit test: full frame is interactive
-    override func hitTest(_ point: NSPoint) -> NSView? {
-        bounds.contains(point) ? self : nil
+        )
+        return LiquidGlassSliderView(
+            value: binding,
+            minValue: minValue,
+            maxValue: maxValue,
+            isVertical: isVertical,
+            onValueChanged: nil,
+            onDragEnded: { [weak self] val in self?.onDragEnded?(val) }
+        )
     }
 }
+
+// MARK: – Comparable clamping helper
+private extension Double {
+    func clamped(to range: ClosedRange<Double>) -> Double {
+        return Swift.min(Swift.max(self, range.lowerBound), range.upperBound)
+    }
+}
+
+
 
