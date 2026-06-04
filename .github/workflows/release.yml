@@ -148,32 +148,60 @@ jobs:
           # 1. Install via CMake
           cmake --install build-win-${{ matrix.arch }} --prefix windows/dist
 
-          # 2. Run windeployqt
+          # 2. Resolve Target Qt Directory
+          target_qt_dir=""
+          for candidate in "$Qt6_DIR" "$QT_ROOT_DIR" "${{ github.workspace }}/../Qt/6.5.3/msvc2019_64" "${{ github.workspace }}/../Qt/6.5.3/msvc2019_arm64"; do
+            if [ -n "$candidate" ] && [ -d "$candidate" ]; then
+              target_qt_dir="$candidate"
+              break
+            fi
+          done
+          target_qt_dir="${target_qt_dir//\\//}"
+          TARGET_QT_BIN="$target_qt_dir/bin"
+
+          # 3. Run windeployqt
           if [ "${{ matrix.arch }}" = "ARM64" ]; then
-            # Resolve paths using forward slashes
-            HOST_QT_BIN="${QT_HOST_PATH//\\//}/bin"
-            TARGET_QT_BIN="${QT_ROOT_DIR//\\//}/bin"
+            host_qt_dir=""
+            for candidate in "$QT_HOST_PATH" "${{ github.workspace }}/../Qt_host/Qt/6.5.3/msvc2019_64"; do
+              if [ -n "$candidate" ] && [ -d "$candidate" ]; then
+                host_qt_dir="$candidate"
+                break
+              fi
+            done
+            host_qt_dir="${host_qt_dir//\\//}"
+            HOST_QT_BIN="$host_qt_dir/bin"
+            
+            QTPATHS_BIN=""
+            if [ -f "$TARGET_QT_BIN/qtpaths.bat" ]; then
+              QTPATHS_BIN="$TARGET_QT_BIN/qtpaths.bat"
+            else
+              QTPATHS_BIN="$TARGET_QT_BIN/qtpaths.exe"
+            fi
             
             echo "Running cross-windeployqt..."
-            "$HOST_QT_BIN/windeployqt.exe" \
-              --qtpaths "$TARGET_QT_BIN/qtpaths.exe" \
+            echo "Host QT Bin: $HOST_QT_BIN"
+            echo "Target QT Bin: $TARGET_QT_BIN"
+            echo "Qtpaths path: $QTPATHS_BIN"
+            
+            MSYS_NO_PATHCONV=1 "$HOST_QT_BIN/windeployqt.exe" \
+              --qtpaths "$QTPATHS_BIN" \
               --no-translations \
               --no-opengl-sw \
               windows/dist/bin/GlassPlayer.exe
               
-            # 3. Copy ARM64 Visual C++ Runtime libraries
+            # 4. Copy ARM64 Visual C++ Runtime libraries
             REDIST_DIR="${VCToolsRedistDir//\\//}"
             echo "Copying ARM64 VC runtimes from $REDIST_DIR..."
             cp "$REDIST_DIR"/arm64/Microsoft.VC*.CRT/*.dll windows/dist/bin/
           else
             # Native x64 build
-            TARGET_QT_BIN="${QT_ROOT_DIR//\\//}/bin"
-            echo "Running native windeployqt..."
-            "$TARGET_QT_BIN/windeployqt.exe" \
+            echo "Running native windeployqt from $TARGET_QT_BIN..."
+            MSYS_NO_PATHCONV=1 "$TARGET_QT_BIN/windeployqt.exe" \
               --no-translations \
               --no-opengl-sw \
               windows/dist/bin/GlassPlayer.exe
           fi
+
 
 
       - name: Compile Inno Setup Installer (Windows)
