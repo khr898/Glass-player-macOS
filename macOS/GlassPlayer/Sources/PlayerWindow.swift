@@ -2933,6 +2933,124 @@ private class ThumbnailMPV {
 }
 
 // ---------------------------------------------------------------------------
+// GlassSliderCell – Custom cell styling for a native NSSlider to render it
+// with a frosted glass track and a premium white vertical capsule knob.
+// ---------------------------------------------------------------------------
+class GlassSliderCell: NSSliderCell {
+    private let trackThickness: CGFloat = 6.0
+
+    private var isCellVertical: Bool {
+        return (self.controlView as? NSSlider)?.isVertical ?? false
+    }
+
+    override func drawBar(inside rect: NSRect, flipped: Bool) {
+        // Draw the background (unfilled) track
+        var trackRect = rect
+        if isCellVertical {
+            let widthDiff = rect.width - trackThickness
+            trackRect = rect.insetBy(dx: widthDiff / 2, dy: 0)
+        } else {
+            let heightDiff = rect.height - trackThickness
+            trackRect = rect.insetBy(dx: 0, dy: heightDiff / 2)
+        }
+        
+        let bgPath = NSBezierPath(roundedRect: trackRect, xRadius: trackThickness / 2, yRadius: trackThickness / 2)
+        NSColor.white.withAlphaComponent(0.25).setFill()
+        bgPath.fill()
+        
+        // Draw the filled (active) track
+        let kRect = self.knobRect(flipped: flipped)
+        var fillRect = trackRect
+        
+        if isCellVertical {
+            if flipped {
+                fillRect.origin.y = kRect.midY
+                fillRect.size.height = trackRect.maxY - kRect.midY
+            } else {
+                fillRect.size.height = kRect.midY - trackRect.origin.y
+            }
+        } else {
+            fillRect.size.width = kRect.midX - trackRect.origin.x
+        }
+        
+        fillRect.size.width = max(0, fillRect.size.width)
+        fillRect.size.height = max(0, fillRect.size.height)
+        
+        let fillPath = NSBezierPath(roundedRect: fillRect, xRadius: trackThickness / 2, yRadius: trackThickness / 2)
+        NSColor.white.setFill()
+        fillPath.fill()
+    }
+
+    override func drawKnob(_ knobRect: NSRect) {
+        // Center the vertical capsule knob inside the calculated knob rect
+        var kRect = knobRect
+        if isCellVertical {
+            let knobWidth: CGFloat = 22.0
+            let knobHeight: CGFloat = 16.0
+            kRect = NSRect(
+                x: knobRect.midX - knobWidth / 2,
+                y: knobRect.midY - knobHeight / 2,
+                width: knobWidth,
+                height: knobHeight
+            )
+        } else {
+            let knobWidth: CGFloat = 16.0
+            let knobHeight: CGFloat = 22.0
+            kRect = NSRect(
+                x: knobRect.midX - knobWidth / 2,
+                y: knobRect.midY - knobHeight / 2,
+                width: knobWidth,
+                height: knobHeight
+            )
+        }
+        
+        let path = NSBezierPath(roundedRect: kRect, xRadius: kRect.width / 2, yRadius: kRect.height / 2)
+        
+        NSGraphicsContext.current?.saveGraphicsState()
+        
+        // Shadow for premium, elevated glass feel
+        let shadow = NSShadow()
+        shadow.shadowColor = NSColor.black.withAlphaComponent(0.35)
+        shadow.shadowBlurRadius = 4
+        shadow.shadowOffset = NSSize(width: 0, height: -1.5)
+        shadow.set()
+        
+        NSColor.white.setFill()
+        path.fill()
+        
+        NSGraphicsContext.current?.restoreGraphicsState()
+        
+        // Crisp border
+        NSColor.white.withAlphaComponent(0.6).setStroke()
+        path.lineWidth = 1.0
+        path.stroke()
+    }
+
+    override func knobRect(flipped: Bool) -> NSRect {
+        let original = super.knobRect(flipped: flipped)
+        if isCellVertical {
+            let knobWidth: CGFloat = 22.0
+            let knobHeight: CGFloat = 16.0
+            return NSRect(
+                x: original.midX - knobWidth / 2,
+                y: original.midY - knobHeight / 2,
+                width: knobWidth,
+                height: knobHeight
+            )
+        } else {
+            let knobWidth: CGFloat = 16.0
+            let knobHeight: CGFloat = 22.0
+            return NSRect(
+                x: original.midX - knobWidth / 2,
+                y: original.midY - knobHeight / 2,
+                width: knobWidth,
+                height: knobHeight
+            )
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // GlassSlider – Native NSSlider with custom glass appearance
 // ---------------------------------------------------------------------------
 class GlassSlider: NSSlider {
@@ -2954,6 +3072,7 @@ class GlassSlider: NSSlider {
     }
 
     private func setup() {
+        self.cell = GlassSliderCell()
         self.target = self
         self.action = #selector(sliderAction(_:))
         self.isContinuous = true

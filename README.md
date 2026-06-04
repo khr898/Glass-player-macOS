@@ -1,125 +1,125 @@
 # Glass Player
 
-A lightweight, native macOS video player built on Metal 3 and libmpv. Designed exclusively for Apple Silicon (M-series), featuring zero-copy rendering, Anime4K upscaling, and advanced HDR/Audio support.
+Glass Player is a lightweight, high-performance media player optimized for macOS and Windows. Engineered with native rendering backends and powered by libmpv, it is designed to deliver hardware-accelerated video decoding, precise color representation, and seamless integration with platform-specific display APIs.
 
-![macOS](https://img.shields.io/badge/macOS-14.0%2B-black?logo=apple)
-![Apple Silicon](https://img.shields.io/badge/Apple%20Silicon-M1%2FM2%2FM3%2FM4%2FM5-blue)
-![Metal 3](https://img.shields.io/badge/Metal-3-orange)
-![License](https://img.shields.io/badge/license-GPL--3.0-green)
+On macOS, the player is written in Swift and leverages Metal 3 to exploit Apple Silicon's Unified Memory Architecture (UMA) via zero-copy frame buffer sharing. On Windows, it is built with modern C++ and Qt6, utilizing Direct3D 11 and Vulkan for robust GPU-accelerated rendering.
 
 ---
 
-## Key Features
+## Core Features
 
-- **Rendering:** Native Metal 3 pipeline with IOSurface zero-copy bridging.
-- **HDR & Audio:** Dolby Vision, HDR10/HLG tone mapping, and Atmos/TrueHD bitstream passthrough.
-- **Playback:** Format badges, built-in rclone cloud streaming, and Picture-in-Picture.
-- **Integration:** macOS Now Playing support, Spatial Audio, and real-time settings.
+### High-Performance Rendering
+* **macOS (Metal 3)**: Implements a zero-copy frame buffer object (FBO) pipeline using IOSurface. Video frames are shared between the libmpv decoder and the Metal renderer in unified memory, eliminating intermediate host-to-device memory copies.
+* **Windows (Direct3D 11 / Vulkan)**: Integrates libmpv with the Qt6 OpenGL and hardware-accelerated graphics swap chains, automatically falling back to Direct3D 11 or Vulkan depending on the active GPU and hardware configuration.
+
+### Video and Color Pipeline
+* **High Dynamic Range (HDR)**: Native support for Dolby Vision, HDR10, and HLG content with precise color space conversions and tone mapping.
+* **Real-time Upscaling**: Built-in integration of Anime4K shaders, enabling real-time high-quality upscaling directly inside the GPU rendering loop.
+
+### High-Fidelity Audio
+* Supports pass-through bitstreaming for advanced formats including Dolby Atmos, Dolby TrueHD, and DTS-HD Master Audio.
+
+### Cloud Integration
+* Built-in rclone mounting and streaming integration, allowing direct, low-latency playback of remote media files from cloud storage providers.
 
 ---
 
-## Requirements
+## System Requirements
 
-| Component | Specification |
-|---|---|
-| OS | macOS 14.0 Sonoma or later |
-| Hardware | Apple Silicon (M-series) |
-| Dependencies | Homebrew (for source builds) |
+| Platform | Operating System | Hardware Requirements |
+|---|---|---|
+| **macOS** | macOS 14.0 (Sonoma) or later | Apple Silicon (M1/M2/M3/M4/M5 series) |
+| **Windows** | Windows 10 / 11 (64-bit or ARM64) | DirectX 11 or Vulkan compatible GPU |
 
 ---
 
-## Screenshots
+## Architecture Overview
 
-<p align="center">
-  <img src="screenshots/ss-1.jpg" width="800" alt="Screenshot 1">
-</p>
-<p align="center">
-  <img src="screenshots/ss-2.jpg" width="800" alt="Screenshot 2">
-</p>
-<p align="center">
-  <img src="screenshots/ss-3.jpg" width="800" alt="Screenshot 3">
-</p>
+### macOS Zero-Copy Pipeline
+```text
+[libmpv Decoder / GPU Backend]
+             │
+             ▼ (Unified Memory Interface)
+    [IOSurface Shared Buffer]
+             │
+             ▼ (Zero-Copy Texture Binding)
+   [Metal 3 Render Pipeline] ──► [Display Swap Chain]
+```
+The macOS version avoids traditional PCIe bus transfer overhead by using Apple Silicon's Unified Memory Architecture. The decoder writes frames directly into an IOSurface buffer, which is immediately bound as a Metal texture, bypassing the CPU and memory copy cycles entirely.
+
+### Windows C++/Qt6 Architecture
+```text
+[Qt6 Gui Application Thread]
+             │
+             ▼ (Inter-process Communication / Events)
+    [libmpv Playback Core] ◄──► [Direct3D 11 / Vulkan Viewport]
+```
+The Windows version hosts the libmpv core within a dedicated rendering thread, synchronizing playback controls with the Qt6 event loop. Video presentation is offloaded directly to Direct3D 11 or Vulkan to minimize frame drops and UI latency.
 
 ---
 
 ## Installation
 
-### From Releases (Recommended)
-1. Download the `.dmg` from the Releases page.
-2. Open the disk image and execute the "Install Glass Player" script.
-*(Alternatively: Drag to Applications and run `xattr -cr "/Applications/Glass Player.app"` in Terminal to clear Gatekeeper).*
+### macOS
+1. Download the latest `GlassPlayer-macOS-arm64.dmg` from the Releases section.
+2. Mount the disk image and run the installer script, or drag the application to the `Applications` directory.
+3. If installing manually, clear the Gatekeeper quarantine attribute:
+   ```bash
+   xattr -cr "/Applications/Glass Player.app"
+   ```
 
-### Build from Source
-```bash
-brew install mpv
-git clone [https://github.com/khr898/Glass_player.git](https://github.com/khr898/Glass_player.git)
-cd Glass_player/GlassPlayer
-bash build.sh
-```
-*Build Options:* `BUILD_PROFILE=baseline`, `NO_INSTALL=1`, `SKIP_SIGN=1`.
+### Windows
+1. Download either the `GlassPlayer-Windows-x64.exe` or `GlassPlayer-Windows-ARM64.exe` installer depending on your processor architecture.
+2. Run the executable to launch the installer wizard.
 
 ---
 
-## Usage
+## Building from Source
 
-Launch via Spotlight or Terminal:
-```bash
-open "/Applications/Glass Player.app" --args /path/to/video.mkv
-```
+### macOS Prerequisites and Compilation
+Ensure you have Xcode Command Line Tools and Homebrew installed.
 
-**Shortcuts:**
-- **Space:** Play / Pause
-- **Arrows (←/→, ↑/↓):** Seek / Volume
-- **F / M:** Fullscreen / Mute
-- **[ / ]:** Speed Down / Up
-- **⌘O / ⌘,:** Open File / Settings
+1. Install the libmpv dependency:
+   ```bash
+   brew install mpv
+   ```
+2. Clone the repository and navigate to the macOS directory:
+   ```bash
+   git clone https://github.com/khr898/Glass-player-macOS.git
+   cd Glass-player-macOS/macOS/GlassPlayer
+   ```
+3. Execute the build script:
+   ```bash
+   ./build.sh
+   ```
+
+### Windows Prerequisites and Compilation
+Ensure you have Visual Studio 2022 (with the "Desktop development with C++" workload) and CMake 3.20 or later installed. For ARM64 builds, the MSVC ARM64 toolchain must also be selected in the Visual Studio Installer.
+
+The build process will automatically download the correct `libmpv` developer binaries for your target architecture from SourceForge during the configuration step.
+
+#### Building for Windows x64
+1. Configure and generate the build files:
+   ```powershell
+   cmake -S windows -B build-win-x64 -G "Visual Studio 17 2022" -A x64
+   ```
+2. Compile the release binary:
+   ```powershell
+   cmake --build build-win-x64 --config Release
+   ```
+
+#### Building for Windows ARM64 (Cross-compilation or Native)
+1. Configure and generate the build files:
+   ```powershell
+   cmake -S windows -B build-win-ARM64 -G "Visual Studio 17 2022" -A ARM64
+   ```
+2. Compile the release binary:
+   ```powershell
+   cmake --build build-win-ARM64 --config Release
+   ```
 
 ---
 
-## Architecture
-```text
-[mpv GPU renderer] --(shared UMA)--> [Metal 3 Pipeline] --> [Screen]
-```
-Leverages Apple Silicon's Unified Memory Architecture (UMA). Frames are rendered to an IOSurface-backed FBO, allowing the Metal texture to access the exact same physical memory block, completely eliminating GPU-to-GPU memory copies.
+## License
 
----
-
-## Anime4K Shaders
-Enable the bundled Anime4K upscaling shaders via **Settings → Shaders**.
-
-Check out the Anime4K Github repo for more information.
-
----
-
-
-## License & Acknowledgments
-- **License:** GPL-3.0 (due to FFmpeg/mpv dependencies). Anime4K shaders are licensed under MIT.
-- **Powered by:** mpv, FFmpeg, and Anime4K.
----
-
-## Windows Support (C++ & Qt6)
-
-Glass Player has been fully ported to Windows (x64 and arm64). The Windows version is built using C++, Qt6, and libmpv, retaining the core features:
-- **Hardware Acceleration**: Automatic fallback to the best available decoder (D3D11VA, Vulkan, etc.).
-- **Anime4K**: All shaders are bundled and dynamically mapped to presets within the app.
-
-### Installation on Windows
-1. Go to the **Actions** tab in this repository.
-2. Run the **Cross-platform Build** workflow manually (`workflow_dispatch`).
-3. Download the `GlassPlayer-Windows-x64-installer` or `GlassPlayer-Windows-arm64-installer` artifact.
-4. Run the single-file `.exe` installer.
-
-### Building on Windows from source
-```powershell
-# x64
-cmake -S windows -B build-win-x64 -G "Visual Studio 17 2022" -A x64
-cmake --build build-win-x64 --config Release
-
-# ARM64
-cmake -S windows -B build-win-arm64 -G "Visual Studio 17 2022" -A ARM64
-cmake --build build-win-arm64 --config Release
-```
-
-Notes:
-- Install the Visual Studio C++ ARM64 toolchain/workload for ARM64 builds.
-- Provide architecture-matched libmpv binaries under `vendor/mpv-dev/arm64` (or `vendor/mpv-dev/x64`) when building each target.
+Glass Player is licensed under the GNU General Public License v3.0 (GPL-3.0), due to dependencies on libmpv and FFmpeg. The integrated Anime4K shaders are licensed under the MIT License.
