@@ -226,19 +226,6 @@ process_deps() {
         
         local original_dep="$dep"
         
-        # 🚨 STRICT LOCK: Grab libplacebo straight from the repository vendor folder
-        if [[ "$dep" == *"libplacebo."* ]]; then
-            echo "  🔒 STRICT RULE: Hard-locking libplacebo to version 351."
-            local strict_placebo="$ROOT_DIR/vendor/libplacebo.351.dylib"
-            
-            if [ ! -f "$strict_placebo" ]; then
-                echo "  ❌ ERROR: Strict dependency $strict_placebo not found in repository!"
-                exit 1
-            fi
-            
-            dep="$strict_placebo"
-        fi
-        
         local resolved=$(resolve_rpath "$dep" "$binary")
         if [ -n "$resolved" ] && [ -f "$resolved" ]; then
             local resolved_real=$(realpath "$resolved" 2>/dev/null || echo "$resolved")
