@@ -2933,222 +2933,39 @@ private class ThumbnailMPV {
 }
 
 // ---------------------------------------------------------------------------
-// GlassSlider – Liquid Glass style slider (replaces NSSlider)
-//
-// Renders a frosted-glass pill track with a glass-drop knob matching the
-// macOS 26 Liquid Glass design language.  Drop-in replacement for NSSlider
-// via the `doubleValue` / `onValueChanged` API.
+// GlassSlider – Native NSSlider with custom glass appearance
 // ---------------------------------------------------------------------------
-
-class GlassSlider: NSView {
-
-    // ── Public API ──
-    var minValue: Double = 0     { didSet { needsDisplay = true } }
-    var maxValue: Double = 100   { didSet { needsDisplay = true } }
-    var isVertical: Bool = false { didSet { setupLayers() } }
+class GlassSlider: NSSlider {
     var onValueChanged: ((Double) -> Void)?
-    /// Called once when the user lifts the mouse/finger (drag end).
     var onDragEnded: ((Double) -> Void)?
 
-    var doubleValue: Double {
-        get { _value }
-        set {
-            _value = min(maxValue, max(minValue, newValue))
-            updateKnobPosition()
-        }
+    override var mouseDownCanMoveWindow: Bool {
+        return false
     }
 
-    // ── Private state ──
-    private var _value: Double = 0
-    private var trackView: NSView!
-    private let fillView    = NSView()
-    private var knobView: NSView!
-    private var isDragging  = false
-
-    // ── Geometry constants ──
-    private let knobDiameter: CGFloat = 18
-    private let trackThickness: CGFloat = 6
-
-    // MARK: - Init
-
-    override init(frame: NSRect) {
-        super.init(frame: frame)
-        setupLayers()
-        setupGestures()
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        setup()
     }
 
     required init?(coder: NSCoder) {
         super.init(coder: coder)
-        setupLayers()
-        setupGestures()
+        setup()
     }
 
-    // MARK: - Layout
-
-    private func setupLayers() {
-        // Remove any existing subviews on re-configuration
-        subviews.forEach { $0.removeFromSuperview() }
-        wantsLayer = true
-
-        if #available(macOS 14.0, *) {
-            let tView = NSVisualEffectView()
-            tView.material = .hudWindow
-            tView.blendingMode = .withinWindow
-            tView.state = .active
-            tView.wantsLayer = true
-            tView.layer?.masksToBounds = true
-            trackView = tView
-
-            let kView = NSVisualEffectView()
-            kView.material = .hudWindow
-            kView.blendingMode = .withinWindow
-            kView.state = .active
-            kView.wantsLayer = true
-            kView.layer?.masksToBounds = false
-            kView.layer?.cornerRadius = knobDiameter / 2
-            kView.layer?.shadowColor = NSColor.black.cgColor
-            kView.layer?.shadowOpacity = 0.35
-            kView.layer?.shadowRadius = 4
-            kView.layer?.shadowOffset = CGSize(width: 0, height: -2)
-            kView.layer?.borderColor = NSColor.white.withAlphaComponent(0.6).cgColor
-            kView.layer?.borderWidth = 1.0
-            knobView = kView
-        } else {
-            let tView = NSView()
-            tView.wantsLayer = true
-            tView.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.25).cgColor
-            tView.layer?.masksToBounds = true
-            trackView = tView
-
-            let kView = NSView()
-            kView.wantsLayer = true
-            kView.layer?.backgroundColor = NSColor(white: 0.9, alpha: 1.0).cgColor
-            kView.layer?.masksToBounds = false
-            kView.layer?.cornerRadius = knobDiameter / 2
-            kView.layer?.shadowColor = NSColor.black.cgColor
-            kView.layer?.shadowOpacity = 0.35
-            kView.layer?.shadowRadius = 4
-            kView.layer?.shadowOffset = CGSize(width: 0, height: -2)
-            kView.layer?.borderColor = NSColor.white.withAlphaComponent(0.6).cgColor
-            kView.layer?.borderWidth = 1.0
-            knobView = kView
-        }
-
-        addSubview(trackView)
-
-        // ── Fill (accent-tinted sub-layer inside track) ──
-        fillView.wantsLayer = true
-        fillView.layer?.backgroundColor = NSColor(red: 0.37, green: 0.80, blue: 1.0,
-                                                   alpha: 0.65).cgColor
-        trackView.addSubview(fillView)
-
-        addSubview(knobView)
-
-        updateKnobPosition()
+    private func setup() {
+        self.target = self
+        self.action = #selector(sliderAction(_:))
+        self.isContinuous = true
     }
 
-    override func layout() {
-        super.layout()
-        positionTrack()
-        updateKnobPosition()
-    }
-
-    private func positionTrack() {
-        let b = bounds
-        if isVertical {
-            let tx = (b.width - trackThickness) / 2
-            trackView.frame = NSRect(x: tx, y: knobDiameter / 2,
-                                     width: trackThickness,
-                                     height: b.height - knobDiameter)
-            trackView.layer?.cornerRadius = trackThickness / 2
-        } else {
-            let ty = (b.height - trackThickness) / 2
-            trackView.frame = NSRect(x: knobDiameter / 2, y: ty,
-                                     width: b.width - knobDiameter,
-                                     height: trackThickness)
-            trackView.layer?.cornerRadius = trackThickness / 2
-        }
-    }
-
-    private func fraction() -> CGFloat {
-        guard maxValue > minValue else { return 0 }
-        return CGFloat((_value - minValue) / (maxValue - minValue))
-    }
-
-    private func updateKnobPosition() {
-        let b = bounds
-        let f = fraction()
-        if isVertical {
-            let trackH = b.height - knobDiameter
-            let cy = knobDiameter / 2 + f * trackH
-            knobView.frame = NSRect(x: (b.width - knobDiameter) / 2,
-                                    y: cy - knobDiameter / 2,
-                                    width: knobDiameter, height: knobDiameter)
-            // Fill = from bottom to knob
-            fillView.frame = NSRect(x: 0, y: 0,
-                                    width: trackThickness,
-                                    height: cy - knobDiameter / 2 - trackView.frame.origin.y + knobDiameter / 2)
-        } else {
-            let trackW = b.width - knobDiameter
-            let cx = knobDiameter / 2 + f * trackW
-            knobView.frame = NSRect(x: cx - knobDiameter / 2,
-                                    y: (b.height - knobDiameter) / 2,
-                                    width: knobDiameter, height: knobDiameter)
-            // Fill = from left to knob
-            fillView.frame = NSRect(x: 0, y: 0,
-                                    width: cx - knobDiameter / 2,
-                                    height: trackThickness)
-        }
-        knobView.layer?.cornerRadius = knobDiameter / 2
-    }
-
-    // MARK: - Gestures
-
-    private func setupGestures() {
-        let pan = NSPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
-        addGestureRecognizer(pan)
-    }
-
-    @objc private func handlePan(_ g: NSPanGestureRecognizer) {
-        let loc = g.location(in: self)
-        setValue(fromPoint: loc)
+    @objc private func sliderAction(_ sender: NSSlider) {
+        onValueChanged?(self.doubleValue)
     }
 
     override func mouseDown(with event: NSEvent) {
-        isDragging = true
-        let loc = convert(event.locationInWindow, from: nil)
-        setValue(fromPoint: loc)
+        super.mouseDown(with: event)
+        // super.mouseDown blocks during tracking loop, so when it returns the drag has ended
+        onDragEnded?(self.doubleValue)
     }
-
-    override func mouseDragged(with event: NSEvent) {
-        let loc = convert(event.locationInWindow, from: nil)
-        setValue(fromPoint: loc)
-    }
-
-    override func mouseUp(with event: NSEvent) {
-        isDragging = false
-        onDragEnded?(_value)
-    }
-
-    private func setValue(fromPoint point: NSPoint) {
-        let b = bounds
-        var f: CGFloat
-        if isVertical {
-            let trackH = b.height - knobDiameter
-            f = (point.y - knobDiameter / 2) / max(1, trackH)
-        } else {
-            let trackW = b.width - knobDiameter
-            f = (point.x - knobDiameter / 2) / max(1, trackW)
-        }
-        f = max(0, min(1, f))
-        _value = minValue + Double(f) * (maxValue - minValue)
-        updateKnobPosition()
-        onValueChanged?(_value)
-    }
-
-    // MARK: - Accessibility
-
-    override func accessibilityRole() -> NSAccessibility.Role? { .slider }
-    override func accessibilityValue() -> Any? { _value }
-    override func isAccessibilityElement() -> Bool { true }
 }
