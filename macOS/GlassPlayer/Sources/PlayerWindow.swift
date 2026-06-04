@@ -2933,129 +2933,50 @@ private class ThumbnailMPV {
 }
 
 // ---------------------------------------------------------------------------
-// GlassSliderCell – Custom cell styling for a native NSSlider to render it
-// with a frosted glass track and a premium white vertical capsule knob.
+// GlassSlider – Native NSSlider with custom glass appearance
+// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// GlassSliderCell – Custom cell styling for a native NSSlider to suppress
+// default AppKit rendering.
 // ---------------------------------------------------------------------------
 class GlassSliderCell: NSSliderCell {
-    private let trackThickness: CGFloat = 6.0
-
-    private var isCellVertical: Bool {
-        return (self.controlView as? NSSlider)?.isVertical ?? false
-    }
-
     override func drawBar(inside rect: NSRect, flipped: Bool) {
-        // Draw the background (unfilled) track
-        var trackRect = rect
-        if isCellVertical {
-            let widthDiff = rect.width - trackThickness
-            trackRect = rect.insetBy(dx: widthDiff / 2, dy: 0)
-        } else {
-            let heightDiff = rect.height - trackThickness
-            trackRect = rect.insetBy(dx: 0, dy: heightDiff / 2)
-        }
-        
-        let bgPath = NSBezierPath(roundedRect: trackRect, xRadius: trackThickness / 2, yRadius: trackThickness / 2)
-        NSColor.white.withAlphaComponent(0.25).setFill()
-        bgPath.fill()
-        
-        // Draw the filled (active) track
-        let kRect = self.knobRect(flipped: flipped)
-        var fillRect = trackRect
-        
-        if isCellVertical {
-            if flipped {
-                fillRect.origin.y = kRect.midY
-                fillRect.size.height = trackRect.maxY - kRect.midY
-            } else {
-                fillRect.size.height = kRect.midY - trackRect.origin.y
-            }
-        } else {
-            fillRect.size.width = kRect.midX - trackRect.origin.x
-        }
-        
-        fillRect.size.width = max(0, fillRect.size.width)
-        fillRect.size.height = max(0, fillRect.size.height)
-        
-        let fillPath = NSBezierPath(roundedRect: fillRect, xRadius: trackThickness / 2, yRadius: trackThickness / 2)
-        NSColor.white.setFill()
-        fillPath.fill()
+        // Do nothing so the default bar is not drawn
     }
-
-    override func drawKnob(_ knobRect: NSRect) {
-        // Center the vertical capsule knob inside the calculated knob rect
-        var kRect = knobRect
-        if isCellVertical {
-            let knobWidth: CGFloat = 22.0
-            let knobHeight: CGFloat = 16.0
-            kRect = NSRect(
-                x: knobRect.midX - knobWidth / 2,
-                y: knobRect.midY - knobHeight / 2,
-                width: knobWidth,
-                height: knobHeight
-            )
-        } else {
-            let knobWidth: CGFloat = 16.0
-            let knobHeight: CGFloat = 22.0
-            kRect = NSRect(
-                x: knobRect.midX - knobWidth / 2,
-                y: knobRect.midY - knobHeight / 2,
-                width: knobWidth,
-                height: knobHeight
-            )
-        }
-        
-        let path = NSBezierPath(roundedRect: kRect, xRadius: kRect.width / 2, yRadius: kRect.height / 2)
-        
-        NSGraphicsContext.current?.saveGraphicsState()
-        
-        // Shadow for premium, elevated glass feel
-        let shadow = NSShadow()
-        shadow.shadowColor = NSColor.black.withAlphaComponent(0.35)
-        shadow.shadowBlurRadius = 4
-        shadow.shadowOffset = NSSize(width: 0, height: -1.5)
-        shadow.set()
-        
-        NSColor.white.setFill()
-        path.fill()
-        
-        NSGraphicsContext.current?.restoreGraphicsState()
-        
-        // Crisp border
-        NSColor.white.withAlphaComponent(0.6).setStroke()
-        path.lineWidth = 1.0
-        path.stroke()
-    }
-
-    override func knobRect(flipped: Bool) -> NSRect {
-        let original = super.knobRect(flipped: flipped)
-        if isCellVertical {
-            let knobWidth: CGFloat = 22.0
-            let knobHeight: CGFloat = 16.0
-            return NSRect(
-                x: original.midX - knobWidth / 2,
-                y: original.midY - knobHeight / 2,
-                width: knobWidth,
-                height: knobHeight
-            )
-        } else {
-            let knobWidth: CGFloat = 16.0
-            let knobHeight: CGFloat = 22.0
-            return NSRect(
-                x: original.midX - knobWidth / 2,
-                y: original.midY - knobHeight / 2,
-                width: knobWidth,
-                height: knobHeight
-            )
-        }
+    override func drawKnob(_ rect: NSRect) {
+        // Do nothing so the default knob is not drawn
     }
 }
 
 // ---------------------------------------------------------------------------
-// GlassSlider – Native NSSlider with custom glass appearance
+// GlassSlider – Native NSSlider with custom glass appearance matching
+// the Tahoe "Liquid Glass" design language (with fallbacks).
 // ---------------------------------------------------------------------------
 class GlassSlider: NSSlider {
     var onValueChanged: ((Double) -> Void)?
     var onDragEnded: ((Double) -> Void)?
+
+    private var trackView: NSView!
+    private var knobView: NSView!
+    private let fillView = NSView()
+
+    override var doubleValue: Double {
+        didSet {
+            self.needsLayout = true
+        }
+    }
+
+    override var minValue: Double {
+        didSet {
+            self.needsLayout = true
+        }
+    }
+
+    override var maxValue: Double {
+        didSet {
+            self.needsLayout = true
+        }
+    }
 
     override var mouseDownCanMoveWindow: Bool {
         return false
@@ -3076,9 +2997,50 @@ class GlassSlider: NSSlider {
         self.target = self
         self.action = #selector(sliderAction(_:))
         self.isContinuous = true
+
+        // Create track and knob views
+        trackView = createEffectView()
+        knobView = createEffectView()
+
+        self.addSubview(trackView)
+        trackView.addSubview(fillView)
+        self.addSubview(knobView)
+
+        // Style fillView (accent-tinted glass progress fill)
+        fillView.wantsLayer = true
+        fillView.layer?.backgroundColor = NSColor(red: 0.37, green: 0.80, blue: 1.0, alpha: 0.65).cgColor
+
+        self.needsLayout = true
+    }
+
+    private func createEffectView() -> NSView {
+        if #available(macOS 26.0, *),
+           let glassClass = NSClassFromString("NSGlassEffectView") as? NSView.Type {
+            return glassClass.init()
+        } else if #available(macOS 10.10, *) {
+            let vev = NSVisualEffectView()
+            vev.material = .hudWindow
+            vev.blendingMode = .withinWindow
+            vev.state = .active
+            return vev
+        } else {
+            return NSView()
+        }
+    }
+
+    private func applyCornerRadius(_ view: NSView, radius: CGFloat, maskToBounds: Bool = false) {
+        if NSClassFromString("NSGlassEffectView") != nil && view.isKind(of: NSClassFromString("NSGlassEffectView")!) {
+            view.setValue(radius, forKey: "cornerRadius")
+        } else {
+            view.wantsLayer = true
+            view.layer?.cornerRadius = radius
+            view.layer?.masksToBounds = maskToBounds
+        }
     }
 
     @objc private func sliderAction(_ sender: NSSlider) {
+        self.needsLayout = true
+        self.layoutSubtreeIfNeeded()
         onValueChanged?(self.doubleValue)
     }
 
@@ -3086,5 +3048,88 @@ class GlassSlider: NSSlider {
         super.mouseDown(with: event)
         // super.mouseDown blocks during tracking loop, so when it returns the drag has ended
         onDragEnded?(self.doubleValue)
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let rect = self.bounds
+        if rect.contains(point) {
+            return self
+        }
+        return nil
+    }
+
+    override func layout() {
+        super.layout()
+
+        let b = bounds
+        let isVert = self.isVertical
+        let knobD: CGFloat = 18.0
+        let trackT: CGFloat = 6.0
+
+        let val = self.doubleValue
+        let minVal = self.minValue
+        let maxVal = self.maxValue
+        let range = maxVal - minVal
+        let fraction = range > 0 ? CGFloat((val - minVal) / range) : 0.0
+
+        if isVert {
+            // Track rect
+            let tx = (b.width - trackT) / 2
+            let ty = knobD / 2
+            let th = b.height - knobD
+            trackView.frame = NSRect(x: tx, y: ty, width: trackT, height: max(0, th))
+            applyCornerRadius(trackView, radius: trackT / 2, maskToBounds: true)
+
+            // Fill rect
+            var fillRect = trackView.bounds
+            fillRect.size.height = trackView.bounds.height * fraction
+            if self.isFlipped {
+                fillRect.origin.y = trackView.bounds.height - fillRect.size.height
+            } else {
+                fillRect.origin.y = 0
+            }
+            fillView.frame = fillRect
+            applyCornerRadius(fillView, radius: trackT / 2, maskToBounds: true)
+
+            // Knob rect
+            let cx = (b.width - knobD) / 2
+            let cy: CGFloat
+            if self.isFlipped {
+                cy = ty + (1.0 - fraction) * th
+            } else {
+                cy = ty + fraction * th
+            }
+            knobView.frame = NSRect(x: cx, y: cy - knobD / 2, width: knobD, height: knobD)
+            applyCornerRadius(knobView, radius: knobD / 2, maskToBounds: false)
+        } else {
+            // Track rect
+            let tx = knobD / 2
+            let ty = (b.height - trackT) / 2
+            let tw = b.width - knobD
+            trackView.frame = NSRect(x: tx, y: ty, width: max(0, tw), height: trackT)
+            applyCornerRadius(trackView, radius: trackT / 2, maskToBounds: true)
+
+            // Fill rect
+            var fillRect = trackView.bounds
+            fillRect.size.width = trackView.bounds.width * fraction
+            fillRect.origin.x = 0
+            fillView.frame = fillRect
+            applyCornerRadius(fillView, radius: trackT / 2, maskToBounds: true)
+
+            // Knob rect
+            let cx = tx + fraction * tw
+            let cy = (b.height - knobD) / 2
+            knobView.frame = NSRect(x: cx - knobD / 2, y: cy, width: knobD, height: knobD)
+            applyCornerRadius(knobView, radius: knobD / 2, maskToBounds: false)
+        }
+
+        // Styling for knobView
+        knobView.wantsLayer = true
+        knobView.layer?.shadowColor = NSColor.black.cgColor
+        knobView.layer?.shadowOpacity = 0.35
+        knobView.layer?.shadowRadius = 4
+        knobView.layer?.shadowOffset = CGSize(width: 0, height: -1.5)
+        knobView.layer?.borderColor = NSColor.white.withAlphaComponent(0.6).cgColor
+        knobView.layer?.borderWidth = 1.0
     }
 }
