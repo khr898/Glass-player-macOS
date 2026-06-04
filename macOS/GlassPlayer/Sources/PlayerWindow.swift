@@ -1925,6 +1925,25 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
             self?.updateFormatBadges()
             self?.updateNowPlayingInfo()
+            self?.updateFileThumbnailIfNeeded()
+        }
+    }
+
+    /// Extract a poster frame and set it as the file icon in Finder
+    private func updateFileThumbnailIfNeeded() {
+        guard let path = filePath, !currentMediaIsURL else { return }
+        guard let thumbMPV = thumbnailMPV else { return }
+        
+        let posterTime = min(5.0, duration > 0 ? duration * 0.1 : 5.0)
+        
+        UniversalSiliconQoS.heavy.async { [weak self] in
+            guard let self = self else { return }
+            if let image = thumbMPV.generateThumbnail(at: posterTime) {
+                DispatchQueue.main.async {
+                    NSWorkspace.shared.setIcon(image, forFile: path, options: [])
+                    NSLog("[PlayerWindow] Set video thumbnail as Finder file icon for: %@", path)
+                }
+            }
         }
     }
 
@@ -2861,11 +2880,8 @@ private class ThumbnailMPV {
         guard let handle = handle else { return nil }
 
         return queue.sync {
-            // Keyframe seek — snaps to nearest I-frame, avoids partial-decode black frames.
-            // "exact" on a headless null-vo instance causes frequent black outputs because
-            // inter-frames require the preceding keyframe to be decoded first, and the
-            // event loop exits before that completes.
-            mpv_command_string(handle, "seek \(time) absolute+keyframes")
+            // Seek absolute+exact to ensure the thumbnail matches the seek position exactly.
+            mpv_command_string(handle, "seek \(time) absolute+exact")
 
             // Wait for PLAYBACK_RESTART with a hard wall-clock deadline (300 ms).
             // Do NOT break on MPV_EVENT_NONE — that event fires when the queue is
