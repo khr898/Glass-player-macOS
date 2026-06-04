@@ -92,8 +92,20 @@ jobs:
 
       - name: Save Host Qt Path
         if: matrix.target == 'windows' && matrix.arch == 'ARM64'
-        run: echo "QT_HOST_PATH=$QT_ROOT_DIR" >> $GITHUB_ENV
         shell: bash
+        run: |
+          host_path=""
+          if [ -n "$Qt6_DIR" ]; then
+            host_path="$Qt6_DIR"
+          elif [ -n "$QT_ROOT_DIR" ]; then
+            host_path="$QT_ROOT_DIR"
+          else
+            host_path="${{ github.workspace }}/../Qt_host/Qt/6.5.3/msvc2019_64"
+          fi
+          # Convert backslashes to forward slashes
+          host_path="${host_path//\\//}"
+          echo "QT_HOST_PATH=$host_path" >> $GITHUB_ENV
+
 
       - name: Install Qt 6.5.3 (Windows)
         if: matrix.target == 'windows'
