@@ -142,6 +142,7 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
     private var lastThumbnailTime: Double = -1
     private var thumbnailCache: [Int: NSImage] = [:]   // keyed by millisecond
     private var thumbnailTimes: [Int: Double] = [:]    // exact time per cache key
+    private var thumbnailAccessOrder: [Int] = []       // LRU access order
     private var lastConfirmedThumbnailTime: Double = -1 // time matching the shown thumbnail
     private var pendingThumbnailTime: Double = -1
     private var isGeneratingThumbnail = false
@@ -152,6 +153,7 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
     // ── Stall watchdog ──
     private var idleWatchdog: Timer?
     private var lastTimePosReceived: CFTimeInterval = 0
+    private var seekTimeoutTimer: Timer?
 
     // ── System brightness/volume sync ──
     private var systemSyncTimer: Timer?
@@ -246,8 +248,12 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
         // Register for memory pressure → evict thumbnail cache (Phase 1B)
         UMAMemoryPressureMonitor.shared.onPressure { [weak self] in
             DispatchQueue.main.async {
-                self?.thumbnailCache.removeAll(keepingCapacity: false)
-                NSLog("[PlayerWindow] Thumbnail cache evicted due to memory pressure")
+                guard let self = self else { return }
+                self.thumbnailCache.removeAll(keepingCapacity: false)
+                self.thumbnailAccessOrder.removeAll()
+                self.thumbnailMPV?.shutdown()
+                self.thumbnailMPV = nil
+                NSLog("[PlayerWindow] Thumbnail cache and ThumbnailMPV evicted due to memory pressure")
             }
         }
 
@@ -285,6 +291,7 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
         currentMediaSource = cleaned
         currentMediaIsURL = true
         thumbnailCache.removeAll()
+        thumbnailAccessOrder.removeAll()
         window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         mpv.loadUrl(cleaned)
@@ -502,6 +509,7 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
             self.currentTimeLabel.stringValue = self.formatTimePrecise(time)
             self.remainingTimeLabel.stringValue = "-" + self.formatTimePrecise(self.duration - time)
             self.isSeeking = true
+            self.startSeekTimeoutTimer()
             self.showTimelinePreview(atPosition: position, time: time)
             let now = CACurrentMediaTime()
             if now - self.lastSeekTime > 0.03 {
@@ -519,6 +527,7 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
                 : (value / 100.0) * self.duration
             self.mpv.seek(to: seekTarget)
             self.lastConfirmedThumbnailTime = -1
+            self.stopSeekTimeoutTimer()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
                 self?.isSeeking = false
                 self?.lastDisplayedSecond = -1
@@ -1559,8 +1568,12 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
             return false
         }
 
-        // Cmd+O for open file
-        if event.modifierFlags.contains(.command) {
+        // Handle shortcuts with modifiers
+        let isCommand = event.modifierFlags.contains(.command)
+        let isControl = event.modifierFlags.contains(.control)
+        let isShift = event.modifierFlags.contains(.shift)
+
+        if isCommand || isControl {
             if event.keyCode == 31 { // O
                 openFileAction()
                 return true
@@ -1569,7 +1582,44 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
                 toggleUrlInput()
                 return true
             }
-            return false
+            if event.keyCode == 43 { // , (comma)
+                if let appDelegate = NSApp.delegate as? AppDelegate {
+                    appDelegate.showSettings()
+                    return true
+                }
+            }
+            if event.keyCode == 40 { // K
+                if mpv.shadersAvailable {
+                    cycleShaderPreset()
+                    return true
+                }
+            }
+            if event.keyCode == 126 { // Up arrow
+                adjustBrightness(by: 5)
+                return true
+            }
+            if event.keyCode == 125 { // Down arrow
+                adjustBrightness(by: -5)
+                return true
+            }
+            let chars = event.charactersIgnoringModifiers?.lowercased() ?? ""
+            if chars == "]" {
+                mpv.adjustAudioDelay(by: 0.001)
+                mpv.showText("Audio Delay: \(Int(round(mpv.getAudioDelay() * 1000.0))) ms")
+                return true
+            }
+            if chars == "[" {
+                mpv.adjustAudioDelay(by: -0.001)
+                mpv.showText("Audio Delay: \(Int(round(mpv.getAudioDelay() * 1000.0))) ms")
+                return true
+            }
+        }
+
+        if isShift {
+            if event.keyCode == 0 { // A
+                cycleAspectOverride()
+                return true
+            }
         }
 
         let chars = event.charactersIgnoringModifiers?.lowercased() ?? ""
@@ -1630,14 +1680,17 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
         default:
             if chars == ";" {
                 mpv.adjustAudioDelay(by: 0.1)
+                mpv.showText("Audio Delay: \(Int(round(mpv.getAudioDelay() * 1000.0))) ms")
                 return true
             }
             if chars == "'" {
                 mpv.adjustAudioDelay(by: -0.1)
+                mpv.showText("Audio Delay: \(Int(round(mpv.getAudioDelay() * 1000.0))) ms")
                 return true
             }
             if chars == "\\" {
                 mpv.setAudioDelay(0)
+                mpv.showText("Audio Delay: 0 ms")
                 return true
             }
             return false
@@ -1944,6 +1997,7 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
         lastConfirmedThumbnailTime = -1
         thumbnailCache.removeAll(keepingCapacity: true)
         thumbnailTimes.removeAll(keepingCapacity: true)
+        thumbnailAccessOrder.removeAll()
         lastThumbnailTime = -1
         timelineSlider.doubleValue = 0
         currentTimeLabel.stringValue = "0:00"
@@ -2095,6 +2149,7 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
             cursorHidden = false
         }
         hideTimer?.invalidate()
+        stopSystemSync()
     }
 
     func windowDidBecomeKey(_ notification: Notification) {
@@ -2287,6 +2342,7 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
     /// Initialize thumbnail state for a new file
     private func setupThumbnailGenerator() {
         thumbnailCache.removeAll()
+        thumbnailAccessOrder.removeAll()
         lastThumbnailTime = -1
         isGeneratingThumbnail = false
         pendingThumbnailTime = -1
@@ -2436,13 +2492,23 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
 
             DispatchQueue.main.async {
                 if let image = image {
-                    // Cap cache size — simple eviction: clear when over limit
+                    // Cap cache size — LRU eviction: remove oldest 25% when over limit
                     if self.thumbnailCache.count > self.thumbnailCacheLimit {
-                        self.thumbnailCache.removeAll(keepingCapacity: true)
-                        self.thumbnailTimes.removeAll(keepingCapacity: true)
+                        let countToRemove = self.thumbnailCacheLimit / 4
+                        for _ in 0..<countToRemove {
+                            if !self.thumbnailAccessOrder.isEmpty {
+                                let oldestKey = self.thumbnailAccessOrder.removeFirst()
+                                self.thumbnailCache.removeValue(forKey: oldestKey)
+                                self.thumbnailTimes.removeValue(forKey: oldestKey)
+                            }
+                        }
                     }
                     self.thumbnailCache[cacheKey] = image
-                    self.thumbnailTimes[cacheKey] = capturedTime  // store exact time
+                    self.thumbnailTimes[cacheKey] = capturedTime
+                    if let idx = self.thumbnailAccessOrder.firstIndex(of: cacheKey) {
+                        self.thumbnailAccessOrder.remove(at: idx)
+                    }
+                    self.thumbnailAccessOrder.append(cacheKey)  // store exact time
                     self.previewImageView?.image = image
                     self.lastConfirmedThumbnailTime = capturedTime
                 }
@@ -2538,11 +2604,14 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
         idleWatchdog = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
             guard let self = self, !self.isPaused else { return }
             let elapsed = CACurrentMediaTime() - self.lastTimePosReceived
-            if elapsed > 4.5 {
-                NSLog("[PlayerWindow] Stall watchdog: no time-pos for %.1f s, nudging mpv", elapsed)
-                // Option 1: zero-delta relative seek — wakes up stuck demuxer
+            // Only trigger for genuine stalls (>8s) and only for network sources
+            guard elapsed > 8.0 else { return }
+            guard let source = self.currentMediaSource, source.contains("://") else { return }
+            // Verify demuxer cache is actually depleted before nudging
+            let cacheTime = self.mpv.getPropertyDouble("demuxer-cache-time")
+            if cacheTime < 1.0 {
+                NSLog("[PlayerWindow] Stall watchdog: no time-pos for %.1f s (stream), cache=%.1fs, nudging", elapsed, cacheTime)
                 self.mpv.seek(by: 0)
-                // Restart grace period
                 self.lastTimePosReceived = CACurrentMediaTime()
             }
         }
@@ -2551,6 +2620,75 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
     private func stopIdleWatchdog() {
         idleWatchdog?.invalidate()
         idleWatchdog = nil
+    }
+
+    private func startSeekTimeoutTimer() {
+        seekTimeoutTimer?.invalidate()
+        seekTimeoutTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: false) { [weak self] _ in
+            guard let self = self else { return }
+            if self.isSeeking {
+                NSLog("[PlayerWindow] Seek timeout - forcing unstick")
+                self.isSeeking = false
+                self.lastDisplayedSecond = -1
+                self.mpv.setPropertyString("pause", "no")
+            }
+        }
+    }
+
+    private func stopSeekTimeoutTimer() {
+        seekTimeoutTimer?.invalidate()
+        seekTimeoutTimer = nil
+    }
+
+    private func cycleAspectOverride() {
+        let aspects = ["auto", "16:9", "4:3", "21:9", "1:1", "2.35:1"]
+        let currentIdx = aspects.firstIndex(of: currentAspect) ?? 0
+        let nextIdx = (currentIdx + 1) % aspects.count
+        let nextAspect = aspects[nextIdx]
+        currentAspect = nextAspect
+        mpv.setAspectOverride(nextAspect)
+        aspectButton.contentTintColor = nextAspect == "auto" ? .white :
+            NSColor(red: 0.04, green: 0.52, blue: 1.0, alpha: 1.0)
+        mpv.showText("Aspect Ratio: \(nextAspect)")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+            guard let self = self else { return }
+            let dims = self.mpv.getDisplayDimensions()
+            if dims.width > 0 && dims.height > 0 {
+                self.displayWidth = dims.width
+                self.displayHeight = dims.height
+            }
+            self.resizeWindowToVideo()
+        }
+    }
+
+    private func cycleShaderPreset() {
+        let presets = ["Off", "Auto (Recommended)", "Mode A (HQ)", "Mode B (HQ)", "Mode C (HQ)",
+                       "Mode A+A (HQ)", "Mode B+B (HQ)", "Mode C+A (HQ)", "Mode A (Fast)",
+                       "Mode B (Fast)", "Mode C (Fast)", "Mode A+A (Fast)", "Mode B+B (Fast)",
+                       "Mode C+A (Fast)"]
+        let currentPreset = mpv.currentShaderPreset ?? "Off"
+        let currentIdx = presets.firstIndex(of: currentPreset) ?? 0
+        let nextIdx = (currentIdx + 1) % presets.count
+        let nextPreset = presets[nextIdx]
+        
+        if nextPreset == "Off" {
+            mpv.clearShaders()
+        } else if nextPreset == "Auto (Recommended)" {
+            let resolved = UniversalMetalRuntime.recommendedAnime4KPreset()
+            _ = mpv.applyShaderPreset(resolved)
+        } else {
+            _ = mpv.applyShaderPreset(nextPreset)
+        }
+        updateShaderButton()
+        mpv.showText("Anime4K Shader: \(nextPreset)")
+    }
+
+    private func adjustBrightness(by delta: Double) {
+        let currentB = getDisplayBrightness() ?? 0.5
+        let newB = max(0, min(1.0, currentB + Float(delta / 100.0)))
+        setDisplayBrightness(newB)
+        brightnessSliderV?.doubleValue = Double(newB) * 100
+        mpv.showText("Brightness: \(Int(newB * 100))%")
     }
 
     // ═══════════════════════════════════════════════════════════════════

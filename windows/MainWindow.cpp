@@ -81,8 +81,10 @@ private:
 
 class ThumbnailMpv {
 public:
-    ThumbnailMpv() {
-        m_tmpPath = QDir::tempPath() + QString("/glassplayer_thumb_%1.jpg").arg(QCoreApplication::applicationPid());
+    explicit ThumbnailMpv(void *instanceId = nullptr) {
+        m_tmpPath = QDir::tempPath() + QString("/glassplayer_thumb_%1_%2.jpg")
+            .arg(QCoreApplication::applicationPid())
+            .arg(reinterpret_cast<quintptr>(instanceId), 0, 16);
         m_workerThread = std::thread(&ThumbnailMpv::workerLoop, this);
     }
     ~ThumbnailMpv() {
@@ -295,12 +297,27 @@ private:
 };
 
 
+int MainWindow::s_windowCount = 0;
 static const QString kMenuStyle = Theme::kMenuStyle;
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent), m_settings("GlassPlayer", "Settings")
 {
+    s_windowCount++;
     setupUi();
+
+    m_seekTimeoutTimer = new QTimer(this);
+    m_seekTimeoutTimer->setSingleShot(true);
+    m_seekTimeoutTimer->setInterval(3000);
+    connect(m_seekTimeoutTimer, &QTimer::timeout, this, [this]() {
+        if (m_seekInProgress) {
+            qDebug() << "[MainWindow] Seek timeout - forcing unstick";
+            m_seekInProgress = false;
+            m_seekCommandPending = false;
+            m_isSeeking = false;
+            m_mpvWidget->command(QVariantList() << "set" << "pause" << "no");
+        }
+    });
 
     connect(m_mpvWidget, &MpvWidget::positionChanged, this, &MainWindow::updatePosition);
     connect(m_mpvWidget, &MpvWidget::durationChanged, this, &MainWindow::updateDuration);
@@ -308,6 +325,25 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_mpvWidget, &MpvWidget::startFile, this, &MainWindow::onStartFile);
     connect(m_brightnessSlider, &QSlider::sliderReleased, this, &MainWindow::updateHoverBars);
     connect(m_volumeHoverSlider, &QSlider::sliderReleased, this, &MainWindow::updateHoverBars);
+    connect(m_mpvWidget, &MpvWidget::playbackError, this, [this](const QString &msg) {
+        qWarning() << "[MainWindow] Playback error:" << msg;
+        if (m_titleLabel) {
+            m_titleLabel->setText(QString("Error: %1").arg(msg));
+        }
+    });
+    connect(m_mpvWidget, &MpvWidget::playbackRestarted, this, [this]() {
+        m_seekTimeoutTimer->stop();
+        if (m_seekCommandPending) {
+            m_seekCommandPending = false;
+            qDebug() << "[MainWindow] Executing deferred seek to" << m_queuedSeekTarget;
+            m_seekInProgress = true;
+            m_seekTimeoutTimer->start();
+            m_mpvWidget->command(QVariantList() << "seek" << QString::number(m_queuedSeekTarget, 'f', 6) << "absolute+exact");
+        } else {
+            m_seekInProgress = false;
+            m_isSeeking = false;
+        }
+    });
     connect(m_mpvWidget, &MpvWidget::pauseChanged, this, [this](bool paused) {
         m_isPlaying = !paused;
         m_playPauseBtn->setIcon(QIcon(paused ? ":/icons/play.svg" : ":/icons/pause.svg"));
@@ -366,11 +402,17 @@ MainWindow::MainWindow(QWidget *parent)
     m_stallWatchdog->setInterval(5000);
     connect(m_stallWatchdog, &QTimer::timeout, this, [this]() {
         if (!m_isPlaying || m_isSeeking || m_duration <= 0) return;
+        // Only for network streams
+        if (!m_currentFile.contains("://")) return;
         qint64 elapsed = QDateTime::currentMSecsSinceEpoch() - m_lastPositionTime;
-        if (elapsed > 4500) {
-            qDebug() << "[MainWindow] Stall watchdog: no position for" << elapsed << "ms, nudging mpv";
-            m_mpvWidget->command(QVariantList() << "seek" << 0 << "relative+exact");
-            m_lastPositionTime = QDateTime::currentMSecsSinceEpoch();
+        if (elapsed > 8000) {
+            // Verify cache is depleted
+            double cacheTime = m_mpvWidget->getProperty("demuxer-cache-time").toDouble();
+            if (cacheTime < 1.0) {
+                qDebug() << "[MainWindow] Stall watchdog: nudging mpv (stream, cache=" << cacheTime << "s)";
+                m_mpvWidget->command(QVariantList() << "seek" << 0 << "relative+exact");
+                m_lastPositionTime = QDateTime::currentMSecsSinceEpoch();
+            }
         }
     });
     m_stallWatchdog->start();
@@ -434,6 +476,7 @@ int MainWindow::runWelcomeScreen()
 
 MainWindow::~MainWindow()
 {
+    s_windowCount--;
     if (m_thumbnailMpv) {
         m_thumbnailMpv->shutdown();
         delete m_thumbnailMpv;
@@ -831,6 +874,18 @@ void MainWindow::openFile(const QString &file)
     }
 
     if (!m_currentFile.isEmpty()) {
+        if (s_windowCount >= 10) {
+            QMessageBox::critical(this, "Window Limit Exceeded",
+                "Maximum window limit (10) reached. Cannot open another video window.");
+            return;
+        } else if (s_windowCount >= 5) {
+            QMessageBox::StandardButton reply = QMessageBox::warning(this, "Resource Warning",
+                QString("You have %1 windows open. Opening more may affect performance. Do you want to proceed?").arg(s_windowCount),
+                QMessageBox::Yes | QMessageBox::No);
+            if (reply == QMessageBox::No) {
+                return;
+            }
+        }
         MainWindow *newWin = new MainWindow();
         newWin->setAttribute(Qt::WA_DeleteOnClose);
         newWin->suppressWelcome();
@@ -855,7 +910,7 @@ void MainWindow::openFile(const QString &file)
     m_isGeneratingThumbnail = false;
     m_pendingThumbnailTime = -1;
     if (!m_thumbnailMpv) {
-        m_thumbnailMpv = new ThumbnailMpv();
+        m_thumbnailMpv = new ThumbnailMpv(this);
     }
 
     m_thumbnailMpv->loadSource(file);
@@ -942,6 +997,12 @@ void MainWindow::changeEvent(QEvent *event)
                 onPlayPauseClicked();
             }
         }
+    } else if (event->type() == QEvent::WindowStateChange) {
+        if (isMinimized()) {
+            m_systemSyncTimer->stop();
+        } else {
+            m_systemSyncTimer->start();
+        }
     }
     QMainWindow::changeEvent(event);
 }
@@ -966,17 +1027,30 @@ void MainWindow::onSliderMoved(int position)
         qint64 now = QDateTime::currentMSecsSinceEpoch();
         if (now - m_lastSeekTime > 25) {
             m_lastSeekTime = now;
-            m_mpvWidget->command(QVariantList() << "seek" << QString::number(pos, 'f', 6) << "absolute+keyframes");
+            if (m_seekInProgress) {
+                m_queuedSeekTarget = pos;
+                m_seekCommandPending = true;
+            } else {
+                m_seekInProgress = true;
+                m_seekTimeoutTimer->start();
+                m_mpvWidget->command(QVariantList() << "seek" << QString::number(pos, 'f', 6) << "absolute+keyframes");
+            }
         }
     }
 }
 
 void MainWindow::onSliderReleased()
 {
-    m_isSeeking = false;
     if (m_duration > 0) {
         double pos = (m_seekSlider->value() / 1000000.0) * m_duration;
-        m_mpvWidget->command(QVariantList() << "seek" << QString::number(pos, 'f', 6) << "absolute+exact");
+        if (m_seekInProgress) {
+            m_queuedSeekTarget = pos;
+            m_seekCommandPending = true;
+        } else {
+            m_seekInProgress = true;
+            m_seekTimeoutTimer->start();
+            m_mpvWidget->command(QVariantList() << "seek" << QString::number(pos, 'f', 6) << "absolute+exact");
+        }
         m_currentTimeLabel->setText(formatTime(pos));
         m_remainingTimeLabel->setText("-" + formatTime(m_duration - pos));
     }
@@ -1754,13 +1828,12 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
                 }
                 
                 qint64 now = QDateTime::currentMSecsSinceEpoch();
-                static qint64 lastClickTime = 0;
-                if (now - lastClickTime < QGuiApplication::styleHints()->mouseDoubleClickInterval()) {
+                if (now - m_lastClickTime < QGuiApplication::styleHints()->mouseDoubleClickInterval()) {
                     m_clickTimer->stop();
                     toggleFullscreen();
-                    lastClickTime = 0;
+                    m_lastClickTime = 0;
                 } else {
-                    lastClickTime = now;
+                    m_lastClickTime = now;
                     m_clickTimer->start();
                 }
                 return true;
@@ -1871,34 +1944,7 @@ void MainWindow::toggleFullscreen()
 
 void MainWindow::keyPressEvent(QKeyEvent *event)
 {
-    switch (event->key()) {
-    case Qt::Key_Space:
-        onPlayPauseClicked();
-        break;
-    case Qt::Key_F:
-        toggleFullscreen();
-        break;
-    case Qt::Key_Escape:
-        if (isFullScreen()) showNormal();
-        break;
-    case Qt::Key_Left:
-        m_mpvWidget->seek(-5.0);
-        break;
-    case Qt::Key_Right:
-        m_mpvWidget->seek(5.0);
-        break;
-    case Qt::Key_Up:
-        m_volumeSlider->setValue(m_volumeSlider->value() + 5);
-        break;
-    case Qt::Key_Down:
-        m_volumeSlider->setValue(m_volumeSlider->value() - 5);
-        break;
-    case Qt::Key_M:
-        onMuteClicked();
-        break;
-    default:
-        QMainWindow::keyPressEvent(event);
-    }
+    QMainWindow::keyPressEvent(event);
 }
 
 void MainWindow::executeCommand(const QString &commandLine)
@@ -2021,20 +2067,66 @@ QList<MainWindow::ShortcutInfo> MainWindow::getShortcutDefinitions()
         {"OpenUrl", "Open URL", "Ctrl+U"},
         {"OpenSettings", "Open Settings Window", "Ctrl+,"},
         {"AudioDelayIncrease", "Audio Delay Increase (1ms)", "Ctrl+]"},
-        {"AudioDelayDecrease", "Audio Delay Decrease (1ms)", "Ctrl+["}
+        {"AudioDelayDecrease", "Audio Delay Decrease (1ms)", "Ctrl+["},
+        {"Escape", "Exit Fullscreen", "Escape"},
+        {"SeekBackward10", "Seek Backward 10s", "J"},
+        {"SeekForward10", "Seek Forward 10s", "L"},
+        {"FrameStep", "Frame Step Forward", "."},
+        {"FrameBackStep", "Frame Step Backward", ","},
+        {"SpeedUp", "Speed Up (+0.25x)", "]"},
+        {"SpeedDown", "Speed Down (-0.25x)", "["},
+        {"VideoInfo", "Toggle Video Info", "I"},
+        {"PlayPauseK", "Play/Pause (Alt)", "K"},
+        {"AudioDelayUp", "Audio Delay +100ms", ";"},
+        {"AudioDelayDown", "Audio Delay -100ms", "'"},
+        {"AudioDelayReset", "Reset Audio Delay", "\\"}
     };
 }
 
 void MainWindow::handleShortcutTrigger(const QString &action)
 {
-    if (action == "PlayPause") {
+    if (action == "PlayPause" || action == "PlayPauseK") {
         onPlayPauseClicked();
     } else if (action == "Fullscreen") {
         toggleFullscreen();
+    } else if (action == "Escape") {
+        if (isFullScreen()) {
+            toggleFullscreen();
+        }
     } else if (action == "SeekBackward") {
         m_mpvWidget->seek(-5.0);
     } else if (action == "SeekForward") {
         m_mpvWidget->seek(5.0);
+    } else if (action == "SeekBackward10") {
+        m_mpvWidget->seek(-10.0);
+    } else if (action == "SeekForward10") {
+        m_mpvWidget->seek(10.0);
+    } else if (action == "FrameStep") {
+        m_mpvWidget->command(QVariantList() << "frame-step");
+    } else if (action == "FrameBackStep") {
+        m_mpvWidget->command(QVariantList() << "frame-back-step");
+    } else if (action == "SpeedUp") {
+        double currentSpeed = m_mpvWidget->getProperty("speed").toDouble();
+        double nextSpeed = qBound(0.25, currentSpeed + 0.25, 4.0);
+        m_mpvWidget->setProperty("speed", nextSpeed);
+        m_mpvWidget->command(QVariantList() << "show-text" << QString("Speed: %1x").arg(nextSpeed, 0, 'f', 2));
+        if (m_speedBtn) {
+            m_speedBtn->setText(nextSpeed == static_cast<int>(nextSpeed)
+                ? QString::number(static_cast<int>(nextSpeed)) + "x"
+                : QString::number(nextSpeed, 'f', 2) + "x");
+        }
+    } else if (action == "SpeedDown") {
+        double currentSpeed = m_mpvWidget->getProperty("speed").toDouble();
+        double nextSpeed = qBound(0.25, currentSpeed - 0.25, 4.0);
+        m_mpvWidget->setProperty("speed", nextSpeed);
+        m_mpvWidget->command(QVariantList() << "show-text" << QString("Speed: %1x").arg(nextSpeed, 0, 'f', 2));
+        if (m_speedBtn) {
+            m_speedBtn->setText(nextSpeed == static_cast<int>(nextSpeed)
+                ? QString::number(static_cast<int>(nextSpeed)) + "x"
+                : QString::number(nextSpeed, 'f', 2) + "x");
+        }
+    } else if (action == "VideoInfo") {
+        m_mpvWidget->command(QVariantList() << "script-binding" << "stats/display-stats-toggle");
     } else if (action == "VolumeUp") {
         int newVolume = qBound(0, m_volumeSlider->value() + 5, 200);
         m_volumeSlider->setValue(newVolume);
@@ -2067,6 +2159,13 @@ void MainWindow::handleShortcutTrigger(const QString &action)
         adjustAudioDelay(0.001);
     } else if (action == "AudioDelayDecrease") {
         adjustAudioDelay(-0.001);
+    } else if (action == "AudioDelayUp") {
+        adjustAudioDelay(0.100);
+    } else if (action == "AudioDelayDown") {
+        adjustAudioDelay(-0.100);
+    } else if (action == "AudioDelayReset") {
+        m_mpvWidget->setProperty("audio-delay", 0.0);
+        m_mpvWidget->command(QVariantList() << "show-text" << "Audio Delay: 0 ms");
     }
 }
 

@@ -529,6 +529,7 @@ class ViewLayer: CAMetalLayer {
                         mpv_render_param()   // sentinel
                     ]
                     mpv_render_context_render(renderCtx, &params)
+                    mpv_render_context_report_swap(renderCtx)
                 }
             }
         }

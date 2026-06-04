@@ -30,6 +30,8 @@ MpvWidget::MpvWidget(QWidget *parent)
 
     // Enforce gpu-api=opengl to ensure correct context rendering and GLSL shader (Anime4K) support
     mpv_set_option_string(m_mpv, "gpu-api", "opengl");
+    mpv_set_option_string(m_mpv, "video-sync", "display-resample");
+    mpv_set_option_string(m_mpv, "interpolation", "yes");
 
     // Playback and OSC configurations matching macOS port
     mpv_set_option_string(m_mpv, "keep-open", "yes");
@@ -139,6 +141,7 @@ void MpvWidget::paintGL()
     };
 
     mpv_render_context_render(m_mpv_gl, params);
+    mpv_render_context_report_swap(m_mpv_gl);
 }
 
 void MpvWidget::resizeGL(int w, int h)
@@ -200,8 +203,17 @@ void MpvWidget::handleEvent(mpv_event *event)
         }
         break;
     }
-    case MPV_EVENT_END_FILE:
-        emit eofReached();
+    case MPV_EVENT_END_FILE: {
+        mpv_event_end_file *eof = static_cast<mpv_event_end_file*>(event->data);
+        if (eof && eof->reason == MPV_END_FILE_REASON_ERROR) {
+            emit playbackError(QString::fromUtf8(mpv_error_string(eof->error)));
+        } else {
+            emit eofReached();
+        }
+        break;
+    }
+    case MPV_EVENT_PLAYBACK_RESTART:
+        emit playbackRestarted();
         break;
     default:
         break;
@@ -218,7 +230,10 @@ void MpvWidget::command(const QVariantList &args)
         cmd[i] = strArr[i].constData();
     }
     cmd[n] = nullptr;
-    mpv_command(m_mpv, cmd.data());
+    int err = mpv_command(m_mpv, cmd.data());
+    if (err < 0) {
+        qWarning() << "[MpvWidget] mpv_command failed:" << mpv_error_string(err) << "for args:" << args;
+    }
 }
 
 void MpvWidget::setProperty(const char *name, const QVariant &value)

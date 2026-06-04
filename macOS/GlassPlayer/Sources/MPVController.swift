@@ -247,6 +247,7 @@ class MPVController {
 
         // Quality
         setOption("profile", "high-quality")
+        setOption("video-sync", "display-resample")
 
         // Display P3 wide gamut – matches MacBook Pro's native panel gamut.
         // mpv renders in P3 colorspace with standard gamma for maximum color.
@@ -429,6 +430,16 @@ class MPVController {
         var s: Double = 1.0
         mpv_get_property(mpvHandle, "speed", MPV_FORMAT_DOUBLE, &s)
         return s
+    }
+
+    func getPropertyDouble(_ name: String) -> Double {
+        var val: Double = 0
+        mpv_get_property(mpvHandle, name, MPV_FORMAT_DOUBLE, &val)
+        return val
+    }
+
+    func showText(_ text: String, duration: Int = 2000) {
+        command(["show-text", text, "\(duration)"])
     }
 
     // MARK: - Track Selection
@@ -763,6 +774,12 @@ class MPVController {
                     DispatchQueue.main.async { [weak self] in self?.delegate?.mpvFileLoaded() }
 
                 case MPV_EVENT_END_FILE:
+                    if let endData = event.pointee.data?.assumingMemoryBound(to: mpv_event_end_file.self).pointee {
+                        if endData.reason == MPV_END_FILE_REASON_ERROR {
+                            let errStr = String(cString: mpv_error_string(endData.error))
+                            NSLog("[MPV] Playback ended with error: %@", errStr)
+                        }
+                    }
                     DispatchQueue.main.async { [weak self] in self?.delegate?.mpvPlaybackEnded() }
 
                 case MPV_EVENT_PROPERTY_CHANGE:

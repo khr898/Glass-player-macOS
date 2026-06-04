@@ -38,6 +38,8 @@ signals:
     void pauseChanged(bool paused);
     void fileLoaded();
     void startFile();    // Emitted when mpv begins loading a new file
+    void playbackError(const QString &message);
+    void playbackRestarted();
 
 protected:
     void initializeGL() override;

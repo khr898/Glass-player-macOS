@@ -58,6 +58,42 @@ The Windows version hosts the libmpv core within a dedicated rendering thread, s
 
 ---
 
+## Keyboard Shortcuts
+
+| Shortcut | Action |
+|----------|--------|
+| `Space` / `K` | Play / Pause |
+| `F` | Toggle Fullscreen |
+| `Escape` | Exit Fullscreen |
+| `←` | Seek Backward 5s |
+| `→` | Seek Forward 5s |
+| `J` | Seek Backward 10s |
+| `L` | Seek Forward 10s |
+| `↑` | Volume Up |
+| `↓` | Volume Down |
+| `M` | Mute / Unmute |
+| `S` | Cycle Subtitle Track |
+| `A` / `Ctrl+A` | Cycle Audio Track |
+| `Shift+A` | Cycle Aspect Ratio |
+| `I` | Toggle Video Info Overlay |
+| `,` | Frame Step Backward |
+| `.` | Frame Step Forward |
+| `[` | Speed Down (-0.25x) |
+| `]` | Speed Up (+0.25x) |
+| `;` | Audio Delay +100ms |
+| `'` | Audio Delay -100ms |
+| `\` | Reset Audio Delay |
+| `Ctrl+]` / `Cmd+]` | Audio Delay +1ms (fine) |
+| `Ctrl+[` / `Cmd+[` | Audio Delay -1ms (fine) |
+| `Ctrl+K` / `Cmd+K` | Toggle/Cycle Anime4K Shaders |
+| `Ctrl+Up` / `Cmd+Up` | Brightness Up |
+| `Ctrl+Down` / `Cmd+Down` | Brightness Down |
+| `Cmd/Ctrl+O` | Open File |
+| `Cmd/Ctrl+U` | Open URL |
+| `Cmd/Ctrl+,` | Open Settings |
+
+---
+
 ## Installation
 
 ### macOS

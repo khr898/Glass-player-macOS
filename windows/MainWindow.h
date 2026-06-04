@@ -122,6 +122,8 @@ public:
     explicit MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
+    static int s_windowCount;
+
     void openFile(const QString &file);
     void setAnime4kPreset(const QString& preset);
     void suppressWelcome();       // Call before show() when a file arg is provided
@@ -280,5 +282,10 @@ private:
     bool m_isSeeking = false;
     qint64 m_lastSeekTime = 0;
     qint64 m_lastPositionTime = 0;  // ms timestamp of last positionChanged signal
+    bool m_seekInProgress = false;
+    bool m_seekCommandPending = false;
+    double m_queuedSeekTarget = -1.0;
+    QTimer *m_seekTimeoutTimer = nullptr;
+    qint64 m_lastClickTime = 0;
 };
 

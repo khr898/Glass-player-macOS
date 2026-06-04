@@ -31,6 +31,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         setupMenu()
         generateAppIcon()
 
+        UMAMemoryPressureMonitor.shared.onPressure { [weak self] in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                if self.playerWindows.count > 1 {
+                    NSLog("[AppDelegate] Critical memory pressure detected. Closing oldest non-focused player windows.")
+                    let activeWin = NSApp.keyWindow
+                    let windowsToClose = self.playerWindows.filter { $0.window !== activeWin }
+                    for pw in windowsToClose {
+                        NSLog("[AppDelegate] Closing window for media: %@", pw.currentMediaSource ?? "unknown")
+                        pw.window?.close()
+                    }
+                    NSLog("[AppDelegate] Closed \(windowsToClose.count) background window(s)")
+                }
+            }
+        }
+
         // If launched with a file argument, open it
         let args = CommandLine.arguments
         if args.count > 1 {
@@ -79,6 +95,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         welcomeWindow?.close()
         // If the current player already has a video loaded, open a new window
         if let existing = playerWindow, existing.currentMediaSource != nil {
+            if playerWindows.count >= 10 {
+                let alert = NSAlert()
+                alert.messageText = "Window Limit Exceeded"
+                alert.informativeText = "Maximum window limit (10) reached. Cannot open another video window."
+                alert.alertStyle = .critical
+                alert.runModal()
+                return
+            } else if playerWindows.count >= 5 {
+                let alert = NSAlert()
+                alert.messageText = "Resource Warning"
+                alert.informativeText = "You have \(playerWindows.count) windows open. Opening more may affect performance. Do you want to proceed?"
+                alert.alertStyle = .warning
+                alert.addButton(withTitle: "Yes")
+                alert.addButton(withTitle: "No")
+                if alert.runModal() == .alertSecondButtonReturn {
+                    return
+                }
+            }
             // When the existing window is fullscreen, creating a new window
             // here would place it on the fullscreen space (wrong).
             // Instead, re-invoke via Launch Services (`open -b`), which makes
@@ -114,6 +148,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         welcomeWindow?.close()
         // If the current player already has a video loaded, open a new window
         if let existing = playerWindow, existing.currentMediaSource != nil {
+            if playerWindows.count >= 10 {
+                let alert = NSAlert()
+                alert.messageText = "Window Limit Exceeded"
+                alert.informativeText = "Maximum window limit (10) reached. Cannot open another video window."
+                alert.alertStyle = .critical
+                alert.runModal()
+                return
+            } else if playerWindows.count >= 5 {
+                let alert = NSAlert()
+                alert.messageText = "Resource Warning"
+                alert.informativeText = "You have \(playerWindows.count) windows open. Opening more may affect performance. Do you want to proceed?"
+                alert.alertStyle = .warning
+                alert.addButton(withTitle: "Yes")
+                alert.addButton(withTitle: "No")
+                if alert.runModal() == .alertSecondButtonReturn {
+                    return
+                }
+            }
             let newPlayer = PlayerWindow()
             newPlayer.loadUrl(url)
             playerWindows.append(newPlayer)
