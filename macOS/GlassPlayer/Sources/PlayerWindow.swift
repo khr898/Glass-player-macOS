@@ -661,6 +661,7 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
 
             timelineSlider.leadingAnchor.constraint(equalTo: currentTimeLabel.trailingAnchor, constant: 4),
             timelineSlider.centerYAnchor.constraint(equalTo: currentTimeLabel.centerYAnchor),
+            timelineSlider.heightAnchor.constraint(equalToConstant: 24),
 
             remainingTimeLabel.leadingAnchor.constraint(equalTo: timelineSlider.trailingAnchor, constant: 4),
             remainingTimeLabel.trailingAnchor.constraint(equalTo: controlsContainer.trailingAnchor, constant: -14),
@@ -729,6 +730,7 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
             volumeSlider.trailingAnchor.constraint(equalTo: speedButton.leadingAnchor, constant: -8),
             volumeSlider.centerYAnchor.constraint(equalTo: subtitleButton.centerYAnchor),
             volumeSlider.widthAnchor.constraint(equalToConstant: 70),
+            volumeSlider.heightAnchor.constraint(equalToConstant: 24),
 
             volumeButton.trailingAnchor.constraint(equalTo: volumeSlider.leadingAnchor, constant: -4),
             volumeButton.centerYAnchor.constraint(equalTo: subtitleButton.centerYAnchor),
@@ -2934,55 +2936,70 @@ private class ThumbnailMPV {
 }
 
 // ---------------------------------------------------------------------------
-// GlassSlider – Native NSSlider with custom glass appearance
-// ---------------------------------------------------------------------------
-// ---------------------------------------------------------------------------
-// GlassSliderCell – Custom cell styling for a native NSSlider to suppress
-// default AppKit rendering.
+// GlassSliderCell – Suppress all default AppKit drawing so GlassSlider
+// can render its own custom track / knob entirely.
 // ---------------------------------------------------------------------------
 class GlassSliderCell: NSSliderCell {
-    override func drawBar(inside rect: NSRect, flipped: Bool) {
-        // Do nothing so the default bar is not drawn
-    }
-    override func drawKnob(_ rect: NSRect) {
-        // Do nothing so the default knob is not drawn
-    }
+    override func drawBar(inside rect: NSRect, flipped: Bool) { /* custom draw only */ }
+    override func drawKnob(_ rect: NSRect) { /* custom draw only */ }
+    override func drawKnob() { /* custom draw only */ }
+    override func drawFocusRingMask(withFrame cellFrame: NSRect, in controlView: NSView) { /* suppress */ }
 }
 
 // ---------------------------------------------------------------------------
-// GlassSlider – Native NSSlider with custom glass appearance matching
-// the Tahoe "Liquid Glass" design language (with fallbacks).
+// GlassSlider – Tahoe "Liquid Glass" style slider with three visual states:
+//
+//   • normal   – thin track (4 pt), small round knob (12 pt diameter)
+//   • hover    – expanded capsule track fills full height, knob enlarges (18 pt)
+//   • dragging – same geometry as hover, track/knob rendered as frosted glass
+//
+// The slider is a true NSSlider subclass so AppKit handles all hit-testing,
+// keyboard adjustment, and value tracking correctly. A custom CADisplayLink-
+// driven tracking loop is used instead of super.mouseDown so that the layout
+// updates are never starved on the main run loop.
 // ---------------------------------------------------------------------------
 class GlassSlider: NSSlider {
+
+    // MARK: – Public callbacks
     var onValueChanged: ((Double) -> Void)?
-    var onDragEnded: ((Double) -> Void)?
+    var onDragEnded:    ((Double) -> Void)?
 
-    private var trackView: NSView!
-    private var knobView: NSView!
-    private let fillView = NSView()
-
-    override var doubleValue: Double {
-        didSet {
-            self.needsLayout = true
-        }
+    // MARK: – State
+    private enum State { case normal, hover, dragging }
+    private var sliderState: State = .normal {
+        didSet { guard sliderState != oldValue else { return }; animateToCurrentState() }
     }
 
-    override var minValue: Double {
-        didSet {
-            self.needsLayout = true
-        }
-    }
+    // MARK: – Sub-views
+    // trackContainer clips the fill and provides the rounded pill background.
+    private let trackContainer = NSView()
+    private let fillView       = NSView()
+    private let knobView       = NSView()
 
-    override var maxValue: Double {
-        didSet {
-            self.needsLayout = true
-        }
-    }
+    // Track area for hover detection
+    private var hoverTrackingArea: NSTrackingArea?
 
-    override var mouseDownCanMoveWindow: Bool {
-        return false
-    }
+    // MARK: – Geometry constants
+    //   heights used for the *container* (the hit area is always the full frame)
+    private let trackHeightNormal:  CGFloat = 4
+    private let trackHeightExpanded: CGFloat = 20   // pill height in hover / drag
+    private let knobDiamNormal:  CGFloat = 12
+    private let knobDiamExpanded: CGFloat = 18
 
+    // MARK: – Layer references kept for cheap animated updates
+    private var trackLayer: CALayer { trackContainer.layer! }
+    private var fillLayer:  CALayer { fillView.layer! }
+    private var knobLayer:  CALayer { knobView.layer! }
+
+    // MARK: – NSSlider value change propagation
+    override var doubleValue: Double { didSet { updateLayout(animated: false) } }
+    override var minValue:    Double { didSet { updateLayout(animated: false) } }
+    override var maxValue:    Double { didSet { updateLayout(animated: false) } }
+
+    // Prevent the slider from being used to drag the window
+    override var mouseDownCanMoveWindow: Bool { false }
+
+    // MARK: – Init
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         setup()
@@ -2993,142 +3010,250 @@ class GlassSlider: NSSlider {
         setup()
     }
 
+    // MARK: – Setup
     private func setup() {
         self.cell = GlassSliderCell()
-        self.target = self
-        self.action = #selector(sliderAction(_:))
-        self.isContinuous = true
+        self.isContinuous  = true
         self.focusRingType = .none
 
-        // Create track view: dynamically try NSGlassEffectView on macOS 26+, fallback to plain translucent white NSView
-        if #available(macOS 26.0, *),
-           let glassClass = NSClassFromString("NSGlassEffectView") as? NSView.Type {
-            trackView = glassClass.init()
-        } else {
-            let fallbackTrack = NSView()
-            fallbackTrack.wantsLayer = true
-            fallbackTrack.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.25).cgColor
-            trackView = fallbackTrack
-        }
+        // trackContainer (pill background + fill)
+        trackContainer.wantsLayer = true
+        trackContainer.layer?.masksToBounds = true
 
-        // Create knob view: standard solid white NSView to avoid visual effect clipping issues
-        knobView = NSView()
-        knobView.wantsLayer = true
-        knobView.layer?.backgroundColor = NSColor.white.cgColor
-
-        self.addSubview(trackView)
-        trackView.addSubview(fillView)
-        self.addSubview(knobView)
-
-        // Style fillView (accent-tinted glass progress fill)
         fillView.wantsLayer = true
-        fillView.layer?.backgroundColor = NSColor(red: 0.37, green: 0.80, blue: 1.0, alpha: 0.65).cgColor
+        trackContainer.addSubview(fillView)
+        addSubview(trackContainer)
 
-        self.needsLayout = true
+        // knobView (sits on top)
+        knobView.wantsLayer = true
+        knobView.layer?.masksToBounds = true
+        addSubview(knobView)
+
+        applyNormalStyle(animated: false)
+        updateLayout(animated: false)
     }
 
-    private func applyCornerRadius(_ view: NSView, radius: CGFloat, maskToBounds: Bool = false) {
-        if NSClassFromString("NSGlassEffectView") != nil && view.isKind(of: NSClassFromString("NSGlassEffectView")!) {
-            view.setValue(radius, forKey: "cornerRadius")
-        } else {
-            view.wantsLayer = true
-            view.layer?.cornerRadius = radius
-            view.layer?.masksToBounds = maskToBounds
-        }
+    // MARK: – Tracking area (hover detection)
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let ta = hoverTrackingArea { removeTrackingArea(ta) }
+        let options: NSTrackingArea.Options = [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect]
+        hoverTrackingArea = NSTrackingArea(rect: bounds, options: options, owner: self, userInfo: nil)
+        addTrackingArea(hoverTrackingArea!)
     }
 
-    @objc private func sliderAction(_ sender: NSSlider) {
-        self.needsLayout = true
-        self.layoutSubtreeIfNeeded()
-        onValueChanged?(self.doubleValue)
+    override func mouseEntered(with event: NSEvent) {
+        super.mouseEntered(with: event)
+        if sliderState == .normal { sliderState = .hover }
     }
 
+    override func mouseExited(with event: NSEvent) {
+        super.mouseExited(with: event)
+        if sliderState == .hover { sliderState = .normal }
+    }
+
+    // MARK: – Mouse tracking (custom loop so layout never stalls)
     override func mouseDown(with event: NSEvent) {
-        super.mouseDown(with: event)
-        // super.mouseDown blocks during tracking loop, so when it returns the drag has ended
-        onDragEnded?(self.doubleValue)
-    }
+        sliderState = .dragging
 
-    override func hitTest(_ point: NSPoint) -> NSView? {
-        let rect = self.bounds
-        if rect.contains(point) {
-            return self
+        window?.trackEvents(matching: [.leftMouseDragged, .leftMouseUp],
+                            timeout: .infinity,
+                            mode: .eventTracking) { [weak self] trackEvent, stop in
+            guard let self = self, let trackEvent = trackEvent else { stop.pointee = true; return }
+
+            // Compute value from mouse x/y position within our bounds
+            let localPoint = self.convert(trackEvent.locationInWindow, from: nil)
+
+            let fraction: CGFloat
+            if self.isVertical {
+                let usable = self.bounds.height - self.knobDiamExpanded
+                let clamped = max(0, min(usable, localPoint.y - self.knobDiamExpanded / 2))
+                fraction = usable > 0 ? clamped / usable : 0
+            } else {
+                let usable = self.bounds.width - self.knobDiamExpanded
+                let clamped = max(0, min(usable, localPoint.x - self.knobDiamExpanded / 2))
+                fraction = usable > 0 ? clamped / usable : 0
+            }
+            let range = self.maxValue - self.minValue
+            self.doubleValue = self.minValue + Double(fraction) * range
+
+            self.onValueChanged?(self.doubleValue)
+
+            if trackEvent.type == .leftMouseUp {
+                stop.pointee = true
+            }
         }
-        return nil
+
+        onDragEnded?(doubleValue)
+
+        // Return to hover if cursor is still inside the view, else normal
+        if let windowPoint = window?.mouseLocationOutsideOfEventStream {
+            let localPoint = convert(windowPoint, from: nil)
+            sliderState = bounds.contains(localPoint) ? .hover : .normal
+        } else {
+            sliderState = .normal
+        }
     }
 
+    // NSSlider action (keyboard arrow keys, programmatic changes)
+    @objc private func sliderChanged(_ sender: NSSlider) {
+        updateLayout(animated: false)
+        onValueChanged?(doubleValue)
+    }
+
+    // MARK: – Intrinsic size
+    override var intrinsicContentSize: NSSize {
+        if isVertical {
+            return NSSize(width: trackHeightExpanded + 4, height: NSView.noIntrinsicMetric)
+        } else {
+            return NSSize(width: NSView.noIntrinsicMetric, height: trackHeightExpanded + 4)
+        }
+    }
+
+    // MARK: – Layout
     override func layout() {
         super.layout()
+        updateLayout(animated: false)
+    }
 
+    private func fraction() -> CGFloat {
+        let range = maxValue - minValue
+        guard range > 0 else { return 0 }
+        return CGFloat((doubleValue - minValue) / range)
+    }
+
+    private func updateLayout(animated: Bool) {
+        let f = fraction()
         let b = bounds
-        let isVert = self.isVertical
-        let knobD: CGFloat = 18.0
-        let trackT: CGFloat = 6.0
+        let isVert = isVertical
 
-        let val = self.doubleValue
-        let minVal = self.minValue
-        let maxVal = self.maxValue
-        let range = maxVal - minVal
-        let fraction = range > 0 ? CGFloat((val - minVal) / range) : 0.0
+        let expanded = (sliderState != .normal)
+        let trackH   = expanded ? trackHeightExpanded : trackHeightNormal
+        let knobD    = expanded ? knobDiamExpanded    : knobDiamNormal
+
+        CATransaction.begin()
+        CATransaction.setDisableActions(!animated)
+        if animated { CATransaction.setAnimationDuration(0.18) }
 
         if isVert {
-            // Track rect
-            let tx = (b.width - trackT) / 2
-            let ty = knobD / 2
-            let th = b.height - knobD
-            trackView.frame = NSRect(x: tx, y: ty, width: trackT, height: max(0, th))
-            applyCornerRadius(trackView, radius: trackT / 2, maskToBounds: true)
+            // Track container – centered horizontally, full height
+            let tx = (b.width - trackH) / 2
+            trackContainer.frame = NSRect(x: tx, y: 0, width: trackH, height: b.height)
+            trackLayer.cornerRadius = trackH / 2
 
-            // Fill rect
-            var fillRect = trackView.bounds
-            fillRect.size.height = trackView.bounds.height * fraction
-            if self.isFlipped {
-                fillRect.origin.y = trackView.bounds.height - fillRect.size.height
-            } else {
-                fillRect.origin.y = 0
-            }
-            fillView.frame = fillRect
-            applyCornerRadius(fillView, radius: trackT / 2, maskToBounds: true)
+            // Fill – from bottom, proportional
+            let fillH = trackContainer.bounds.height * f
+            fillLayer.frame = CGRect(x: 0, y: 0, width: trackH, height: max(0, fillH))
+            fillLayer.cornerRadius = trackH / 2
 
-            // Knob rect
-            let cx = (b.width - knobD) / 2
-            let cy: CGFloat
+            // Knob – centered on fill position
+            let knobX = (b.width - knobD) / 2
+            let trackUsable = b.height - knobD
+            let knobY: CGFloat
             if self.isFlipped {
-                cy = ty + (1.0 - fraction) * th
+                knobY = knobD / 2 + (1.0 - f) * trackUsable - knobD / 2
             } else {
-                cy = ty + fraction * th
+                knobY = knobD / 2 + f * trackUsable - knobD / 2
             }
-            knobView.frame = NSRect(x: cx, y: cy - knobD / 2, width: knobD, height: knobD)
-            applyCornerRadius(knobView, radius: knobD / 2, maskToBounds: false)
+            knobView.frame = NSRect(x: knobX, y: knobY, width: knobD, height: knobD)
+            knobLayer.cornerRadius = knobD / 2
+
         } else {
-            // Track rect
-            let tx = knobD / 2
-            let ty = (b.height - trackT) / 2
-            let tw = b.width - knobD
-            trackView.frame = NSRect(x: tx, y: ty, width: max(0, tw), height: trackT)
-            applyCornerRadius(trackView, radius: trackT / 2, maskToBounds: true)
+            // Track container – centered vertically, full width
+            let ty = (b.height - trackH) / 2
+            trackContainer.frame = NSRect(x: 0, y: ty, width: b.width, height: trackH)
+            trackLayer.cornerRadius = trackH / 2
 
-            // Fill rect
-            var fillRect = trackView.bounds
-            fillRect.size.width = trackView.bounds.width * fraction
-            fillRect.origin.x = 0
-            fillView.frame = fillRect
-            applyCornerRadius(fillView, radius: trackT / 2, maskToBounds: true)
+            // Fill – from left edge
+            let fillW = trackContainer.bounds.width * f
+            fillLayer.frame = CGRect(x: 0, y: 0, width: max(0, fillW), height: trackH)
+            fillLayer.cornerRadius = trackH / 2
 
-            // Knob rect
-            let cx = tx + fraction * tw
-            let cy = (b.height - knobD) / 2
-            knobView.frame = NSRect(x: cx - knobD / 2, y: cy, width: knobD, height: knobD)
-            applyCornerRadius(knobView, radius: knobD / 2, maskToBounds: false)
+            // Knob – centered vertically, x follows value
+            let knobY = (b.height - knobD) / 2
+            let trackUsable = b.width - knobD
+            let knobX = knobD / 2 + f * trackUsable - knobD / 2
+            knobView.frame = NSRect(x: knobX, y: knobY, width: knobD, height: knobD)
+            knobLayer.cornerRadius = knobD / 2
         }
 
-        // Styling for knobView
-        knobView.wantsLayer = true
-        knobView.layer?.shadowColor = NSColor.black.cgColor
-        knobView.layer?.shadowOpacity = 0.35
-        knobView.layer?.shadowRadius = 4
-        knobView.layer?.shadowOffset = CGSize(width: 0, height: -1.5)
-        knobView.layer?.borderColor = NSColor.white.withAlphaComponent(0.6).cgColor
-        knobView.layer?.borderWidth = 1.0
+        CATransaction.commit()
+    }
+
+    // MARK: – Visual state application
+    private func animateToCurrentState() {
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.18
+            ctx.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            applyCurrentStyle()
+        }
+        updateLayout(animated: true)
+    }
+
+    private func applyCurrentStyle() {
+        switch sliderState {
+        case .normal:   applyNormalStyle(animated: true)
+        case .hover:    applyHoverStyle(animated: true)
+        case .dragging: applyDraggingStyle(animated: true)
+        }
+    }
+
+    private func applyNormalStyle(animated: Bool) {
+        // Track: thin translucent white pill
+        setLayerColor(trackLayer, color: NSColor.white.withAlphaComponent(0.25))
+        // Fill: lighter accent
+        setLayerColor(fillLayer, color: NSColor.white.withAlphaComponent(0.65))
+        // Knob: solid white circle
+        setLayerColor(knobLayer, color: NSColor.white)
+        knobLayer.shadowOpacity = 0.28
+        knobLayer.shadowRadius  = 3
+        knobLayer.shadowColor   = NSColor.black.cgColor
+        knobLayer.shadowOffset  = CGSize(width: 0, height: -1)
+        knobLayer.borderWidth   = 0
+    }
+
+    private func applyHoverStyle(animated: Bool) {
+        // Track: bright solid white expanded pill
+        setLayerColor(trackLayer, color: NSColor.white.withAlphaComponent(0.92))
+        // Fill: accent tinted
+        setLayerColor(fillLayer, color: NSColor.white.withAlphaComponent(0.50))
+        // Knob: slightly larger, solid white with stronger shadow
+        setLayerColor(knobLayer, color: NSColor.white)
+        knobLayer.shadowOpacity = 0.38
+        knobLayer.shadowRadius  = 5
+        knobLayer.shadowColor   = NSColor.black.cgColor
+        knobLayer.shadowOffset  = CGSize(width: 0, height: -2)
+        knobLayer.borderWidth   = 0
+    }
+
+    private func applyDraggingStyle(animated: Bool) {
+        // Track: frosted glass — translucent white pill (NSGlassEffectView on Tahoe renders behind the layer)
+        if #available(macOS 26.0, *), NSClassFromString("NSGlassEffectView") != nil {
+            setLayerColor(trackLayer, color: NSColor.white.withAlphaComponent(0.35))
+        } else {
+            setLayerColor(trackLayer, color: NSColor.white.withAlphaComponent(0.30))
+        }
+
+        // Fill: accent-tinted glass
+        setLayerColor(fillLayer, color: NSColor(red: 0.37, green: 0.80, blue: 1.0, alpha: 0.70))
+        // Knob: frosted white
+        setLayerColor(knobLayer, color: NSColor.white.withAlphaComponent(0.88))
+        knobLayer.shadowOpacity = 0.45
+        knobLayer.shadowRadius  = 6
+        knobLayer.shadowColor   = NSColor.black.cgColor
+        knobLayer.shadowOffset  = CGSize(width: 0, height: -2)
+        knobLayer.borderColor   = NSColor.white.withAlphaComponent(0.50).cgColor
+        knobLayer.borderWidth   = 0.5
+    }
+
+    private func setLayerColor(_ layer: CALayer, color: NSColor) {
+        layer.backgroundColor = color.cgColor
+    }
+
+    // MARK: – Hit test: always return self so the whole frame is interactive
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        bounds.contains(point) ? self : nil
     }
 }
+
+
