@@ -2954,31 +2954,40 @@ private struct LiquidGlassSliderView: View {
     @Binding var value: Double
     let minValue: Double
     let maxValue: Double
+    let isVertical: Bool
     let onDragEnded: ((Double) -> Void)?
 
     var body: some View {
-        Slider(
-            value: Binding(
-                get: { value },
-                set: { newVal in value = newVal }
-            ),
-            in: minValue...maxValue
-        )
-        // Apply the native Tahoe liquid glass appearance — this is exactly what
-        // Control Center uses. The OS handles normal / hover / drag states.
-        .glassEffect(.regular.interactive())
-        .simultaneousGesture(
-            DragGesture(minimumDistance: 0)
-                .onEnded { _ in onDragEnded?(value) }
-        )
-    }
-}
-
-// SwiftUI View extension helper for conditional modifier
-private extension View {
-    @ViewBuilder
-    func `if`<Content: View>(_ condition: Bool, transform: (Self) -> Content) -> some View {
-        if condition { transform(self) } else { self }
+        if isVertical {
+            // GeometryReader gives us the container size (e.g. 20x155).
+            // We create a Slider at width=containerHeight, rotate -90°, then
+            // reposition it at the container centre. SwiftUI's rotationEffect
+            // is fully hit-test-aware, so dragging up/down works correctly.
+            GeometryReader { geo in
+                Slider(value: $value, in: minValue...maxValue)
+                    .glassEffect(.regular.interactive())
+                    // Make the slider as wide as the container is tall
+                    .frame(width: geo.size.height, height: geo.size.width)
+                    // Rotate so it stands vertically; -90° puts max at the top
+                    .rotationEffect(.degrees(-90))
+                    // Re-centre in the GeometryReader frame
+                    .position(x: geo.size.width / 2, y: geo.size.height / 2)
+                    .simultaneousGesture(
+                        DragGesture(minimumDistance: 0)
+                            .onEnded { _ in onDragEnded?(value) }
+                    )
+            }
+        } else {
+            Slider(value: $value, in: minValue...maxValue)
+                // Apply the native Tahoe liquid glass appearance — this is
+                // exactly what Control Center uses. The OS handles all three
+                // states (normal, hover, drag) automatically.
+                .glassEffect(.regular.interactive())
+                .simultaneousGesture(
+                    DragGesture(minimumDistance: 0)
+                        .onEnded { _ in onDragEnded?(value) }
+                )
+        }
     }
 }
 
@@ -3157,14 +3166,14 @@ class GlassSlider: NSView {
     convenience init() { self.init(frame: .zero) }
 
     // MARK: – Build the correct implementation
-    // Vertical sliders always use the legacy NSSlider path. SwiftUI's Slider
-    // is horizontal-only; rotation workarounds break hit-testing on Tahoe.
-    // Horizontal sliders on macOS 26+ use the native SwiftUI liquid glass path.
+    // All sliders use the native Tahoe liquid glass path on macOS 26+.
+    // Vertical sliders use GeometryReader + rotationEffect inside SwiftUI so
+    // hit-testing is fully correct (SwiftUI transforms hit-tests with the view).
     private func buildImpl() {
         hostView?.removeFromSuperview()
         hostView = nil
 
-        if !isVertical, #available(macOS 26.0, *) {
+        if #available(macOS 26.0, *) {
             buildTahoeImpl()
         } else {
             buildLegacyImpl()
@@ -3242,6 +3251,7 @@ class GlassSlider: NSView {
             value: binding,
             minValue: minValue,
             maxValue: maxValue,
+            isVertical: isVertical,
             onDragEnded: { [weak self] val in self?.onDragEnded?(val) }
         )
     }
