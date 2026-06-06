@@ -455,7 +455,9 @@ void SettingsWindow::buildAnime4KSection()
     layout->addWidget(header);
 
     addCombo(container, layout, "Default Preset", "defaultShaderPreset", {
-        "Off",
+        "Off", "Auto (Recommended)",
+        "Anime Balanced", "Anime Quality", "SD / Legacy Anime", "Anime Quality + Chroma",
+        "ArtCNN Lightweight", "ArtCNN Quality", "ArtCNN Soft",
         "Mode A (HQ)", "Mode B (HQ)", "Mode C (HQ)",
         "Mode A+A (HQ)", "Mode B+B (HQ)", "Mode C+A (HQ)",
         "Mode A (Fast)", "Mode B (Fast)", "Mode C (Fast)",

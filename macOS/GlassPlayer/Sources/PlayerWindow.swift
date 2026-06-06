@@ -956,11 +956,38 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
 
         menu.addItem(.separator())
 
+        // Special Header
+        let specialHeader = NSMenuItem(title: "── ⚡ Special (Recommended) ──", action: nil, keyEquivalent: "")
+        specialHeader.isEnabled = false
+        menu.addItem(specialHeader)
+
+        for preset in ["Anime Balanced", "Anime Quality", "SD / Legacy Anime", "Anime Quality + Chroma"] {
+            let item = NSMenuItem(title: preset, action: #selector(applyShaderAction(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = preset
+            item.state = mpv.currentShaderPreset == preset ? .on : .off
+            menu.addItem(item)
+        }
+
+        menu.addItem(.separator())
+
+        // Standard Header
+        let standardHeader = NSMenuItem(title: "── Standard ──", action: nil, keyEquivalent: "")
+        standardHeader.isEnabled = false
+        menu.addItem(standardHeader)
+
+        for preset in ["ArtCNN Lightweight", "ArtCNN Quality", "ArtCNN Soft"] {
+            let item = NSMenuItem(title: preset, action: #selector(applyShaderAction(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = preset
+            item.state = mpv.currentShaderPreset == preset ? .on : .off
+            menu.addItem(item)
+        }
+
+        menu.addItem(.separator())
+
         // HQ presets
-        let hqHeaderTitle = recommendedPreset.contains("(HQ)")
-            ? "── HQ (Recommended on this Mac) ──"
-            : "── HQ (Pro/Max GPU) ──"
-        let hqHeader = NSMenuItem(title: hqHeaderTitle, action: nil, keyEquivalent: "")
+        let hqHeader = NSMenuItem(title: "── Anime4K (HQ) ──", action: nil, keyEquivalent: "")
         hqHeader.isEnabled = false
         menu.addItem(hqHeader)
 
@@ -976,10 +1003,7 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
         menu.addItem(.separator())
 
         // Fast presets
-        let fastHeaderTitle = recommendedPreset.contains("(Fast)")
-            ? "── Fast (Recommended on this Mac) ──"
-            : "── Fast (Lower GPU load) ──"
-        let fastHeader = NSMenuItem(title: fastHeaderTitle, action: nil, keyEquivalent: "")
+        let fastHeader = NSMenuItem(title: "── Anime4K (Fast) ──", action: nil, keyEquivalent: "")
         fastHeader.isEnabled = false
         menu.addItem(fastHeader)
 
@@ -2662,10 +2686,15 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
     }
 
     private func cycleShaderPreset() {
-        let presets = ["Off", "Auto (Recommended)", "Mode A (HQ)", "Mode B (HQ)", "Mode C (HQ)",
-                       "Mode A+A (HQ)", "Mode B+B (HQ)", "Mode C+A (HQ)", "Mode A (Fast)",
-                       "Mode B (Fast)", "Mode C (Fast)", "Mode A+A (Fast)", "Mode B+B (Fast)",
-                       "Mode C+A (Fast)"]
+        let presets = [
+            "Off", "Auto (Recommended)",
+            "Anime Balanced", "Anime Quality", "SD / Legacy Anime", "Anime Quality + Chroma",
+            "ArtCNN Lightweight", "ArtCNN Quality", "ArtCNN Soft",
+            "Mode A (HQ)", "Mode B (HQ)", "Mode C (HQ)",
+            "Mode A+A (HQ)", "Mode B+B (HQ)", "Mode C+A (HQ)",
+            "Mode A (Fast)", "Mode B (Fast)", "Mode C (Fast)",
+            "Mode A+A (Fast)", "Mode B+B (Fast)", "Mode C+A (Fast)"
+        ]
         let currentPreset = mpv.currentShaderPreset ?? "Off"
         let currentIdx = presets.firstIndex(of: currentPreset) ?? 0
         let nextIdx = (currentIdx + 1) % presets.count

@@ -2286,8 +2286,15 @@ void MainWindow::cycleAspectOverride()
 void MainWindow::cycleShaderPreset()
 {
     QString currentPreset = m_settings.value("defaultShaderPreset", "Off").toString();
-    QStringList presets = {"Off", "Mode A (HQ)", "Mode B (HQ)", "Mode C (HQ)",
-                           "Mode A (Fast)", "Mode B (Fast)", "Mode C (Fast)"};
+    QStringList presets = {
+        "Off", "Auto (Recommended)",
+        "Anime Balanced", "Anime Quality", "SD / Legacy Anime", "Anime Quality + Chroma",
+        "ArtCNN Lightweight", "ArtCNN Quality", "ArtCNN Soft",
+        "Mode A (HQ)", "Mode B (HQ)", "Mode C (HQ)",
+        "Mode A+A (HQ)", "Mode B+B (HQ)", "Mode C+A (HQ)",
+        "Mode A (Fast)", "Mode B (Fast)", "Mode C (Fast)",
+        "Mode A+A (Fast)", "Mode B+B (Fast)", "Mode C+A (Fast)"
+    };
     
     int idx = presets.indexOf(currentPreset);
     if (idx == -1) idx = 0;

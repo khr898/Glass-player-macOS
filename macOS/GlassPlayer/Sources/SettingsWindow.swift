@@ -1075,6 +1075,22 @@ class SettingsWindow: NSWindowController, NSTableViewDelegate, NSTableViewDataSo
 
     /// Apply a settings change to all open player windows' mpv instances.
     private func applySettingToMPV(key: String, value: String) {
+        if key == "defaultShaderPreset" {
+            guard let appDelegate = NSApp.delegate as? AppDelegate else { return }
+            for pw in appDelegate.playerWindows {
+                if value == "Off" {
+                    pw.mpv.clearShaders()
+                } else if value == "Auto (Recommended)" {
+                    let resolved = UniversalMetalRuntime.recommendedAnime4KPreset()
+                    _ = pw.mpv.applyShaderPreset(resolved)
+                } else {
+                    _ = pw.mpv.applyShaderPreset(value)
+                }
+                pw.updateShaderButton()
+            }
+            return
+        }
+
         guard let mpvProp = Self.keyToMPV[key] else { return }
 
         var mpvValue = value
