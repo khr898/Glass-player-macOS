@@ -1292,7 +1292,7 @@ void MainWindow::applyShaderPreset(const QString& preset)
     }
 
     if (resolvedPreset.isEmpty() || resolvedPreset == "Off") {
-        m_mpvWidget->command(QVariantList() << "change-list" << "glsl-shaders" << "clr" << "");
+        m_mpvWidget->setProperty("glsl-shaders", "");
         m_shaderBtn->setGraphicsEffect(nullptr);
         m_shaderBtn->setStyleSheet("");
         return;
@@ -1337,7 +1337,7 @@ void MainWindow::applyShaderPreset(const QString& preset)
     QString shaderStr = shaders.join(":");
 #endif
 
-    m_mpvWidget->command(QVariantList() << "change-list" << "glsl-shaders" << "set" << shaderStr);
+    m_mpvWidget->setProperty("glsl-shaders", shaderStr);
 
     // Apply beautiful accent blue glow to the shader button when one is active
     QGraphicsDropShadowEffect *glow = new QGraphicsDropShadowEffect(m_shaderBtn);

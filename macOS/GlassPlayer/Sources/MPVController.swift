@@ -245,6 +245,7 @@ class MPVController {
     var shadersAvailable: Bool = false
     // Shader directory path
     var shaderDir: String?
+    var shaderDirs: [String] = []
 
     // MARK: - Initialization
 
@@ -344,18 +345,27 @@ class MPVController {
             home + "/Library/Application Support/mpv/shaders",
             home + "/.mpv/shaders",
         ]
+        
+        shaderDirs = []
         for dir in candidates {
             if FileManager.default.fileExists(atPath: dir) {
+                shaderDirs.append(dir)
                 let files = (try? FileManager.default.contentsOfDirectory(atPath: dir)) ?? []
-                if files.contains(where: { $0.contains("Anime4K") }) {
-                    shaderDir = dir
+                if files.contains(where: { $0.contains("Anime4K") || $0.contains("ArtCNN") }) {
                     shadersAvailable = true
-                    NSLog("[MPV] Found Anime4K shaders in: %@", dir)
-                    return
                 }
             }
         }
-        NSLog("[MPV] No Anime4K shaders found")
+        
+        if !shaderDirs.isEmpty {
+            shaderDir = shaderDirs.first
+        }
+        
+        if shadersAvailable {
+            NSLog("[MPV] Found shader directories: %@", shaderDirs)
+        } else {
+            NSLog("[MPV] No shaders found")
+        }
     }
 
     // MARK: - Rendering
@@ -748,24 +758,35 @@ class MPVController {
     // MARK: - Anime4K Shader Presets
 
     func applyShaderPreset(_ preset: String) -> Bool {
-        guard let dir = shaderDir else { return false }
         guard let shaderNames = kShaderPresets[preset] else { return false }
 
-        let paths = shaderNames
-            .map { "\(dir)/\($0)" }
-            .filter { FileManager.default.fileExists(atPath: $0) }
+        var paths: [String] = []
+        for name in shaderNames {
+            var found = false
+            for dir in shaderDirs {
+                let path = "\(dir)/\(name)"
+                if FileManager.default.fileExists(atPath: path) {
+                    paths.append(path)
+                    found = true
+                    break
+                }
+            }
+            if !found {
+                NSLog("[MPV] Warning: Shader file not found: %@", name)
+            }
+        }
 
         guard !paths.isEmpty else { return false }
 
         let joined = paths.joined(separator: ":")
-        mpv_command_string(mpvHandle, "change-list glsl-shaders set \"\(joined)\"")
+        setPropertyString("glsl-shaders", joined)
         currentShaderPreset = preset
         NSLog("[MPV] Applied shader preset: %@ (%d shaders)", preset, paths.count)
         return true
     }
 
     func clearShaders() {
-        mpv_command_string(mpvHandle, "change-list glsl-shaders clr \"\"")
+        setPropertyString("glsl-shaders", "")
         currentShaderPreset = nil
         NSLog("[MPV] Shaders cleared")
     }
