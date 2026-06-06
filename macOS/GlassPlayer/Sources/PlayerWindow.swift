@@ -1882,7 +1882,7 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
             NSColor(red: 0.04, green: 0.52, blue: 1.0, alpha: 1.0)
     }
 
-    private func updateShaderButton() {
+    func updateShaderButton() {
         if mpv.currentShaderPreset != nil {
             shaderButton.contentTintColor = NSColor(red: 1.0, green: 0.42, blue: 0.8, alpha: 1.0)
         } else {
