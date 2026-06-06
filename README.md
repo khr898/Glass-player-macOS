@@ -73,10 +73,10 @@ Glass Player includes several real-time shader presets optimized for different t
 * **ArtCNN Quality**: Pure ArtCNN C4F32 downscaled/upscaled shader.
 * **ArtCNN Soft**: Pure ArtCNN C4F32 denoised shader.
 
-### Legacy (Anime4K)
-* **Anime4K Fast**: Classic Anime4K Fast configuration (Restore S + Upscale S).
-* **Anime4K High**: Classic Anime4K High configuration (Restore M + Upscale M).
-* **Anime4K Ultra**: Classic Anime4K Ultra configuration (Restore VL + Upscale VL).
+### Anime4K (Legacy)
+Classic shader presets designed and tuned by the Anime4K developers:
+* **Anime4K (HQ)**: High-quality configurations including **Mode A (HQ)**, **Mode B (HQ)**, **Mode C (HQ)**, **Mode A+A (HQ)**, **Mode B+B (HQ)**, and **Mode C+A (HQ)**.
+* **Anime4K (Fast)**: Lower GPU load configurations including **Mode A (Fast)**, **Mode B (Fast)**, **Mode C (Fast)**, **Mode A+A (Fast)**, **Mode B+B (Fast)**, and **Mode C+A (Fast)**.
 
 ---
 

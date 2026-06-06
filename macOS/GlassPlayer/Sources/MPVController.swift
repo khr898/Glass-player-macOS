@@ -114,20 +114,6 @@ let kShaderPresets: [String: [String]] = [
         "ArtCNN/ArtCNN_C4F32_DN.glsl",
     ],
 
-    // ── Legacy Presets (Anime4K) ──
-    "Anime4K Fast": [
-        "Anime4K_Restore_CNN_Soft_S.glsl",
-        "Anime4K_Upscale_CNN_x2_S.glsl",
-    ],
-    "Anime4K High": [
-        "Anime4K_Restore_CNN_Soft_M.glsl",
-        "Anime4K_Upscale_CNN_x2_M.glsl",
-    ],
-    "Anime4K Ultra": [
-        "Anime4K_Restore_CNN_Soft_VL.glsl",
-        "Anime4K_Upscale_CNN_x2_VL.glsl",
-    ],
-
     // ── HQ Presets (higher-end GPU: M1 Pro/Max, M2 Pro/Max, M3/M4) ──
     "Mode A (HQ)": [
         "Anime4K_Clamp_Highlights.glsl",

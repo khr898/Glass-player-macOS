@@ -801,7 +801,6 @@ class SettingsWindow: NSWindowController, NSTableViewDelegate, NSTableViewDataSo
                 "Off", "Auto (Recommended)",
                 "Anime Balanced", "Anime Quality", "SD / Legacy Anime", "Anime Quality + Chroma",
                 "ArtCNN Lightweight", "ArtCNN Quality", "ArtCNN Soft",
-                "Anime4K Fast", "Anime4K High", "Anime4K Ultra",
                 "Mode A (HQ)", "Mode B (HQ)", "Mode C (HQ)",
                 "Mode A+A (HQ)", "Mode B+B (HQ)", "Mode C+A (HQ)",
                 "Mode A (Fast)", "Mode B (Fast)", "Mode C (Fast)",

@@ -1306,9 +1306,6 @@ void MainWindow::applyShaderPreset(const QString& preset)
         {"ArtCNN Lightweight", {"ArtCNN/ArtCNN_C4F16_DS.glsl"}},
         {"ArtCNN Quality", {"ArtCNN/ArtCNN_C4F32_DS.glsl"}},
         {"ArtCNN Soft", {"ArtCNN/ArtCNN_C4F32_DN.glsl"}},
-        {"Anime4K Fast", {"Anime4K_Restore_CNN_Soft_S.glsl", "Anime4K_Upscale_CNN_x2_S.glsl"}},
-        {"Anime4K High", {"Anime4K_Restore_CNN_Soft_M.glsl", "Anime4K_Upscale_CNN_x2_M.glsl"}},
-        {"Anime4K Ultra", {"Anime4K_Restore_CNN_Soft_VL.glsl", "Anime4K_Upscale_CNN_x2_VL.glsl"}},
         {"Mode A (HQ)", {"Anime4K_Clamp_Highlights.glsl", "Anime4K_Restore_CNN_VL.glsl", "Anime4K_Upscale_CNN_x2_VL.glsl", "Anime4K_AutoDownscalePre_x2.glsl", "Anime4K_AutoDownscalePre_x4.glsl", "Anime4K_Upscale_CNN_x2_M.glsl"}},
         {"Mode B (HQ)", {"Anime4K_Clamp_Highlights.glsl", "Anime4K_Restore_CNN_Soft_VL.glsl", "Anime4K_Upscale_CNN_x2_VL.glsl", "Anime4K_AutoDownscalePre_x2.glsl", "Anime4K_AutoDownscalePre_x4.glsl", "Anime4K_Upscale_CNN_x2_M.glsl"}},
         {"Mode C (HQ)", {"Anime4K_Clamp_Highlights.glsl", "Anime4K_Upscale_Denoise_CNN_x2_VL.glsl", "Anime4K_AutoDownscalePre_x2.glsl", "Anime4K_AutoDownscalePre_x4.glsl", "Anime4K_Upscale_CNN_x2_M.glsl"}},
@@ -1636,16 +1633,34 @@ void MainWindow::onShaderClicked()
 
     menu.addSeparator();
 
-    // Legacy Header
-    QAction *legacyHeader = menu.addAction("── Legacy (Anime4K) ──");
-    legacyHeader->setEnabled(false);
+    // Anime4K HQ Header
+    QAction *hqHeader = menu.addAction("── Anime4K (HQ) ──");
+    hqHeader->setEnabled(false);
 
-    QStringList legacyPresets = {
-        "Anime4K Fast",
-        "Anime4K High",
-        "Anime4K Ultra"
+    QStringList hqPresets = {
+        "Mode A (HQ)", "Mode B (HQ)", "Mode C (HQ)",
+        "Mode A+A (HQ)", "Mode B+B (HQ)", "Mode C+A (HQ)"
     };
-    for (const auto& preset : legacyPresets) {
+    for (const auto& preset : hqPresets) {
+        QAction *action = menu.addAction(preset, this, [this, preset]() {
+            applySettingToMpv("defaultShaderPreset", preset);
+            m_settings.setValue("defaultShaderPreset", preset);
+        });
+        action->setCheckable(true);
+        action->setChecked(currentPreset == preset);
+    }
+
+    menu.addSeparator();
+
+    // Anime4K Fast Header
+    QAction *fastHeader = menu.addAction("── Anime4K (Fast) ──");
+    fastHeader->setEnabled(false);
+
+    QStringList fastPresets = {
+        "Mode A (Fast)", "Mode B (Fast)", "Mode C (Fast)",
+        "Mode A+A (Fast)", "Mode B+B (Fast)", "Mode C+A (Fast)"
+    };
+    for (const auto& preset : fastPresets) {
         QAction *action = menu.addAction(preset, this, [this, preset]() {
             applySettingToMpv("defaultShaderPreset", preset);
             m_settings.setValue("defaultShaderPreset", preset);
