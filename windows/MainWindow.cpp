@@ -1096,6 +1096,8 @@ static QString extractShader(const QString& name) {
     static QTemporaryDir tempDir;
     if (!tempDir.isValid()) return {};
     const QString outPath = tempDir.path() + "/" + name;
+    QFileInfo info(outPath);
+    QDir().mkpath(info.absolutePath());
     QFile outFile(outPath);
     if (!outFile.exists()) {
         QFile src(":/shaders/" + name);
@@ -1285,15 +1287,9 @@ void MainWindow::applyShaderPreset(const QString& preset)
 
     const QString normalizedPreset = aliases.value(preset, preset);
     QString resolvedPreset = normalizedPreset;
-#if defined(_M_ARM64) || defined(__aarch64__)
     if (normalizedPreset == "Auto (Recommended)") {
-        resolvedPreset = "Mode A (Fast)";
+        resolvedPreset = "Anime Balanced";
     }
-#else
-    if (normalizedPreset == "Auto (Recommended)") {
-        resolvedPreset = "Mode A (HQ)";
-    }
-#endif
 
     if (resolvedPreset.isEmpty() || resolvedPreset == "Off") {
         m_mpvWidget->command(QVariantList() << "change-list" << "glsl-shaders" << "clr" << "");
@@ -1303,6 +1299,16 @@ void MainWindow::applyShaderPreset(const QString& preset)
     }
 
     static const QHash<QString, QStringList> kShaderPresets = {
+        {"Anime Balanced", {"Anime4K_Restore_CNN_Soft_S.glsl", "ArtCNN/ArtCNN_C4F16_DS.glsl"}},
+        {"Anime Quality", {"Anime4K_Restore_CNN_Soft_M.glsl", "ArtCNN/ArtCNN_C4F32_DS.glsl"}},
+        {"SD / Legacy Anime", {"Anime4K_Restore_CNN_Soft_VL.glsl", "ArtCNN/ArtCNN_C4F16_DS.glsl"}},
+        {"Anime Quality + Chroma", {"Anime4K_Restore_CNN_Soft_M.glsl", "ArtCNN/ArtCNN_C4F32_Chroma.glsl", "ArtCNN/ArtCNN_C4F32_DS.glsl"}},
+        {"ArtCNN Lightweight", {"ArtCNN/ArtCNN_C4F16_DS.glsl"}},
+        {"ArtCNN Quality", {"ArtCNN/ArtCNN_C4F32_DS.glsl"}},
+        {"ArtCNN Soft", {"ArtCNN/ArtCNN_C4F32_DN.glsl"}},
+        {"Anime4K Fast", {"Anime4K_Restore_CNN_Soft_S.glsl", "Anime4K_Upscale_CNN_x2_S.glsl"}},
+        {"Anime4K High", {"Anime4K_Restore_CNN_Soft_M.glsl", "Anime4K_Upscale_CNN_x2_M.glsl"}},
+        {"Anime4K Ultra", {"Anime4K_Restore_CNN_Soft_VL.glsl", "Anime4K_Upscale_CNN_x2_VL.glsl"}},
         {"Mode A (HQ)", {"Anime4K_Clamp_Highlights.glsl", "Anime4K_Restore_CNN_VL.glsl", "Anime4K_Upscale_CNN_x2_VL.glsl", "Anime4K_AutoDownscalePre_x2.glsl", "Anime4K_AutoDownscalePre_x4.glsl", "Anime4K_Upscale_CNN_x2_M.glsl"}},
         {"Mode B (HQ)", {"Anime4K_Clamp_Highlights.glsl", "Anime4K_Restore_CNN_Soft_VL.glsl", "Anime4K_Upscale_CNN_x2_VL.glsl", "Anime4K_AutoDownscalePre_x2.glsl", "Anime4K_AutoDownscalePre_x4.glsl", "Anime4K_Upscale_CNN_x2_M.glsl"}},
         {"Mode C (HQ)", {"Anime4K_Clamp_Highlights.glsl", "Anime4K_Upscale_Denoise_CNN_x2_VL.glsl", "Anime4K_AutoDownscalePre_x2.glsl", "Anime4K_AutoDownscalePre_x4.glsl", "Anime4K_Upscale_CNN_x2_M.glsl"}},
@@ -1578,11 +1584,6 @@ void MainWindow::onShaderClicked()
     menu.setStyleSheet(kMenuStyle);
 
     QString currentPreset = m_settings.value("defaultShaderPreset", "Off").toString();
-#if defined(_M_ARM64) || defined(__aarch64__)
-    QString recommendedPreset = "Mode A (Fast)";
-#else
-    QString recommendedPreset = "Mode A (HQ)";
-#endif
 
     QAction *offAction = menu.addAction("Off", this, [this]() {
         applySettingToMpv("defaultShaderPreset", "Off");
@@ -1593,13 +1594,18 @@ void MainWindow::onShaderClicked()
 
     menu.addSeparator();
 
-    // HQ Header
-    QAction *hqHeader = menu.addAction("── HQ (Pro/Max GPU) ──");
-    hqHeader->setEnabled(false);
+    // Special Header
+    QAction *specialHeader = menu.addAction("── ⚡ Special (Recommended) ──");
+    specialHeader->setEnabled(false);
 
-    QStringList hqPresets = {"Mode A (HQ)", "Mode B (HQ)", "Mode C (HQ)",
-                             "Mode A+A (HQ)", "Mode B+B (HQ)", "Mode C+A (HQ)"};
-    for (const auto& preset : hqPresets) {
+    QStringList specialPresets = {
+        "Auto (Recommended)",
+        "Anime Balanced",
+        "Anime Quality",
+        "SD / Legacy Anime",
+        "Anime Quality + Chroma"
+    };
+    for (const auto& preset : specialPresets) {
         QAction *action = menu.addAction(preset, this, [this, preset]() {
             applySettingToMpv("defaultShaderPreset", preset);
             m_settings.setValue("defaultShaderPreset", preset);
@@ -1610,13 +1616,36 @@ void MainWindow::onShaderClicked()
 
     menu.addSeparator();
 
-    // Fast Header
-    QAction *fastHeader = menu.addAction("── Fast (Lower GPU load) ──");
-    fastHeader->setEnabled(false);
+    // Standard Header
+    QAction *standardHeader = menu.addAction("── Standard ──");
+    standardHeader->setEnabled(false);
 
-    QStringList fastPresets = {"Mode A (Fast)", "Mode B (Fast)", "Mode C (Fast)",
-                               "Mode A+A (Fast)", "Mode B+B (Fast)", "Mode C+A (Fast)"};
-    for (const auto& preset : fastPresets) {
+    QStringList standardPresets = {
+        "ArtCNN Lightweight",
+        "ArtCNN Quality",
+        "ArtCNN Soft"
+    };
+    for (const auto& preset : standardPresets) {
+        QAction *action = menu.addAction(preset, this, [this, preset]() {
+            applySettingToMpv("defaultShaderPreset", preset);
+            m_settings.setValue("defaultShaderPreset", preset);
+        });
+        action->setCheckable(true);
+        action->setChecked(currentPreset == preset);
+    }
+
+    menu.addSeparator();
+
+    // Legacy Header
+    QAction *legacyHeader = menu.addAction("── Legacy (Anime4K) ──");
+    legacyHeader->setEnabled(false);
+
+    QStringList legacyPresets = {
+        "Anime4K Fast",
+        "Anime4K High",
+        "Anime4K Ultra"
+    };
+    for (const auto& preset : legacyPresets) {
         QAction *action = menu.addAction(preset, this, [this, preset]() {
             applySettingToMpv("defaultShaderPreset", preset);
             m_settings.setValue("defaultShaderPreset", preset);

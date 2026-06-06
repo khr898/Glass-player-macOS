@@ -273,29 +273,7 @@ struct UniversalMetalRuntime {
     /// Choose the best Anime4K shader preset for the current hardware.
     /// Memory-floor devices always get "Fast" presets to avoid OOM.
     static func recommendedAnime4KPreset(physicalMemory: UInt64 = ProcessInfo.processInfo.physicalMemory) -> String {
-        let isMemoryFloorDevice = physicalMemory <= (8 * 1024 * 1024 * 1024)
-        if isMemoryFloorDevice {
-            return "Mode A (Fast)"
-        }
-
-        // Prefer Fast presets in low-power mode to reduce battery lag.
-        if ProcessInfo.processInfo.isLowPowerModeEnabled {
-            return "Mode A (Fast)"
-        }
-
-        let workingSet = MTLCreateSystemDefaultDevice()?.recommendedMaxWorkingSetSize ?? 0
-
-        switch gpuTier() {
-        case .high:
-            if workingSet >= 12 * 1024 * 1024 * 1024 {
-                return "Mode A (HQ)"
-            }
-            return "Mode A (Fast)"
-        case .balanced:
-            return "Mode A (Fast)"
-        case .efficient, .unknown:
-            return "Mode A (Fast)"
-        }
+        return "Anime Balanced"
     }
 
     /// Recommended Metal pixel format for the current display.

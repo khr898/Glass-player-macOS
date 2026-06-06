@@ -39,6 +39,14 @@
         <file alias="shaders/Anime4K_Upscale_Denoise_CNN_x2_VL.glsl">../shaders/Anime4K_Upscale_Denoise_CNN_x2_VL.glsl</file>
         <file alias="shaders/Anime4K_Upscale_DoG_x2.glsl">../shaders/Anime4K_Upscale_DoG_x2.glsl</file>
         <file alias="shaders/Anime4K_Upscale_Original_x2.glsl">../shaders/Anime4K_Upscale_Original_x2.glsl</file>
+        <file alias="shaders/ArtCNN/ArtCNN_C4F16.glsl">../shaders/ArtCNN/ArtCNN_C4F16.glsl</file>
+        <file alias="shaders/ArtCNN/ArtCNN_C4F16_DS.glsl">../shaders/ArtCNN/ArtCNN_C4F16_DS.glsl</file>
+        <file alias="shaders/ArtCNN/ArtCNN_C4F16_DN.glsl">../shaders/ArtCNN/ArtCNN_C4F16_DN.glsl</file>
+        <file alias="shaders/ArtCNN/ArtCNN_C4F32.glsl">../shaders/ArtCNN/ArtCNN_C4F32.glsl</file>
+        <file alias="shaders/ArtCNN/ArtCNN_C4F32_DS.glsl">../shaders/ArtCNN/ArtCNN_C4F32_DS.glsl</file>
+        <file alias="shaders/ArtCNN/ArtCNN_C4F32_DN.glsl">../shaders/ArtCNN/ArtCNN_C4F32_DN.glsl</file>
+        <file alias="shaders/ArtCNN/ArtCNN_C4F32_Chroma.glsl">../shaders/ArtCNN/ArtCNN_C4F32_Chroma.glsl</file>
+        <file alias="shaders/ArtCNN/CfL_Prediction.glsl">../shaders/ArtCNN/CfL_Prediction.glsl</file>
         <file>icons/play.svg</file>
         <file>icons/pause.svg</file>
         <file>icons/prev.svg</file>

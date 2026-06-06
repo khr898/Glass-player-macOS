@@ -84,6 +84,50 @@ protocol MPVControllerDelegate: AnyObject {
 // Anime4K shader presets (matches the Electron version exactly)
 // ---------------------------------------------------------------------------
 let kShaderPresets: [String: [String]] = [
+    // ── Special Presets (Recommended) ──
+    "Anime Balanced": [
+        "Anime4K_Restore_CNN_Soft_S.glsl",
+        "ArtCNN/ArtCNN_C4F16_DS.glsl",
+    ],
+    "Anime Quality": [
+        "Anime4K_Restore_CNN_Soft_M.glsl",
+        "ArtCNN/ArtCNN_C4F32_DS.glsl",
+    ],
+    "SD / Legacy Anime": [
+        "Anime4K_Restore_CNN_Soft_VL.glsl",
+        "ArtCNN/ArtCNN_C4F16_DS.glsl",
+    ],
+    "Anime Quality + Chroma": [
+        "Anime4K_Restore_CNN_Soft_M.glsl",
+        "ArtCNN/ArtCNN_C4F32_Chroma.glsl",
+        "ArtCNN/ArtCNN_C4F32_DS.glsl",
+    ],
+
+    // ── Standard Presets ──
+    "ArtCNN Lightweight": [
+        "ArtCNN/ArtCNN_C4F16_DS.glsl",
+    ],
+    "ArtCNN Quality": [
+        "ArtCNN/ArtCNN_C4F32_DS.glsl",
+    ],
+    "ArtCNN Soft": [
+        "ArtCNN/ArtCNN_C4F32_DN.glsl",
+    ],
+
+    // ── Legacy Presets (Anime4K) ──
+    "Anime4K Fast": [
+        "Anime4K_Restore_CNN_Soft_S.glsl",
+        "Anime4K_Upscale_CNN_x2_S.glsl",
+    ],
+    "Anime4K High": [
+        "Anime4K_Restore_CNN_Soft_M.glsl",
+        "Anime4K_Upscale_CNN_x2_M.glsl",
+    ],
+    "Anime4K Ultra": [
+        "Anime4K_Restore_CNN_Soft_VL.glsl",
+        "Anime4K_Upscale_CNN_x2_VL.glsl",
+    ],
+
     // ── HQ Presets (higher-end GPU: M1 Pro/Max, M2 Pro/Max, M3/M4) ──
     "Mode A (HQ)": [
         "Anime4K_Clamp_Highlights.glsl",

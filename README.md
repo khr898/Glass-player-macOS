@@ -14,7 +14,7 @@ On macOS, the player is written in Swift and leverages Metal 3 to exploit Apple 
 
 ### Video and Color Pipeline
 * **High Dynamic Range (HDR)**: Native support for Dolby Vision, HDR10, and HLG content with precise color space conversions and tone mapping.
-* **Real-time Upscaling**: Built-in integration of Anime4K shaders, enabling real-time high-quality upscaling directly inside the GPU rendering loop.
+* **Real-time Upscaling**: Built-in integration of high-performance **ArtCNN** luma/chroma upscaling and **Anime4K** restoration/upscaling shaders. Includes special combined presets like "Anime Balanced" (Anime4K Restore CNN Soft S + ArtCNN C4F16 DS) for optimal performance and quality.
 
 ### High-Fidelity Audio
 * Supports pass-through bitstreaming for advanced formats including Dolby Atmos, Dolby TrueHD, and DTS-HD Master Audio.
@@ -55,6 +55,28 @@ The macOS version avoids traditional PCIe bus transfer overhead by using Apple S
     [libmpv Playback Core] ◄──► [Direct3D 11 / Vulkan Viewport]
 ```
 The Windows version hosts the libmpv core within a dedicated rendering thread, synchronizing playback controls with the Qt6 event loop. Video presentation is offloaded directly to Direct3D 11 or Vulkan to minimize frame drops and UI latency.
+
+---
+
+## Shader Presets
+
+Glass Player includes several real-time shader presets optimized for different types of content and GPU capabilities:
+
+### ⚡ Special (Recommended)
+* **Anime Balanced (New Default)**: Combines lightweight Anime4K restore shaders with ArtCNN C4F16 luma upscaling. Recommended for high-quality upscaling with low-to-medium GPU utilization.
+* **Anime Quality**: Combines moderate Anime4K restore shaders with high-fidelity ArtCNN C4F32 luma upscaling. Recommended for mid-to-high end GPUs.
+* **SD / Legacy Anime**: Tailored for standard-definition or legacy anime sources, using heavy restoration (Anime4K Restore Soft VL) combined with ArtCNN C4F16 upscaling.
+* **Anime Quality + Chroma**: Features the complete ArtCNN pipeline including ArtCNN C4F32 Chroma reconstruction, preceding the luma restoration and upscaling shaders.
+
+### Standard
+* **ArtCNN Lightweight**: Pure ArtCNN C4F16 downscaled/upscaled shader.
+* **ArtCNN Quality**: Pure ArtCNN C4F32 downscaled/upscaled shader.
+* **ArtCNN Soft**: Pure ArtCNN C4F32 denoised shader.
+
+### Legacy (Anime4K)
+* **Anime4K Fast**: Classic Anime4K Fast configuration (Restore S + Upscale S).
+* **Anime4K High**: Classic Anime4K High configuration (Restore M + Upscale M).
+* **Anime4K Ultra**: Classic Anime4K Ultra configuration (Restore VL + Upscale VL).
 
 ---
 

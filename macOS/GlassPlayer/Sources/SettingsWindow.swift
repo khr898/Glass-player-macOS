@@ -797,10 +797,16 @@ class SettingsWindow: NSWindowController, NSTableViewDelegate, NSTableViewDataSo
         views.append(makePopUpRow(
             title: "Default Preset",
             key: "defaultShaderPreset",
-            options: ["Off", "Auto (Recommended)", "Mode A (HQ)", "Mode B (HQ)", "Mode C (HQ)",
-                      "Mode A+A (HQ)", "Mode B+B (HQ)", "Mode C+A (HQ)",
-                      "Mode A (Fast)", "Mode B (Fast)", "Mode C (Fast)",
-                      "Mode A+A (Fast)", "Mode B+B (Fast)", "Mode C+A (Fast)"],
+            options: [
+                "Off", "Auto (Recommended)",
+                "Anime Balanced", "Anime Quality", "SD / Legacy Anime", "Anime Quality + Chroma",
+                "ArtCNN Lightweight", "ArtCNN Quality", "ArtCNN Soft",
+                "Anime4K Fast", "Anime4K High", "Anime4K Ultra",
+                "Mode A (HQ)", "Mode B (HQ)", "Mode C (HQ)",
+                "Mode A+A (HQ)", "Mode B+B (HQ)", "Mode C+A (HQ)",
+                "Mode A (Fast)", "Mode B (Fast)", "Mode C (Fast)",
+                "Mode A+A (Fast)", "Mode B+B (Fast)", "Mode C+A (Fast)"
+            ],
             defaultValue: "Off"
         ))
         views.append(makeToggleRow(
