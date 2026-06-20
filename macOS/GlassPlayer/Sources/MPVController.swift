@@ -84,36 +84,6 @@ protocol MPVControllerDelegate: AnyObject {
 // Anime4K shader presets (matches the Electron version exactly)
 // ---------------------------------------------------------------------------
 let kShaderPresets: [String: [String]] = [
-    // ── Special Presets (Recommended) ──
-    "Anime Balanced": [
-        "Anime4K_Restore_CNN_Soft_S.glsl",
-        "ArtCNN/ArtCNN_C4F16_DS.glsl",
-    ],
-    "Anime Quality": [
-        "Anime4K_Restore_CNN_Soft_M.glsl",
-        "ArtCNN/ArtCNN_C4F32_DS.glsl",
-    ],
-    "SD / Legacy Anime": [
-        "Anime4K_Restore_CNN_Soft_VL.glsl",
-        "ArtCNN/ArtCNN_C4F16_DS.glsl",
-    ],
-    "Anime Quality + Chroma": [
-        "Anime4K_Restore_CNN_Soft_M.glsl",
-        "ArtCNN/ArtCNN_C4F32_Chroma.glsl",
-        "ArtCNN/ArtCNN_C4F32_DS.glsl",
-    ],
-
-    // ── Standard Presets ──
-    "ArtCNN Lightweight": [
-        "ArtCNN/ArtCNN_C4F16_DS.glsl",
-    ],
-    "ArtCNN Quality": [
-        "ArtCNN/ArtCNN_C4F32_DS.glsl",
-    ],
-    "ArtCNN Soft": [
-        "ArtCNN/ArtCNN_C4F32_DN.glsl",
-    ],
-
     // ── HQ Presets (higher-end GPU: M1 Pro/Max, M2 Pro/Max, M3/M4) ──
     "Mode A (HQ)": [
         "Anime4K_Clamp_Highlights.glsl",
@@ -214,6 +184,42 @@ let kShaderPresets: [String: [String]] = [
         "Anime4K_Restore_CNN_S.glsl",
         "Anime4K_Upscale_CNN_x2_S.glsl",
     ],
+
+    // ── ArtCNN Standard ──
+    "ArtCNN Quality (DS)": [
+        "ArtCNN/ArtCNN_C4F32_DS.glsl",
+    ],
+    "ArtCNN Quality (DN)": [
+        "ArtCNN/ArtCNN_C4F32_DN.glsl",
+    ],
+    "ArtCNN Light (DS)": [
+        "ArtCNN/ArtCNN_C4F16_DS.glsl",
+    ],
+    "ArtCNN Light (DN)": [
+        "ArtCNN/ArtCNN_C4F16_DN.glsl",
+    ],
+
+    // ── Special Presets (Recommended) ──
+    "★ Anime Balanced": [
+        "Anime4K_Restore_CNN_Soft_S.glsl",
+        "ArtCNN/ArtCNN_C4F16_DS.glsl",
+    ],
+    "★ Anime Quality": [
+        "Anime4K_Restore_CNN_Soft_M.glsl",
+        "ArtCNN/ArtCNN_C4F32_DS.glsl",
+    ],
+    "★ SD / Legacy Anime": [
+        "Anime4K_Restore_CNN_Soft_VL.glsl",
+        "ArtCNN/ArtCNN_C4F16_DS.glsl",
+    ],
+    "★ Anime Quality+Chroma": [
+        "Anime4K_Restore_CNN_Soft_M.glsl",
+        "ArtCNN/ArtCNN_C4F32_DS.glsl",
+    ],
+    "★ Anime Quality + Chroma": [
+        "Anime4K_Restore_CNN_Soft_M.glsl",
+        "ArtCNN/ArtCNN_C4F32_DS.glsl",
+    ],
 ]
 
 // ---------------------------------------------------------------------------
@@ -228,6 +234,9 @@ class MPVController {
     /// Used internally by mpv's render API (the only remaining OpenGL
     /// dependency). All display rendering uses Metal 3 via CAMetalLayer.
     var openGLContext: CGLContextObj?
+    weak var videoView: VideoView?
+    var isRenderModeVulkanWID: Bool = false
+    var isRecreatingHandle: Bool = false
 
     weak var delegate: MPVControllerDelegate?
 
@@ -250,6 +259,16 @@ class MPVController {
     // MARK: - Initialization
 
     func initialize() {
+        // Set MoltenVK environment variables for machine-level stability & performance
+        setenv("MVK_CONFIG_RESUME_LOST_DEVICE", "1", 1)
+        setenv("MVK_CONFIG_LOG_LEVEL", "2", 1) // 2 = warnings & errors only
+        setenv("MVK_CONFIG_METAL_COMPILE_TIMEOUT", "60000", 1) // 60s timeout for heavy shaders
+        setenv("MVK_CONFIG_FAST_MATH_ENABLED", "1", 1) // Force fast math optimizations
+        setenv("MVK_CONFIG_USE_METAL_ARGUMENT_BUFFERS", "1", 1) // Enable Metal Argument Buffers
+        setenv("MVK_CONFIG_VK_SEMAPHORE_SUPPORT_STYLE", "2", 1) // Always use MTLEvent for semaphores
+        setenv("MVK_ALLOW_METAL_FENCES", "1", 1)
+        setenv("MVK_ALLOW_METAL_EVENTS", "1", 1)
+
         // 1. Create mpv handle
         mpvHandle = mpv_create()
         guard mpvHandle != nil else {
@@ -257,7 +276,29 @@ class MPVController {
         }
 
         // 2. Set critical options BEFORE mpv_initialize
-        setOption("vo", "libmpv")
+        if isRenderModeVulkanWID {
+            setOption("vo", "gpu-next")
+            setOption("gpu-api", "vulkan")
+            var viewPtr: Int64 = 0
+            if Thread.isMainThread {
+                if let view = self.videoView {
+                    viewPtr = Int64(Int(bitPattern: Unmanaged.passUnretained(view).toOpaque()))
+                }
+            } else {
+                DispatchQueue.main.sync {
+                    if let view = self.videoView {
+                        viewPtr = Int64(Int(bitPattern: Unmanaged.passUnretained(view).toOpaque()))
+                    }
+                }
+            }
+            if viewPtr != 0 {
+                var widVal = viewPtr
+                mpv_set_property(mpvHandle, "wid", MPV_FORMAT_INT64, &widVal)
+            }
+        } else {
+            setOption("vo", "libmpv")
+            setOption("gpu-api", "opengl")
+        }
         setOption("hwdec", "videotoolbox")
         setOption("hwdec-codecs", "all")
         setOption("keep-open", "yes")
@@ -755,9 +796,158 @@ class MPVController {
         return badges
     }
 
+    private func recreateHandle(forCompute: Bool, preset: String, glslShaders: String) {
+        // Capture state on the current thread
+        let path = getString("path")
+        let timePos = getPropertyDouble("time-pos")
+        
+        var pauseFlag: Int32 = 0
+        mpv_get_property(mpvHandle, "pause", MPV_FORMAT_FLAG, &pauseFlag)
+        let isPaused = pauseFlag != 0
+        
+        let vol = getVolume()
+        let spd = getSpeed()
+        
+        var sid: Int64 = -1
+        mpv_get_property(mpvHandle, "sid", MPV_FORMAT_INT64, &sid)
+        var aid: Int64 = -1
+        mpv_get_property(mpvHandle, "aid", MPV_FORMAT_INT64, &aid)
+
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
+            
+            NSLog("[MPV] Starting handle recreation. forCompute = %@", String(forCompute))
+            self.isRecreatingHandle = true
+            
+            // If switching to Vulkan, uninit rendering on main thread first
+            // to safely release the rendering context under locked CGL.
+            if forCompute {
+                DispatchQueue.main.sync {
+                    self.videoView?.videoLayer.uninitRendering()
+                }
+            }
+            
+            // 1. Shutdown existing handle
+            self.shutdown()
+            
+            // 2. Set mode
+            self.isRenderModeVulkanWID = forCompute
+            
+            // 3. Initialize new handle on the main thread to ensure all AppKit-based option
+            // binding (like Vulkan WID view attachment) and render setups happen safely.
+            DispatchQueue.main.sync {
+                self.initialize()
+            }
+            
+            // 4. If OpenGL offscreen, initialize offscreen rendering context on main thread
+            if !forCompute {
+                DispatchQueue.main.sync {
+                    self.videoView?.videoLayer.initMPVRendering(self)
+                }
+            }
+            
+            // 5. Restore state
+            self.setVolume(vol)
+            self.setSpeed(spd)
+            
+            self.currentShaderPreset = preset
+            self.setPropertyString("glsl-shaders", glslShaders)
+            if self.isRenderModeVulkanWID && (preset.contains("Chroma") || preset.contains("chroma")) {
+                self.setPropertyString("cscale", "ewa_lanczos")
+            } else {
+                self.setPropertyString("cscale", "spline36")
+            }
+            
+            var pauseVal: Int32 = isPaused ? 1 : 0
+            mpv_set_property(self.mpvHandle, "pause", MPV_FORMAT_FLAG, &pauseVal)
+            
+            if let p = path {
+                NSLog("[MPV] Reloading file at position: %f", timePos)
+                // Use start option to reload file at exact position
+                self.command(["loadfile", p, "replace", "start=\(timePos)"])
+                
+                // Restore track selection
+                if sid >= 0 {
+                    var val = sid
+                    mpv_set_property(self.mpvHandle, "sid", MPV_FORMAT_INT64, &val)
+                }
+                if aid >= 0 {
+                    var val = aid
+                    mpv_set_property(self.mpvHandle, "aid", MPV_FORMAT_INT64, &val)
+                }
+            }
+            
+            self.isRecreatingHandle = false
+            NSLog("[MPV] Handle recreation completed successfully")
+        }
+    }
+
     // MARK: - Anime4K Shader Presets
 
+    private func switchToVulkanWID() {
+        guard !isRenderModeVulkanWID else { return }
+        guard let view = videoView else {
+            NSLog("[MPV] Error: videoView is nil, cannot switch to Vulkan WID")
+            return
+        }
+
+        NSLog("[MPV] Switching to Vulkan WID mode for compute shaders")
+
+        // 1. Tear down the offscreen OpenGL render context
+        view.videoLayer.uninitRendering()
+
+        // 2. Set options for Vulkan window embedding
+        let viewPtr = Int64(Int(bitPattern: Unmanaged.passUnretained(view).toOpaque()))
+
+        setPropertyString("vo", "gpu-next")
+        setPropertyString("gpu-api", "vulkan")
+
+        // Set wid option
+        var widVal = viewPtr
+        let err = mpv_set_property(mpvHandle, "wid", MPV_FORMAT_INT64, &widVal)
+        if err < 0 {
+            NSLog("[MPV] Error setting wid property: %s", mpv_error_string(err))
+        }
+
+        isRenderModeVulkanWID = true
+        NSLog("[MPV] Switched to Vulkan WID mode successfully with wid = %lld", viewPtr)
+    }
+
+    private func switchToOpenGLOffscreen() {
+        guard isRenderModeVulkanWID else { return }
+        guard let view = videoView else {
+            NSLog("[MPV] Error: videoView is nil, cannot switch to OpenGL Offscreen")
+            return
+        }
+
+        NSLog("[MPV] Switching to OpenGL Offscreen mode")
+
+        // 1. Detach from window
+        var widVal: Int64 = 0
+        let err = mpv_set_property(mpvHandle, "wid", MPV_FORMAT_INT64, &widVal)
+        if err < 0 {
+            NSLog("[MPV] Error clearing wid property: %s", mpv_error_string(err))
+        }
+
+        // 2. Set options back to offscreen libmpv
+        setPropertyString("vo", "libmpv")
+        setPropertyString("gpu-api", "opengl")
+
+        // 3. Re-initialize offscreen rendering context
+        view.videoLayer.initMPVRendering(self)
+
+        isRenderModeVulkanWID = false
+        NSLog("[MPV] Switched to OpenGL Offscreen mode successfully")
+    }
+
     func applyShaderPreset(_ preset: String) -> Bool {
+        // OpenGL Compute Shaders (ArtCNN/CfL) are not supported on macOS without MoltenVK.
+        // Prevent loading to avoid a SIGABRT crash in libmpv's OpenGL pipeline.
+        if (preset.hasPrefix("★") || preset.hasPrefix("ArtCNN")) && !UniversalMetalRuntime.isMoltenVKPresent() {
+            NSLog("[MPV] Rejecting compute-based shader preset '%@' on macOS (MoltenVK not present)", preset)
+            return false
+        }
+
         guard let shaderNames = kShaderPresets[preset] else { return false }
 
         var paths: [String] = []
@@ -779,16 +969,33 @@ class MPVController {
         guard !paths.isEmpty else { return false }
 
         let joined = paths.joined(separator: ":")
-        setPropertyString("glsl-shaders", joined)
-        currentShaderPreset = preset
-        NSLog("[MPV] Applied shader preset: %@ (%d shaders)", preset, paths.count)
+        let isCompute = preset.hasPrefix("★") || preset.hasPrefix("ArtCNN")
+        
+        if isCompute != isRenderModeVulkanWID {
+            recreateHandle(forCompute: isCompute, preset: preset, glslShaders: joined)
+        } else {
+            setPropertyString("glsl-shaders", joined)
+            currentShaderPreset = preset
+            if isRenderModeVulkanWID && (preset.contains("Chroma") || preset.contains("chroma")) {
+                setPropertyString("cscale", "ewa_lanczos")
+            } else {
+                setPropertyString("cscale", "spline36")
+            }
+            NSLog("[MPV] Applied shader preset: %@ (%d shaders) on existing handle", preset, paths.count)
+        }
+        
         return true
     }
 
     func clearShaders() {
-        setPropertyString("glsl-shaders", "")
-        currentShaderPreset = nil
-        NSLog("[MPV] Shaders cleared")
+        if isRenderModeVulkanWID {
+            recreateHandle(forCompute: false, preset: "Off", glslShaders: "")
+        } else {
+            setPropertyString("glsl-shaders", "")
+            setPropertyString("cscale", "spline36")
+            currentShaderPreset = nil
+            NSLog("[MPV] Shaders cleared on existing handle")
+        }
     }
 
     // MARK: - Property observation
@@ -906,9 +1113,20 @@ class MPVController {
 
         // 3. Free render context (may already be nil if ViewLayer.uninitRendering ran)
         if let ctx = mpvRenderContext {
+            // Lock and make context current during free to prevent background thread OpenGL crashes
+            if let cglCtx = openGLContext {
+                CGLLockContext(cglCtx)
+                CGLSetCurrentContext(cglCtx)
+            }
+            
             mpv_render_context_set_update_callback(ctx, nil, nil)
             mpv_render_context_free(ctx)
             mpvRenderContext = nil
+            
+            if let cglCtx = openGLContext {
+                CGLSetCurrentContext(nil)
+                CGLUnlockContext(cglCtx)
+            }
         }
 
         // 4. Destroy mpv handle

@@ -270,10 +270,19 @@ struct UniversalMetalRuntime {
         return false
     }
 
-    /// Choose the best Anime4K shader preset for the current hardware.
-    /// Memory-floor devices always get "Fast" presets to avoid OOM.
+    static func isMoltenVKPresent() -> Bool {
+        if let frameworksPath = Bundle.main.privateFrameworksPath {
+            let path = (frameworksPath as NSString).appendingPathComponent("libMoltenVK.dylib")
+            return FileManager.default.fileExists(atPath: path)
+        }
+        return false
+    }
+
     static func recommendedAnime4KPreset(physicalMemory: UInt64 = ProcessInfo.processInfo.physicalMemory) -> String {
-        return "Anime Balanced"
+        if isMoltenVKPresent() {
+            return "★ Anime Balanced"
+        }
+        return "Mode A (Fast)"
     }
 
     /// Recommended Metal pixel format for the current display.

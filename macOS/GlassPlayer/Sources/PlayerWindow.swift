@@ -231,6 +231,7 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
         mpv.initialize()
 
         // Connect rendering
+        mpv.videoView = videoView
         videoView.videoLayer.initMPVRendering(mpv)
 
         // Detect built-in display via IOKit backlight service
@@ -941,48 +942,13 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
 
     @objc private func showShaderMenu(_ sender: NSButton) {
         let menu = NSMenu()
-        let recommendedPreset = UniversalMetalRuntime.recommendedAnime4KPreset()
+        let hasMVK = UniversalMetalRuntime.isMoltenVKPresent()
 
         // "Off" option
         let offItem = NSMenuItem(title: "Off", action: #selector(clearShadersAction), keyEquivalent: "")
         offItem.target = self
         if mpv.currentShaderPreset == nil { offItem.state = .on }
         menu.addItem(offItem)
-
-        let autoItem = NSMenuItem(title: "Auto (Recommended)", action: #selector(applyAutoShaderAction), keyEquivalent: "")
-        autoItem.target = self
-        autoItem.toolTip = "Resolved now as: \(recommendedPreset)"
-        menu.addItem(autoItem)
-
-        menu.addItem(.separator())
-
-        // Special Header
-        let specialHeader = NSMenuItem(title: "── ⚡ Special (Recommended) ──", action: nil, keyEquivalent: "")
-        specialHeader.isEnabled = false
-        menu.addItem(specialHeader)
-
-        for preset in ["Anime Balanced", "Anime Quality", "SD / Legacy Anime", "Anime Quality + Chroma"] {
-            let item = NSMenuItem(title: preset, action: #selector(applyShaderAction(_:)), keyEquivalent: "")
-            item.target = self
-            item.representedObject = preset
-            item.state = mpv.currentShaderPreset == preset ? .on : .off
-            menu.addItem(item)
-        }
-
-        menu.addItem(.separator())
-
-        // Standard Header
-        let standardHeader = NSMenuItem(title: "── Standard ──", action: nil, keyEquivalent: "")
-        standardHeader.isEnabled = false
-        menu.addItem(standardHeader)
-
-        for preset in ["ArtCNN Lightweight", "ArtCNN Quality", "ArtCNN Soft"] {
-            let item = NSMenuItem(title: preset, action: #selector(applyShaderAction(_:)), keyEquivalent: "")
-            item.target = self
-            item.representedObject = preset
-            item.state = mpv.currentShaderPreset == preset ? .on : .off
-            menu.addItem(item)
-        }
 
         menu.addItem(.separator())
 
@@ -1013,6 +979,44 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
             item.target = self
             item.representedObject = preset
             item.state = mpv.currentShaderPreset == preset ? .on : .off
+            menu.addItem(item)
+        }
+
+        menu.addItem(.separator())
+
+        // Special Header
+        let specialHeader = NSMenuItem(title: "── ★ Special (Recommended) ──", action: nil, keyEquivalent: "")
+        specialHeader.isEnabled = false
+        menu.addItem(specialHeader)
+
+        for preset in ["★ Anime Balanced", "★ Anime Quality", "★ SD / Legacy Anime", "★ Anime Quality + Chroma"] {
+            let item = NSMenuItem(title: preset, action: #selector(applyShaderAction(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = preset
+            item.state = mpv.currentShaderPreset == preset ? .on : .off
+            if !hasMVK {
+                item.isEnabled = false
+                item.toolTip = "Requires MoltenVK pipeline (not detected)"
+            }
+            menu.addItem(item)
+        }
+
+        menu.addItem(.separator())
+
+        // Standard Header
+        let standardHeader = NSMenuItem(title: "── ArtCNN Standard ──", action: nil, keyEquivalent: "")
+        standardHeader.isEnabled = false
+        menu.addItem(standardHeader)
+
+        for preset in ["ArtCNN Quality (DS)", "ArtCNN Quality (DN)", "ArtCNN Light (DS)", "ArtCNN Light (DN)"] {
+            let item = NSMenuItem(title: preset, action: #selector(applyShaderAction(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = preset
+            item.state = mpv.currentShaderPreset == preset ? .on : .off
+            if !hasMVK {
+                item.isEnabled = false
+                item.toolTip = "Requires MoltenVK pipeline (not detected)"
+            }
             menu.addItem(item)
         }
 
@@ -1061,15 +1065,16 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
 
     @objc private func applyShaderAction(_ sender: NSMenuItem) {
         if let preset = sender.representedObject as? String {
-            _ = mpv.applyShaderPreset(preset)
+            if !mpv.applyShaderPreset(preset) {
+                let alert = NSAlert()
+                alert.messageText = "MoltenVK Required"
+                alert.informativeText = "Preset '\(preset)' requires the MoltenVK Vulkan-to-Metal pipeline, which was not detected in this build of the application."
+                alert.alertStyle = .warning
+                alert.addButton(withTitle: "OK")
+                alert.runModal()
+            }
             updateShaderButton()
         }
-    }
-
-    @objc private func applyAutoShaderAction() {
-        let resolved = UniversalMetalRuntime.recommendedAnime4KPreset()
-        _ = mpv.applyShaderPreset(resolved)
-        updateShaderButton()
     }
 
     @objc private func clearShadersAction() {
@@ -1984,18 +1989,17 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
         isFirstPause = true  // reset for new file
         lastTimePosReceived = CACurrentMediaTime()
 
-        let shouldAutoApply = UserDefaults.standard.bool(forKey: "autoApplyShaders")
-        if shouldAutoApply && mpv.shadersAvailable {
-            let configuredPreset = UserDefaults.standard.string(forKey: "defaultShaderPreset") ?? "Off"
-            if configuredPreset == "Off" {
-                mpv.clearShaders()
-            } else if configuredPreset == "Auto (Recommended)" {
-                let resolved = UniversalMetalRuntime.recommendedAnime4KPreset()
-                _ = mpv.applyShaderPreset(resolved)
-            } else {
-                _ = mpv.applyShaderPreset(configuredPreset)
+        if !mpv.isRecreatingHandle {
+            let shouldAutoApply = UserDefaults.standard.bool(forKey: "autoApplyShaders")
+            if shouldAutoApply && mpv.shadersAvailable {
+                let configuredPreset = UserDefaults.standard.string(forKey: "defaultShaderPreset") ?? "Off"
+                if configuredPreset == "Off" {
+                    mpv.clearShaders()
+                } else {
+                    _ = mpv.applyShaderPreset(configuredPreset)
+                }
+                updateShaderButton()
             }
-            updateShaderButton()
         }
 
         // Update shader button visibility (lazy check)
@@ -2015,19 +2019,21 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
     }
 
     func mpvStartFile() {
-        // Reset UI state when a new file begins loading
-        isSeeking = false
-        lastDisplayedSecond = -1
-        lastConfirmedThumbnailTime = -1
-        thumbnailCache.removeAll(keepingCapacity: true)
-        thumbnailTimes.removeAll(keepingCapacity: true)
-        thumbnailAccessOrder.removeAll()
-        lastThumbnailTime = -1
-        timelineSlider.doubleValue = 0
-        currentTimeLabel.stringValue = "0:00"
-        remainingTimeLabel.stringValue = "-0:00"
-        hideTimelinePreview()
-        stopIdleWatchdog()
+        if !mpv.isRecreatingHandle {
+            // Reset UI state when a new file begins loading
+            isSeeking = false
+            lastDisplayedSecond = -1
+            lastConfirmedThumbnailTime = -1
+            thumbnailCache.removeAll(keepingCapacity: true)
+            thumbnailTimes.removeAll(keepingCapacity: true)
+            thumbnailAccessOrder.removeAll()
+            lastThumbnailTime = -1
+            timelineSlider.doubleValue = 0
+            currentTimeLabel.stringValue = "0:00"
+            remainingTimeLabel.stringValue = "-0:00"
+            hideTimelinePreview()
+            stopIdleWatchdog()
+        }
     }
 
     func mpvPlaybackEnded() {
@@ -2183,7 +2189,17 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
         }
     }
 
+    func windowWillEnterFullScreen(_ notification: Notification) {
+        videoView.isAnimatingFullScreen = true
+    }
+
+    func windowWillExitFullScreen(_ notification: Notification) {
+        videoView.isAnimatingFullScreen = true
+    }
+
     func windowDidEnterFullScreen(_ notification: Notification) {
+        videoView.isAnimatingFullScreen = false
+        videoView.videoLayer.liveResizeEnded()
         fullscreenButton.image = cachedFSExit
         // Hide titlebar in fullscreen, flush top bar to top edge
         window?.titlebarAppearsTransparent = true
@@ -2196,6 +2212,8 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
     }
 
     func windowDidExitFullScreen(_ notification: Notification) {
+        videoView.isAnimatingFullScreen = false
+        videoView.videoLayer.liveResizeEnded()
         fullscreenButton.image = cachedFSEnter
         window?.titlebarAppearsTransparent = true
         // Restore correct aspect ratio constraint after leaving fullscreen
@@ -2686,15 +2704,20 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
     }
 
     private func cycleShaderPreset() {
-        let presets = [
-            "Off", "Auto (Recommended)",
-            "Anime Balanced", "Anime Quality", "SD / Legacy Anime", "Anime Quality + Chroma",
-            "ArtCNN Lightweight", "ArtCNN Quality", "ArtCNN Soft",
+        let hasMVK = UniversalMetalRuntime.isMoltenVKPresent()
+        var presets = [
+            "Off",
             "Mode A (HQ)", "Mode B (HQ)", "Mode C (HQ)",
             "Mode A+A (HQ)", "Mode B+B (HQ)", "Mode C+A (HQ)",
             "Mode A (Fast)", "Mode B (Fast)", "Mode C (Fast)",
             "Mode A+A (Fast)", "Mode B+B (Fast)", "Mode C+A (Fast)"
         ]
+        if hasMVK {
+            presets.append(contentsOf: [
+                "★ Anime Balanced", "★ Anime Quality", "★ SD / Legacy Anime", "★ Anime Quality + Chroma",
+                "ArtCNN Quality (DS)", "ArtCNN Quality (DN)", "ArtCNN Light (DS)", "ArtCNN Light (DN)"
+            ])
+        }
         let currentPreset = mpv.currentShaderPreset ?? "Off"
         let currentIdx = presets.firstIndex(of: currentPreset) ?? 0
         let nextIdx = (currentIdx + 1) % presets.count
@@ -2702,14 +2725,12 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
         
         if nextPreset == "Off" {
             mpv.clearShaders()
-        } else if nextPreset == "Auto (Recommended)" {
-            let resolved = UniversalMetalRuntime.recommendedAnime4KPreset()
-            _ = mpv.applyShaderPreset(resolved)
+            mpv.showText("Anime4K Shader: Off")
         } else {
             _ = mpv.applyShaderPreset(nextPreset)
+            mpv.showText("Anime4K Shader: \(nextPreset)")
         }
         updateShaderButton()
-        mpv.showText("Anime4K Shader: \(nextPreset)")
     }
 
     private func adjustBrightness(by delta: Double) {

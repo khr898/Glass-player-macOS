@@ -794,18 +794,25 @@ class SettingsWindow: NSWindowController, NSTableViewDelegate, NSTableViewDataSo
             "Auto chooses a preset dynamically based on your current GPU and memory headroom."
         ))
 
+        let hasMVK = UniversalMetalRuntime.isMoltenVKPresent()
+        var options = [
+            "Off",
+            "Mode A (HQ)", "Mode B (HQ)", "Mode C (HQ)",
+            "Mode A+A (HQ)", "Mode B+B (HQ)", "Mode C+A (HQ)",
+            "Mode A (Fast)", "Mode B (Fast)", "Mode C (Fast)",
+            "Mode A+A (Fast)", "Mode B+B (Fast)", "Mode C+A (Fast)"
+        ]
+        if hasMVK {
+            options.append(contentsOf: [
+                "★ Anime Balanced", "★ Anime Quality", "★ SD / Legacy Anime", "★ Anime Quality + Chroma",
+                "ArtCNN Quality (DS)", "ArtCNN Quality (DN)", "ArtCNN Light (DS)", "ArtCNN Light (DN)"
+            ])
+        }
+
         views.append(makePopUpRow(
             title: "Default Preset",
             key: "defaultShaderPreset",
-            options: [
-                "Off", "Auto (Recommended)",
-                "Anime Balanced", "Anime Quality", "SD / Legacy Anime", "Anime Quality + Chroma",
-                "ArtCNN Lightweight", "ArtCNN Quality", "ArtCNN Soft",
-                "Mode A (HQ)", "Mode B (HQ)", "Mode C (HQ)",
-                "Mode A+A (HQ)", "Mode B+B (HQ)", "Mode C+A (HQ)",
-                "Mode A (Fast)", "Mode B (Fast)", "Mode C (Fast)",
-                "Mode A+A (Fast)", "Mode B+B (Fast)", "Mode C+A (Fast)"
-            ],
+            options: options,
             defaultValue: "Off"
         ))
         views.append(makeToggleRow(
@@ -1069,6 +1076,20 @@ class SettingsWindow: NSWindowController, NSTableViewDelegate, NSTableViewDataSo
         guard let key = objc_getAssociatedObject(sender, AssociatedKeys.settingsKey)
             as? String else { return }
         let value = sender.titleOfSelectedItem ?? ""
+
+        if key == "defaultShaderPreset" && (value.hasPrefix("★") || value.hasPrefix("ArtCNN")) && !UniversalMetalRuntime.isMoltenVKPresent() {
+            let saved = UserDefaults.standard.string(forKey: key) ?? "Off"
+            sender.selectItem(withTitle: saved)
+
+            let alert = NSAlert()
+            alert.messageText = "MoltenVK Required"
+            alert.informativeText = "Preset '\(value)' requires the MoltenVK Vulkan-to-Metal pipeline, which was not detected in this build of the application."
+            alert.alertStyle = .warning
+            alert.addButton(withTitle: "OK")
+            alert.runModal()
+            return
+        }
+
         UserDefaults.standard.set(value, forKey: key)
         applySettingToMPV(key: key, value: value)
     }
@@ -1080,9 +1101,6 @@ class SettingsWindow: NSWindowController, NSTableViewDelegate, NSTableViewDataSo
             for pw in appDelegate.playerWindows {
                 if value == "Off" {
                     pw.mpv.clearShaders()
-                } else if value == "Auto (Recommended)" {
-                    let resolved = UniversalMetalRuntime.recommendedAnime4KPreset()
-                    _ = pw.mpv.applyShaderPreset(resolved)
                 } else {
                     _ = pw.mpv.applyShaderPreset(value)
                 }

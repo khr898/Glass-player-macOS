@@ -1,10 +1,19 @@
 #ifndef BridgingHeader_h
 #define BridgingHeader_h
 
+#ifndef GL_SILENCE_DEPRECATION
+#define GL_SILENCE_DEPRECATION 1
+#endif
+
 // ── mpv headers ──
 #include <mpv/client.h>
 #include <mpv/render.h>
 #include <mpv/render_gl.h>          // mpv_opengl_init_params, mpv_opengl_fbo
+
+#ifndef MPV_RENDER_PARAM_BACKEND
+#define MPV_RENDER_PARAM_BACKEND 21
+#endif
+
 
 // ── OpenGL (minimal: offscreen CGL context for mpv render API interop) ──
 // These are NOT used for display rendering – all screen output uses Metal 3.

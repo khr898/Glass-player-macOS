@@ -113,6 +113,9 @@ class ViewLayer: CAMetalLayer {
     /// (cheap GPU scale) and the IOSurface is recreated once at final size.
     var isInLiveResize = false
 
+    /// Whether the layer is currently animating entering or exiting native fullscreen
+    var isAnimatingFullScreen = false
+
     // MARK: - Initialization
 
     override init() {
@@ -169,7 +172,7 @@ class ViewLayer: CAMetalLayer {
         var pix: CGLPixelFormatObj?
         var npix: GLint = 0
 
-        // Hardware-accelerated 3.2 Core profile – minimal for mpv's GPU renderer
+        // Hardware-accelerated 3.2 Core profile (highest Core version supported on macOS, up to 4.1 Core)
         var attrs: [CGLPixelFormatAttribute] = [
             kCGLPFAOpenGLProfile,
             CGLPixelFormatAttribute(kCGLOGLPVersion_3_2_Core.rawValue),
@@ -180,7 +183,20 @@ class ViewLayer: CAMetalLayer {
         ]
         var err = CGLChoosePixelFormat(attrs, &pix, &npix)
 
-        // Fallback: simplified attributes
+        // Fallback: 3.2 Core profile with advanced interop
+        if err != kCGLNoError || pix == nil {
+            attrs = [
+                kCGLPFAOpenGLProfile,
+                CGLPixelFormatAttribute(kCGLOGLPVersion_3_2_Core.rawValue),
+                kCGLPFAAccelerated,
+                kCGLPFAAllowOfflineRenderers,
+                kCGLPFASupportsAutomaticGraphicsSwitching,
+                CGLPixelFormatAttribute(0)
+            ]
+            err = CGLChoosePixelFormat(attrs, &pix, &npix)
+        }
+
+        // Fallback: simplified 3.2 Core attributes
         if err != kCGLNoError || pix == nil {
             attrs = [
                 kCGLPFAOpenGLProfile,
@@ -409,11 +425,16 @@ class ViewLayer: CAMetalLayer {
         // recreation.  Metal will scale the existing texture to fill the new
         // drawable size (cheap GPU stretch), and we recreate at the final size
         // once the resize gesture ends (see liveResizeEnded()).
-        guard !isInLiveResize else { return }
+        guard !isInLiveResize && !isAnimatingFullScreen else { return }
 
         // Recreate IOSurface if viewport dimensions changed.
         // Lock to prevent race with renderFrame() on metalRenderQueue.
         if w != surfaceWidth || h != surfaceHeight {
+            if let mpv = mpv, mpv.isRenderModeVulkanWID {
+                surfaceWidth = w
+                surfaceHeight = h
+                return
+            }
             displayLock.lock()
             createIOSurface(width: w, height: h)
             displayLock.unlock()
@@ -433,9 +454,14 @@ class ViewLayer: CAMetalLayer {
         let h = max(4, Int(bh))
         drawableSize = CGSize(width: CGFloat(w), height: CGFloat(h))
         if w != surfaceWidth || h != surfaceHeight {
-            displayLock.lock()
-            createIOSurface(width: w, height: h)
-            displayLock.unlock()
+            if let mpv = mpv, mpv.isRenderModeVulkanWID {
+                surfaceWidth = w
+                surfaceHeight = h
+            } else {
+                displayLock.lock()
+                createIOSurface(width: w, height: h)
+                displayLock.unlock()
+            }
         }
         // Force a fresh render at the new resolution
         update(force: true)
@@ -511,7 +537,7 @@ class ViewLayer: CAMetalLayer {
             fbo: Int32(glFBO),
             w: Int32(surfaceWidth),
             h: Int32(surfaceHeight),
-            internal_format: 0
+            internal_format: Int32(GL_RGBA8)
         )
 
         var flip: CInt = 0  // No flip: OpenGL FBO row 0 = bottom; Metal UV (0,0) = top-left → correct orientation
@@ -614,6 +640,7 @@ class ViewLayer: CAMetalLayer {
     /// mpv's OpenGL renderer and the Metal display layer.
     func initMPVRendering(_ controller: MPVController) {
         self.mpv = controller
+        isUninited = false
 
         // Make offscreen CGL context current for mpv_render_context_create
         CGLLockContext(cglCtx)
@@ -624,30 +651,34 @@ class ViewLayer: CAMetalLayer {
             get_proc_address_ctx: nil
         )
 
-        let apiType = UnsafeMutableRawPointer(
-            mutating: (MPV_RENDER_API_TYPE_OPENGL as NSString).utf8String
-        )
-
-        withUnsafeMutablePointer(to: &initParams) { initParamsPtr in
-            var advanced: CInt = 1
-            withUnsafeMutablePointer(to: &advanced) { advancedPtr in
-                var params = [
-                    mpv_render_param(type: MPV_RENDER_PARAM_API_TYPE,
-                                     data: apiType),
-                    mpv_render_param(type: MPV_RENDER_PARAM_OPENGL_INIT_PARAMS,
-                                     data: .init(initParamsPtr)),
-                    mpv_render_param(type: MPV_RENDER_PARAM_ADVANCED_CONTROL,
-                                     data: .init(advancedPtr)),
-                    mpv_render_param()
-                ]
-                let err = mpv_render_context_create(
-                    &controller.mpvRenderContext,
-                    controller.mpvHandle,
-                    &params
-                )
-                if err < 0 {
-                    NSLog("[ViewLayer] Failed to create render context: %s",
-                          mpv_error_string(err))
+        "opengl".withCString { apiTypePtr in
+            "gpu-next".withCString { backendTypePtr in
+                let apiType = UnsafeMutableRawPointer(mutating: apiTypePtr)
+                let backendType = UnsafeMutableRawPointer(mutating: backendTypePtr)
+                withUnsafeMutablePointer(to: &initParams) { initParamsPtr in
+                    var advanced: CInt = 1
+                    withUnsafeMutablePointer(to: &advanced) { advancedPtr in
+                        var params = [
+                            mpv_render_param(type: MPV_RENDER_PARAM_API_TYPE,
+                                             data: apiType),
+                            mpv_render_param(type: mpv_render_param_type(rawValue: UInt32(MPV_RENDER_PARAM_BACKEND)),
+                                             data: backendType),
+                            mpv_render_param(type: MPV_RENDER_PARAM_OPENGL_INIT_PARAMS,
+                                             data: .init(initParamsPtr)),
+                            mpv_render_param(type: MPV_RENDER_PARAM_ADVANCED_CONTROL,
+                                             data: .init(advancedPtr)),
+                            mpv_render_param()
+                        ]
+                        let err = mpv_render_context_create(
+                            &controller.mpvRenderContext,
+                            controller.mpvHandle,
+                            &params
+                        )
+                        if err < 0 {
+                            NSLog("[ViewLayer] Failed to create render context: %s",
+                                  mpv_error_string(err))
+                        }
+                    }
                 }
             }
         }
@@ -681,11 +712,21 @@ class ViewLayer: CAMetalLayer {
         isUninited = true
         // Drain any pending render blocks so they don't race with teardown
         metalRenderQueue.sync {}
+
+        // GPU Fence: Wait for all Metal work to complete on the GPU
+        if let cmdBuf = commandQueue.makeCommandBuffer() {
+            cmdBuf.commit()
+            cmdBuf.waitUntilCompleted()
+        }
+
         guard let mpv = mpv, let renderCtx = mpv.mpvRenderContext else { return }
 
         // Lock CGL context so no render cycle races with teardown
         CGLLockContext(cglCtx)
         CGLSetCurrentContext(cglCtx)
+
+        // Ensure all pending GL commands are completed before freeing the context
+        glFinish()
 
         mpv_render_context_set_update_callback(renderCtx, nil, nil)
         mpv_render_context_free(renderCtx)

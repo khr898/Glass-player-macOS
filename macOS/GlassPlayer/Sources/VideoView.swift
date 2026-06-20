@@ -8,6 +8,12 @@ class VideoView: NSView {
 
     lazy var videoLayer: ViewLayer = ViewLayer()
 
+    var isAnimatingFullScreen: Bool = false {
+        didSet {
+            videoLayer.isAnimatingFullScreen = isAnimatingFullScreen
+        }
+    }
+
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
 

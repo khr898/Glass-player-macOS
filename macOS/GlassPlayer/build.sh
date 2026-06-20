@@ -41,6 +41,7 @@ COMMON_SWIFTC_FLAGS=(
     -framework CoreAudio
     -framework Accelerate
     -target arm64-apple-macos14.0
+    -Xcc -DGL_SILENCE_DEPRECATION
     -Xlinker -headerpad_max_install_names
 )
 
@@ -81,6 +82,49 @@ echo -n "APPL????" > "$APP_BUNDLE/Contents/PkgInfo"
 
 [ -f "$ROOT_DIR/configs/mpv.conf" ] && cp "$ROOT_DIR/configs/mpv.conf" "$APP_BUNDLE/Contents/Resources/configs/"
 [ -d "$ROOT_DIR/shaders" ] && cp -R "$ROOT_DIR/shaders/." "$APP_BUNDLE/Contents/Resources/shaders/"
+
+# ─── Install and Bundle MoltenVK ───
+echo "=== Installing and Bundling MoltenVK ==="
+brew install molten-vk
+
+BREW_PREFIX="$(brew --prefix)"
+MVK_DYLIB="$BREW_PREFIX/lib/libMoltenVK.dylib"
+if [ -f "$MVK_DYLIB" ]; then
+    echo "  Bundling libMoltenVK.dylib..."
+    cp "$MVK_DYLIB" "$FRAMEWORKS_DIR/libMoltenVK.dylib"
+    chmod 755 "$FRAMEWORKS_DIR/libMoltenVK.dylib"
+    install_name_tool -id "@executable_path/../Frameworks/libMoltenVK.dylib" "$FRAMEWORKS_DIR/libMoltenVK.dylib" 2>/dev/null || true
+else
+    echo "  ⚠️ Warning: libMoltenVK.dylib not found at $MVK_DYLIB"
+fi
+
+MVK_ICD=""
+for icd_path in \
+    "$BREW_PREFIX/share/vulkan/icd.d/MoltenVK_icd.json" \
+    "$BREW_PREFIX/opt/molten-vk/share/vulkan/icd.d/MoltenVK_icd.json" \
+    "$(brew --prefix molten-vk 2>/dev/null)/share/vulkan/icd.d/MoltenVK_icd.json"
+do
+    if [ -f "$icd_path" ]; then
+        MVK_ICD="$icd_path"
+        break
+    fi
+done
+
+if [ -z "$MVK_ICD" ]; then
+    MVK_ICD=$(find "$BREW_PREFIX/Cellar/molten-vk" -name "MoltenVK_icd.json" -print -quit 2>/dev/null || true)
+fi
+
+if [ -z "$MVK_ICD" ]; then
+    MVK_ICD=$(find "$BREW_PREFIX/opt/molten-vk" -name "MoltenVK_icd.json" -print -quit 2>/dev/null || true)
+fi
+
+if [ -n "$MVK_ICD" ]; then
+    echo "  Bundling MoltenVK_icd.json from $MVK_ICD..."
+    mkdir -p "$APP_BUNDLE/Contents/Resources/vulkan/icd.d"
+    sed -E 's/"library_path": *"[^"]*"/"library_path": "..\/..\/..\/Frameworks\/libMoltenVK.dylib"/' "$MVK_ICD" > "$APP_BUNDLE/Contents/Resources/vulkan/icd.d/MoltenVK_icd.json"
+else
+    echo "  ⚠️ Warning: MoltenVK_icd.json not found in candidate paths"
+fi
 
 # ─── Generate App Icon ─────────────────────────────────────────────────
 echo "=== Generating app icon ==="
