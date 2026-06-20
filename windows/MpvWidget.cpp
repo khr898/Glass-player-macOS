@@ -1,7 +1,6 @@
 #include "MpvWidget.h"
 #include <QCoreApplication>
 #include <QDebug>
-#include <QOpenGLContext>
 #include <cstdint>
 #include <vector>
 
@@ -13,23 +12,30 @@
 #include <QDir>
 
 MpvWidget::MpvWidget(QWidget *parent)
-    : QOpenGLWidget(parent), m_mpv(nullptr), m_mpv_gl(nullptr)
+    : QWidget(parent), m_mpv(nullptr)
 {
+    // Prevent Qt from backing store operations on this widget
+    setAttribute(Qt::WA_OpaquePaintEvent);
+    setAttribute(Qt::WA_NoSystemBackground);
+    setAttribute(Qt::WA_PaintOnScreen);
+
     m_mpv = mpv_create();
     if (!m_mpv) {
         qFatal("Could not create mpv context");
     }
 
-    // Setting options
-    mpv_set_option_string(m_mpv, "vo", "libmpv");
+    // Enforce vo=gpu-next and gpu-api=d3d11 for Direct3D11 compute shader support (ArtCNN)
+    mpv_set_option_string(m_mpv, "vo", "gpu-next");
+    mpv_set_option_string(m_mpv, "gpu-api", "d3d11");
+
+    // Disable shader cache to avoid crashes due to corrupted cache files
+    mpv_set_option_string(m_mpv, "gpu-shader-cache-dir", "");
+
     m_hwdecMode = detectPreferredHwdec();
     mpv_set_option_string(m_mpv, "hwdec", m_hwdecMode.toUtf8().constData());
-    // Seamless software fallback for unsupported codecs/devices.
     mpv_set_option_string(m_mpv, "hwdec-software-fallback", "yes");
     mpv_set_option_string(m_mpv, "hwdec-codecs", "all");
 
-    // Enforce gpu-api=opengl to ensure correct context rendering and GLSL shader (Anime4K) support
-    mpv_set_option_string(m_mpv, "gpu-api", "opengl");
     mpv_set_option_string(m_mpv, "video-sync", "display-resample");
     mpv_set_option_string(m_mpv, "interpolation", "yes");
 
@@ -53,6 +59,10 @@ MpvWidget::MpvWidget(QWidget *parent)
     mpv_set_option_string(m_mpv, "audio-channels", "auto");
     mpv_set_option_string(m_mpv, "audio-spdif", "ac3,eac3,truehd,dts-hd");
 
+    // Pass the native window handle (HWND) to mpv
+    int64_t wid = static_cast<int64_t>(winId());
+    mpv_set_option(m_mpv, "wid", MPV_FORMAT_INT64, &wid);
+
     if (mpv_initialize(m_mpv) < 0) {
         qFatal("Could not initialize mpv context");
     }
@@ -63,51 +73,12 @@ MpvWidget::MpvWidget(QWidget *parent)
     mpv_observe_property(m_mpv, 0, "pause", MPV_FORMAT_FLAG);
 
     mpv_set_wakeup_callback(m_mpv, onMpvEventsWrapper, this);
-}
-
-MpvWidget::~MpvWidget()
-{
-    makeCurrent();
-    if (m_mpv_gl) {
-        mpv_render_context_free(m_mpv_gl);
-    }
-    if (m_mpv) {
-        mpv_terminate_destroy(m_mpv);
-    }
-    doneCurrent();
-}
-
-static void *get_proc_address(void *ctx, const char *name) {
-    Q_UNUSED(ctx);
-    QOpenGLContext *glctx = QOpenGLContext::currentContext();
-    if (!glctx)
-        return nullptr;
-    return reinterpret_cast<void *>(glctx->getProcAddress(QByteArray(name)));
-}
-
-void MpvWidget::initializeGL()
-{
-    initializeOpenGLFunctions();
-
-    if (m_mpv_gl) {
-        mpv_render_context_free(m_mpv_gl);
-        m_mpv_gl = nullptr;
-    }
-
-    mpv_opengl_init_params gl_init_params{get_proc_address, nullptr};
-    mpv_render_param params[] = {
-        {MPV_RENDER_PARAM_API_TYPE, const_cast<char *>(MPV_RENDER_API_TYPE_OPENGL)},
-        {MPV_RENDER_PARAM_OPENGL_INIT_PARAMS, &gl_init_params},
-        {MPV_RENDER_PARAM_INVALID, nullptr}
-    };
-
-    if (mpv_render_context_create(&m_mpv_gl, m_mpv, params) < 0) {
-        qFatal("Failed to initialize mpv GL context");
-    }
-
-    mpv_render_context_set_update_callback(m_mpv_gl, onUpdateWrapper, this);
 
     m_glInitialized = true;
+    if (!m_pendingShaders.isEmpty()) {
+        mpv_set_property_string(m_mpv, "glsl-shaders", m_pendingShaders.toUtf8().constData());
+        m_pendingShaders.clear();
+    }
     if (!m_pendingFileToLoad.isEmpty()) {
         QString file = m_pendingFileToLoad;
         m_pendingFileToLoad.clear();
@@ -115,40 +86,11 @@ void MpvWidget::initializeGL()
     }
 }
 
-void MpvWidget::paintGL()
+MpvWidget::~MpvWidget()
 {
-    if (!m_mpv_gl) return;
-
-    const int w = width() * devicePixelRatio();
-    const int h = height() * devicePixelRatio();
-
-    // Ensure OpenGL viewport is set to the physical dimensions to fix High-DPI corner scaling
-    glViewport(0, 0, w, h);
-
-    mpv_opengl_fbo mpfbo{
-        static_cast<int>(defaultFramebufferObject()),
-        w,
-        h,
-        0
-    };
-
-    int flip_y = 1; // Fix upside-down video playback by flipping Y axis to align with Qt
-
-    mpv_render_param params[] = {
-        {MPV_RENDER_PARAM_OPENGL_FBO, &mpfbo},
-        {MPV_RENDER_PARAM_FLIP_Y, &flip_y},
-        {MPV_RENDER_PARAM_INVALID, nullptr}
-    };
-
-    mpv_render_context_render(m_mpv_gl, params);
-    mpv_render_context_report_swap(m_mpv_gl);
-}
-
-void MpvWidget::resizeGL(int w, int h)
-{
-    Q_UNUSED(w);
-    Q_UNUSED(h);
-    // mpv handles resize naturally on next render with updated width/height
+    if (m_mpv) {
+        mpv_terminate_destroy(m_mpv);
+    }
 }
 
 void MpvWidget::onMpvEventsWrapper(void *ctx)
@@ -156,15 +98,6 @@ void MpvWidget::onMpvEventsWrapper(void *ctx)
     QMetaObject::invokeMethod(static_cast<MpvWidget*>(ctx), "onMpvEvents", Qt::QueuedConnection);
 }
 
-void MpvWidget::onUpdateWrapper(void *ctx)
-{
-    QMetaObject::invokeMethod(static_cast<MpvWidget*>(ctx), "doUpdate", Qt::QueuedConnection);
-}
-
-void MpvWidget::doUpdate()
-{
-    update();
-}
 
 void MpvWidget::onMpvEvents()
 {
@@ -238,6 +171,11 @@ void MpvWidget::command(const QVariantList &args)
 
 void MpvWidget::setProperty(const char *name, const QVariant &value)
 {
+    if (strcmp(name, "glsl-shaders") == 0 && !m_glInitialized) {
+        m_pendingShaders = value.toString();
+        return;
+    }
+
     if (value.typeId() == QMetaType::Bool) {
         int v = value.toBool() ? 1 : 0;
         mpv_set_property(m_mpv, name, MPV_FORMAT_FLAG, &v);

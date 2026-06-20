@@ -1271,25 +1271,17 @@ void MainWindow::setAnime4kPreset(const QString& preset)
 void MainWindow::applyShaderPreset(const QString& preset)
 {
     static const QHash<QString, QString> aliases = {
-        {"ModeA", "Mode A (HQ)"},
-        {"ModeB", "Mode B (HQ)"},
-        {"ModeC", "Mode C (HQ)"},
-        {"ModeAA", "Mode A+A (HQ)"},
-        {"ModeBB", "Mode B+B (HQ)"},
-        {"ModeCA", "Mode C+A (HQ)"},
-        {"ModeAFast", "Mode A (Fast)"},
-        {"ModeBFast", "Mode B (Fast)"},
-        {"ModeCFast", "Mode C (Fast)"},
-        {"ModeAAFast", "Mode A+A (Fast)"},
-        {"ModeBBFast", "Mode B+B (Fast)"},
-        {"ModeCAFast", "Mode C+A (Fast)"}
+        {"Anime Balanced", "★ Anime Balanced"},
+        {"Anime Quality", "★ Anime Quality"},
+        {"SD / Legacy Anime", "★ SD / Legacy Anime"},
+        {"Anime Quality + Chroma", "★ Anime Quality + Chroma"},
+        {"ArtCNN Lightweight", "ArtCNN Light (DS)"},
+        {"ArtCNN Quality", "ArtCNN Quality (DS)"},
+        {"ArtCNN Soft", "ArtCNN Quality (DN)"}
     };
 
     const QString normalizedPreset = aliases.value(preset, preset);
     QString resolvedPreset = normalizedPreset;
-    if (normalizedPreset == "Auto (Recommended)") {
-        resolvedPreset = "Anime Balanced";
-    }
 
     if (resolvedPreset.isEmpty() || resolvedPreset == "Off") {
         m_mpvWidget->setProperty("glsl-shaders", "");
@@ -1299,13 +1291,6 @@ void MainWindow::applyShaderPreset(const QString& preset)
     }
 
     static const QHash<QString, QStringList> kShaderPresets = {
-        {"Anime Balanced", {"Anime4K_Restore_CNN_Soft_S.glsl", "ArtCNN/ArtCNN_C4F16_DS.glsl"}},
-        {"Anime Quality", {"Anime4K_Restore_CNN_Soft_M.glsl", "ArtCNN/ArtCNN_C4F32_DS.glsl"}},
-        {"SD / Legacy Anime", {"Anime4K_Restore_CNN_Soft_VL.glsl", "ArtCNN/ArtCNN_C4F16_DS.glsl"}},
-        {"Anime Quality + Chroma", {"Anime4K_Restore_CNN_Soft_M.glsl", "ArtCNN/ArtCNN_C4F32_Chroma.glsl", "ArtCNN/ArtCNN_C4F32_DS.glsl"}},
-        {"ArtCNN Lightweight", {"ArtCNN/ArtCNN_C4F16_DS.glsl"}},
-        {"ArtCNN Quality", {"ArtCNN/ArtCNN_C4F32_DS.glsl"}},
-        {"ArtCNN Soft", {"ArtCNN/ArtCNN_C4F32_DN.glsl"}},
         {"Mode A (HQ)", {"Anime4K_Clamp_Highlights.glsl", "Anime4K_Restore_CNN_VL.glsl", "Anime4K_Upscale_CNN_x2_VL.glsl", "Anime4K_AutoDownscalePre_x2.glsl", "Anime4K_AutoDownscalePre_x4.glsl", "Anime4K_Upscale_CNN_x2_M.glsl"}},
         {"Mode B (HQ)", {"Anime4K_Clamp_Highlights.glsl", "Anime4K_Restore_CNN_Soft_VL.glsl", "Anime4K_Upscale_CNN_x2_VL.glsl", "Anime4K_AutoDownscalePre_x2.glsl", "Anime4K_AutoDownscalePre_x4.glsl", "Anime4K_Upscale_CNN_x2_M.glsl"}},
         {"Mode C (HQ)", {"Anime4K_Clamp_Highlights.glsl", "Anime4K_Upscale_Denoise_CNN_x2_VL.glsl", "Anime4K_AutoDownscalePre_x2.glsl", "Anime4K_AutoDownscalePre_x4.glsl", "Anime4K_Upscale_CNN_x2_M.glsl"}},
@@ -1317,7 +1302,16 @@ void MainWindow::applyShaderPreset(const QString& preset)
         {"Mode C (Fast)", {"Anime4K_Clamp_Highlights.glsl", "Anime4K_Upscale_Denoise_CNN_x2_M.glsl", "Anime4K_AutoDownscalePre_x2.glsl", "Anime4K_AutoDownscalePre_x4.glsl", "Anime4K_Upscale_CNN_x2_S.glsl"}},
         {"Mode A+A (Fast)", {"Anime4K_Clamp_Highlights.glsl", "Anime4K_Restore_CNN_M.glsl", "Anime4K_Upscale_CNN_x2_M.glsl", "Anime4K_Restore_CNN_S.glsl", "Anime4K_AutoDownscalePre_x2.glsl", "Anime4K_AutoDownscalePre_x4.glsl", "Anime4K_Upscale_CNN_x2_S.glsl"}},
         {"Mode B+B (Fast)", {"Anime4K_Clamp_Highlights.glsl", "Anime4K_Restore_CNN_Soft_M.glsl", "Anime4K_Upscale_CNN_x2_M.glsl", "Anime4K_AutoDownscalePre_x2.glsl", "Anime4K_AutoDownscalePre_x4.glsl", "Anime4K_Restore_CNN_Soft_S.glsl", "Anime4K_Upscale_CNN_x2_S.glsl"}},
-        {"Mode C+A (Fast)", {"Anime4K_Clamp_Highlights.glsl", "Anime4K_Upscale_Denoise_CNN_x2_M.glsl", "Anime4K_AutoDownscalePre_x2.glsl", "Anime4K_AutoDownscalePre_x4.glsl", "Anime4K_Restore_CNN_S.glsl", "Anime4K_Upscale_CNN_x2_S.glsl"}}
+        {"Mode C+A (Fast)", {"Anime4K_Clamp_Highlights.glsl", "Anime4K_Upscale_Denoise_CNN_x2_M.glsl", "Anime4K_AutoDownscalePre_x2.glsl", "Anime4K_AutoDownscalePre_x4.glsl", "Anime4K_Restore_CNN_S.glsl", "Anime4K_Upscale_CNN_x2_S.glsl"}},
+        {"ArtCNN Quality (DS)", {"ArtCNN/ArtCNN_C4F32_DS.glsl"}},
+        {"ArtCNN Quality (DN)", {"ArtCNN/ArtCNN_C4F32_DN.glsl"}},
+        {"ArtCNN Light (DS)", {"ArtCNN/ArtCNN_C4F16_DS.glsl"}},
+        {"ArtCNN Light (DN)", {"ArtCNN/ArtCNN_C4F16_DN.glsl"}},
+        {"★ Anime Balanced", {"Anime4K_Restore_CNN_Soft_S.glsl", "ArtCNN/ArtCNN_C4F16_DS.glsl"}},
+        {"★ Anime Quality", {"Anime4K_Restore_CNN_Soft_M.glsl", "ArtCNN/ArtCNN_C4F32_DS.glsl"}},
+        {"★ SD / Legacy Anime", {"Anime4K_Restore_CNN_Soft_VL.glsl", "ArtCNN/ArtCNN_C4F16_DS.glsl"}},
+        {"★ Anime Quality+Chroma", {"Anime4K_Restore_CNN_Soft_M.glsl", "ArtCNN/ArtCNN_C4F32_Chroma.glsl", "ArtCNN/ArtCNN_C4F32_DS.glsl"}},
+        {"★ Anime Quality + Chroma", {"Anime4K_Restore_CNN_Soft_M.glsl", "ArtCNN/ArtCNN_C4F32_Chroma.glsl", "ArtCNN/ArtCNN_C4F32_DS.glsl"}}
     };
 
     QStringList shaders;
@@ -1591,48 +1585,6 @@ void MainWindow::onShaderClicked()
 
     menu.addSeparator();
 
-    // Special Header
-    QAction *specialHeader = menu.addAction("── ⚡ Special (Recommended) ──");
-    specialHeader->setEnabled(false);
-
-    QStringList specialPresets = {
-        "Auto (Recommended)",
-        "Anime Balanced",
-        "Anime Quality",
-        "SD / Legacy Anime",
-        "Anime Quality + Chroma"
-    };
-    for (const auto& preset : specialPresets) {
-        QAction *action = menu.addAction(preset, this, [this, preset]() {
-            applySettingToMpv("defaultShaderPreset", preset);
-            m_settings.setValue("defaultShaderPreset", preset);
-        });
-        action->setCheckable(true);
-        action->setChecked(currentPreset == preset);
-    }
-
-    menu.addSeparator();
-
-    // Standard Header
-    QAction *standardHeader = menu.addAction("── Standard ──");
-    standardHeader->setEnabled(false);
-
-    QStringList standardPresets = {
-        "ArtCNN Lightweight",
-        "ArtCNN Quality",
-        "ArtCNN Soft"
-    };
-    for (const auto& preset : standardPresets) {
-        QAction *action = menu.addAction(preset, this, [this, preset]() {
-            applySettingToMpv("defaultShaderPreset", preset);
-            m_settings.setValue("defaultShaderPreset", preset);
-        });
-        action->setCheckable(true);
-        action->setChecked(currentPreset == preset);
-    }
-
-    menu.addSeparator();
-
     // Anime4K HQ Header
     QAction *hqHeader = menu.addAction("── Anime4K (HQ) ──");
     hqHeader->setEnabled(false);
@@ -1661,6 +1613,48 @@ void MainWindow::onShaderClicked()
         "Mode A+A (Fast)", "Mode B+B (Fast)", "Mode C+A (Fast)"
     };
     for (const auto& preset : fastPresets) {
+        QAction *action = menu.addAction(preset, this, [this, preset]() {
+            applySettingToMpv("defaultShaderPreset", preset);
+            m_settings.setValue("defaultShaderPreset", preset);
+        });
+        action->setCheckable(true);
+        action->setChecked(currentPreset == preset);
+    }
+
+    menu.addSeparator();
+
+    // Special Header
+    QAction *specialHeader = menu.addAction("── ★ Special (Recommended) ──");
+    specialHeader->setEnabled(false);
+
+    QStringList specialPresets = {
+        "★ Anime Balanced",
+        "★ Anime Quality",
+        "★ SD / Legacy Anime",
+        "★ Anime Quality + Chroma"
+    };
+    for (const auto& preset : specialPresets) {
+        QAction *action = menu.addAction(preset, this, [this, preset]() {
+            applySettingToMpv("defaultShaderPreset", preset);
+            m_settings.setValue("defaultShaderPreset", preset);
+        });
+        action->setCheckable(true);
+        action->setChecked(currentPreset == preset);
+    }
+
+    menu.addSeparator();
+
+    // Standard Header
+    QAction *standardHeader = menu.addAction("── ArtCNN Standard ──");
+    standardHeader->setEnabled(false);
+
+    QStringList standardPresets = {
+        "ArtCNN Quality (DS)",
+        "ArtCNN Quality (DN)",
+        "ArtCNN Light (DS)",
+        "ArtCNN Light (DN)"
+    };
+    for (const auto& preset : standardPresets) {
         QAction *action = menu.addAction(preset, this, [this, preset]() {
             applySettingToMpv("defaultShaderPreset", preset);
             m_settings.setValue("defaultShaderPreset", preset);
@@ -2287,13 +2281,13 @@ void MainWindow::cycleShaderPreset()
 {
     QString currentPreset = m_settings.value("defaultShaderPreset", "Off").toString();
     QStringList presets = {
-        "Off", "Auto (Recommended)",
-        "Anime Balanced", "Anime Quality", "SD / Legacy Anime", "Anime Quality + Chroma",
-        "ArtCNN Lightweight", "ArtCNN Quality", "ArtCNN Soft",
+        "Off",
         "Mode A (HQ)", "Mode B (HQ)", "Mode C (HQ)",
         "Mode A+A (HQ)", "Mode B+B (HQ)", "Mode C+A (HQ)",
         "Mode A (Fast)", "Mode B (Fast)", "Mode C (Fast)",
-        "Mode A+A (Fast)", "Mode B+B (Fast)", "Mode C+A (Fast)"
+        "Mode A+A (Fast)", "Mode B+B (Fast)", "Mode C+A (Fast)",
+        "★ Anime Balanced", "★ Anime Quality", "★ SD / Legacy Anime", "★ Anime Quality + Chroma",
+        "ArtCNN Quality (DS)", "ArtCNN Quality (DN)", "ArtCNN Light (DS)", "ArtCNN Light (DN)"
     };
     
     int idx = presets.indexOf(currentPreset);

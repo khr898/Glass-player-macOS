@@ -2,12 +2,9 @@
 
 #include <QWidget>
 #include <mpv/client.h>
-#include <mpv/render_gl.h>
-#include <QOpenGLWidget>
-#include <QOpenGLFunctions>
 #include <QString>
 
-class MpvWidget : public QOpenGLWidget, protected QOpenGLFunctions
+class MpvWidget : public QWidget
 {
     Q_OBJECT
 public:
@@ -42,29 +39,25 @@ signals:
     void playbackRestarted();
 
 protected:
-    void initializeGL() override;
-    void paintGL() override;
-    void resizeGL(int w, int h) override;
+    QPaintEngine *paintEngine() const override { return nullptr; }
 
 private slots:
     void onMpvEvents();
-    void doUpdate();
 
 private:
     static void onMpvEventsWrapper(void *ctx);
-    static void onUpdateWrapper(void *ctx);
 
     void handleEvent(mpv_event *event);
     QString detectPreferredHwdec() const;
     void applyHwdecFallbackIfNeeded();
 
     mpv_handle *m_mpv;
-    mpv_render_context *m_mpv_gl;
     QString m_hwdecMode;
     bool m_hwdecFallbackHandled = false;
 
     bool m_glInitialized = false;
     QString m_pendingFileToLoad;
+    QString m_pendingShaders;
 
     QMetaObject::Connection m_eventConnection;
 };

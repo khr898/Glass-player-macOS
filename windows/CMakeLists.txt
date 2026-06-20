@@ -8,6 +8,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 string(TOLOWER "${CMAKE_GENERATOR_PLATFORM}" _gen_platform_lower)
 
 find_package(Qt6 COMPONENTS Core Gui Widgets OpenGLWidgets Network Svg SvgWidgets REQUIRED)
+find_package(Vulkan)
 
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
@@ -85,12 +86,18 @@ add_executable(GlassPlayer WIN32
     MpvWidget.h
     WinOSIntegration.cpp
     WinOSIntegration.h
+    VulkanRenderer.cpp
+    VulkanRenderer.h
     app.rc
     resources.qrc
 )
 
 target_include_directories(GlassPlayer PRIVATE ${MPV_INCLUDE_DIRS})
 target_link_libraries(GlassPlayer PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets Qt6::OpenGLWidgets Qt6::Network Qt6::Svg Qt6::SvgWidgets ${MPV_LIBRARIES} d3d11.lib dxgi.lib wbemuuid.lib dxva2.lib)
+if (Vulkan_FOUND)
+    target_compile_definitions(GlassPlayer PRIVATE HAS_VULKAN)
+    target_link_libraries(GlassPlayer PRIVATE Vulkan::Vulkan)
+endif()
 
 # Copy libmpv-2.dll to the build directory so it can be run directly from IDE
 if (MPV_RUNTIME_DLL AND EXISTS "${MPV_RUNTIME_DLL}")

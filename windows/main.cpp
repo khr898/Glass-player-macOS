@@ -7,11 +7,23 @@
 #include <QFont>
 #include <QPalette>
 #include <QColor>
+#include <QSurfaceFormat>
 #include "MainWindow.h"
 #include "Theme.h"
 
 int main(int argc, char *argv[])
 {
+    // Configure default OpenGL surface format to request OpenGL 4.6 Core Profile.
+    // This ensures modern GLSL shader compilation (such as ArtCNN compute shaders)
+    // is fully supported and stable without falling back to legacy compatibility profiles.
+    QSurfaceFormat format;
+    format.setProfile(QSurfaceFormat::CoreProfile);
+    format.setVersion(4, 6);
+    format.setDepthBufferSize(24);
+    format.setStencilBufferSize(8);
+    format.setRenderableType(QSurfaceFormat::OpenGL);
+    QSurfaceFormat::setDefaultFormat(format);
+
     // Enable high DPI scaling
     QApplication::setHighDpiScaleFactorRoundingPolicy(Qt::HighDpiScaleFactorRoundingPolicy::PassThrough);
 
