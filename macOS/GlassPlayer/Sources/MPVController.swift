@@ -268,6 +268,10 @@ class MPVController {
         setenv("MVK_CONFIG_VK_SEMAPHORE_SUPPORT_STYLE", "2", 1) // Always use MTLEvent for semaphores
         setenv("MVK_ALLOW_METAL_FENCES", "1", 1)
         setenv("MVK_ALLOW_METAL_EVENTS", "1", 1)
+        // Prevent GPU timeout on heavy compute shaders (ArtCNN C4F32 = 761KB of GLSL)
+        setenv("MVK_CONFIG_PERFORMANCE_TRACKING", "0", 1)
+        // Use Metal resource heaps for better memory management with large shader buffers
+        setenv("MVK_CONFIG_USE_METAL_PRIVATE_API", "0", 1)
 
         // 1. Create mpv handle
         mpvHandle = mpv_create()
@@ -279,6 +283,9 @@ class MPVController {
         if isRenderModeVulkanWID {
             setOption("vo", "gpu-next")
             setOption("gpu-api", "vulkan")
+            // Disable GPU shader cache — macOS MoltenVK shader caches frequently corrupt
+            // and cause persistent crashes on re-launch. Recompilation is fast on Apple Silicon.
+            setOption("gpu-shader-cache", "no")
             var viewPtr: Int64 = 0
             if Thread.isMainThread {
                 if let view = self.videoView {
@@ -813,18 +820,16 @@ class MPVController {
         var aid: Int64 = -1
         mpv_get_property(mpvHandle, "aid", MPV_FORMAT_INT64, &aid)
 
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+        // Perform recreation entirely on main thread to prevent race conditions
+        // between CGL context teardown and Vulkan WID attachment.
+        let doRecreation = { [weak self] in
             guard let self = self else { return }
             
             NSLog("[MPV] Starting handle recreation. forCompute = %@", String(forCompute))
             self.isRecreatingHandle = true
             
-            // If switching to Vulkan, uninit rendering on main thread first
-            // to safely release the rendering context under locked CGL.
             if forCompute {
-                DispatchQueue.main.sync {
-                    self.videoView?.videoLayer.uninitRendering()
-                }
+                self.videoView?.videoLayer.uninitRendering()
             }
             
             // 1. Shutdown existing handle
@@ -833,17 +838,12 @@ class MPVController {
             // 2. Set mode
             self.isRenderModeVulkanWID = forCompute
             
-            // 3. Initialize new handle on the main thread to ensure all AppKit-based option
-            // binding (like Vulkan WID view attachment) and render setups happen safely.
-            DispatchQueue.main.sync {
-                self.initialize()
-            }
+            // 3. Initialize new handle
+            self.initialize()
             
-            // 4. If OpenGL offscreen, initialize offscreen rendering context on main thread
+            // 4. If OpenGL offscreen, initialize offscreen rendering context
             if !forCompute {
-                DispatchQueue.main.sync {
-                    self.videoView?.videoLayer.initMPVRendering(self)
-                }
+                self.videoView?.videoLayer.initMPVRendering(self)
             }
             
             // 5. Restore state
@@ -879,6 +879,12 @@ class MPVController {
             
             self.isRecreatingHandle = false
             NSLog("[MPV] Handle recreation completed successfully")
+        }
+
+        if Thread.isMainThread {
+            doRecreation()
+        } else {
+            DispatchQueue.main.sync { doRecreation() }
         }
     }
 
@@ -946,6 +952,18 @@ class MPVController {
         if (preset.hasPrefix("★") || preset.hasPrefix("ArtCNN")) && !UniversalMetalRuntime.isMoltenVKPresent() {
             NSLog("[MPV] Rejecting compute-based shader preset '%@' on macOS (MoltenVK not present)", preset)
             return false
+        }
+        // Prevent C4F32 (heavy) presets on low-tier GPUs (M1/M2 base with 8GB)
+        // to avoid VK_ERROR_DEVICE_LOST from GPU timeout on underpowered hardware
+        if preset.contains("Quality") && preset.contains("ArtCNN") {
+            let tier = UniversalMetalRuntime.gpuTier()
+            if tier == .low {
+                NSLog("[MPV] Warning: ArtCNN Quality preset may be too heavy for %@ tier GPU. Downgrading to Light variant.", String(describing: tier))
+                // Auto-downgrade: ArtCNN Quality (DS) → ArtCNN Light (DS), etc.
+                let lightPreset = preset.replacingOccurrences(of: "Quality", with: "Light")
+                    .replacingOccurrences(of: "C4F32", with: "C4F16")
+                return applyShaderPreset(lightPreset)
+            }
         }
 
         guard let shaderNames = kShaderPresets[preset] else { return false }

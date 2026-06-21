@@ -131,7 +131,7 @@ echo "=== Generating app icon ==="
 ICONSET="$BUILD_DIR/AppIcon.iconset"
 mkdir -p "$ICONSET"
 
-cat > "$BUILD_DIR/gen_icon.swift" << 'ICONSWIFT'
+cat > "/tmp/gen_icon.swift" << 'ICONSWIFT'
 import Cocoa
 let dir = CommandLine.arguments[1]
 let pairs: [(String, Int)] = [
@@ -175,10 +175,10 @@ for (name, px) in pairs {
 }
 ICONSWIFT
 
-swiftc -framework Cocoa -O -target arm64-apple-macos14.0 -o "$BUILD_DIR/gen_icon" "$BUILD_DIR/gen_icon.swift"
-"$BUILD_DIR/gen_icon" "$ICONSET"
+swiftc -framework Cocoa -O -target arm64-apple-macos14.0 -o "/tmp/gen_icon" "/tmp/gen_icon.swift"
+"/tmp/gen_icon" "$ICONSET"
 iconutil -c icns "$ICONSET" -o "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
-rm -rf "$ICONSET" "$BUILD_DIR/gen_icon" "$BUILD_DIR/gen_icon.swift"
+rm -rf "$ICONSET" "/tmp/gen_icon" "/tmp/gen_icon.swift"
 
 # ─── Bundle dylibs ────────────────────────────────────────────────────
 echo "=== Bundling dylibs ==="
@@ -249,7 +249,7 @@ bundle_lib() {
     
     local orig_name=$(basename "$lib_path")
     if [[ "$orig_name" != "$real_name" ]] && [ ! -f "$FRAMEWORKS_DIR/$orig_name" ]; then
-        ln -sf "$real_name" "$FRAMEWORKS_DIR/$orig_name"
+        cp "$FRAMEWORKS_DIR/$real_name" "$FRAMEWORKS_DIR/$orig_name"
     fi
     
     process_deps "$FRAMEWORKS_DIR/$real_name"
@@ -317,7 +317,7 @@ if [[ "$CREATE_DMG" == "1" ]]; then
     rm -rf "$DMG_DIR" "$DMG_OUTPUT"
     mkdir -p "$DMG_DIR"
 
-    cp -R "$APP_BUNDLE" "$DMG_DIR/"
+    cp -RX "$APP_BUNDLE" "$DMG_DIR/"
     ln -s /Applications "$DMG_DIR/Applications"
 
     hdiutil create -volname "Glass Player" \
@@ -335,7 +335,7 @@ if [[ "$NO_INSTALL" == "1" ]]; then
     echo "  Skipping install (NO_INSTALL=1)"
 else
     rm -rf "/Applications/$APP_NAME.app"
-    cp -R "$APP_BUNDLE" "/Applications/$APP_NAME.app"
+    cp -RX "$APP_BUNDLE" "/Applications/$APP_NAME.app"
     xattr -cr "/Applications/$APP_NAME.app" 2>/dev/null || true
     echo "=== Installed to /Applications/$APP_NAME.app ==="
 fi

@@ -220,7 +220,7 @@ final class UMAMemoryPressureMonitor {
 
 enum UniversalGPUPerformanceTier: String {
     case high       // M1 Pro/Max/Ultra, M2 Pro+, M3+, M4+, M5+
-    case balanced   // M1, M2 base
+    case low        // M1, M2 base
     case efficient  // Older Apple GPU families (fallback)
     case unknown
 }
@@ -236,19 +236,19 @@ struct UniversalMetalRuntime {
                 // Distinguish Pro/Max from base by GPU core count (recommendedMaxWorkingSetSize)
                 let vram = device.recommendedMaxWorkingSetSize
                 // Pro/Max/Ultra typically report > 12 GB working set
-                return vram > 12 * 1024 * 1024 * 1024 ? .high : .balanced
+                return vram > 12 * 1024 * 1024 * 1024 ? .high : .low
             }
             // apple7 = M1 family
             if device.supportsFamily(.apple7) || device.supportsFamily(.apple6) {
-                return .balanced
+                return .low
             }
             if device.supportsFamily(.apple5) || device.supportsFamily(.apple4) {
                 return .efficient
             }
         }
 
-        // macOS < 14.0 fallback — assume balanced
-        return .balanced
+        // macOS < 14.0 fallback — assume low
+        return .low
     }()
 
     static func gpuTier() -> UniversalGPUPerformanceTier {
