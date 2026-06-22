@@ -38,10 +38,7 @@ private:
     IAudioEndpointVolume* m_pVolume = nullptr;
 
     // DDC/CI (external monitors)
-    struct MonitorInfo {
-        HANDLE hPhysicalMonitor;
-    };
-    std::vector<MonitorInfo> m_monitors;
+    std::vector<PHYSICAL_MONITOR> m_monitors;
     void refreshMonitors();
     void releaseMonitors();
 

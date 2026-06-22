@@ -250,7 +250,7 @@ void SettingsWindow::buildVideoSection()
     layout->addWidget(header);
 
     addCombo(container, layout, "Hardware Decoding", "hwdec", 
-             {"d3d11va-copy", "dxva2-copy", "auto-safe", "auto", "no"}, "auto-safe");
+             {"d3d11va", "d3d11va-copy", "dxva2-copy", "auto-safe", "auto", "no"}, "auto-safe");
              
     addCombo(container, layout, "Hardware Decode Codecs", "hwdecCodecs", 
              {"all", "h264,hevc,vp9,av1"}, "all");

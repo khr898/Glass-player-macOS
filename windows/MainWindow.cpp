@@ -15,6 +15,7 @@
 #include <QMenu>
 #include <QAction>
 #include <QDir>
+#include <QDirIterator>
 #include <QWheelEvent>
 #include <QGraphicsDropShadowEffect>
 #include <QShortcut>
@@ -301,6 +302,8 @@ private:
 int MainWindow::s_windowCount = 0;
 static const QString kMenuStyle = Theme::kMenuStyle;
 
+static QString extractShader(const QString& name);
+
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent), m_settings("GlassPlayer", "Settings")
 {
@@ -473,6 +476,15 @@ MainWindow::MainWindow(QWidget *parent)
         });
         m_shortcuts.insert(sh.key, shortcut);
     }
+
+    // Pre-extract shaders asynchronously in a background thread to prevent UI blocking
+    std::thread([]() {
+        QDirIterator it(":/shaders", QDir::Files);
+        while (it.hasNext()) {
+            QFileInfo info(it.next());
+            extractShader(info.fileName());
+        }
+    }).detach();
 }
 
 bool MainWindow::shouldShowWelcome() const
@@ -1144,6 +1156,9 @@ void MainWindow::onMuteClicked()
 
 // Copy shader from qrc to temp dir on first use
 static QString extractShader(const QString& name) {
+    static std::mutex extractMutex;
+    std::lock_guard<std::mutex> lock(extractMutex);
+
     static QTemporaryDir tempDir;
     QString baseDir;
     if (tempDir.isValid()) {
@@ -1377,7 +1392,22 @@ void MainWindow::applyShaderPreset(const QString& preset)
 
     QStringList shaders;
     const QStringList shaderNames = kShaderPresets.value(resolvedPreset);
+
+    // Check video resolution to enforce maximum dimension caps like 1536 without degrading output quality.
+    // If the video's max dimension > 1536, we skip only the "Upscale" passes because upscaling a 1080p+ 
+    // video to 4K+ has diminishing returns and heavy GPU cost. Other passes (clamping, restore, denoise) 
+    // are kept active to maintain image enhancement quality.
+    int vw = m_mpvWidget->getProperty("video-params/w").toInt();
+    int vh = m_mpvWidget->getProperty("video-params/h").toInt();
+    bool skipUpscaling = (std::max(vw, vh) > 1536);
+
     for (const QString& shaderName : shaderNames) {
+        if (skipUpscaling && shaderName.contains("Upscale", Qt::CaseInsensitive)) {
+            qInfo() << "[MainWindow] Video dimension" << std::max(vw, vh) 
+                    << "exceeds 1536px cap. Skipping upscale pass" << shaderName 
+                    << "to optimize GPU load without degrading output quality.";
+            continue;
+        }
         const QString path = extractShader(shaderName);
         if (!path.isEmpty()) {
             shaders << QDir::toNativeSeparators(path);

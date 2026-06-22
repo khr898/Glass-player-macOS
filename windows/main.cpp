@@ -7,11 +7,24 @@
 #include <QFont>
 #include <QPalette>
 #include <QColor>
+#include <QSurfaceFormat>
 #include "MainWindow.h"
 #include "Theme.h"
 
 int main(int argc, char *argv[])
 {
+    // Optimize DXGI swapchain pacing and minimize staging buffer copy latency
+    qputenv("QT_D3D11_STAGING_BUFFER_COUNT", "1");
+    qputenv("QT_ANGLE_PLATFORM", "d3d11");
+
+    // Force V-Sync sync interval via surface format swap interval configuration
+    QSurfaceFormat format = QSurfaceFormat::defaultFormat();
+    format.setSwapInterval(1);
+    format.setDepthBufferSize(24);
+    format.setStencilBufferSize(8);
+    format.setProfile(QSurfaceFormat::CoreProfile);
+    QSurfaceFormat::setDefaultFormat(format);
+
     // Enable high DPI scaling
     QApplication::setHighDpiScaleFactorRoundingPolicy(Qt::HighDpiScaleFactorRoundingPolicy::PassThrough);
 

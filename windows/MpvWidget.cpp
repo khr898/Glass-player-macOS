@@ -69,10 +69,14 @@ MpvWidget::~MpvWidget()
 {
     makeCurrent();
     if (m_mpv_gl) {
+        mpv_render_context_set_update_callback(m_mpv_gl, nullptr, nullptr);
         mpv_render_context_free(m_mpv_gl);
+        m_mpv_gl = nullptr;
     }
     if (m_mpv) {
+        mpv_set_wakeup_callback(m_mpv, nullptr, nullptr);
         mpv_terminate_destroy(m_mpv);
+        m_mpv = nullptr;
     }
     doneCurrent();
 }
@@ -232,9 +236,10 @@ void MpvWidget::command(const QVariantList &args)
         cmd[i] = strArr[i].constData();
     }
     cmd[n] = nullptr;
-    int err = mpv_command(m_mpv, cmd.data());
+    // Use mpv_command_async to prevent blocking the UI thread during playback or scrubbing
+    int err = mpv_command_async(m_mpv, 0, cmd.data());
     if (err < 0) {
-        qWarning() << "[MpvWidget] mpv_command failed:" << mpv_error_string(err) << "for args:" << args;
+        qWarning() << "[MpvWidget] mpv_command_async failed:" << mpv_error_string(err) << "for args:" << args;
     }
 }
 
@@ -246,15 +251,17 @@ void MpvWidget::setProperty(const char *name, const QVariant &value)
 
     if (value.typeId() == QMetaType::Bool) {
         int v = value.toBool() ? 1 : 0;
-        mpv_set_property(m_mpv, name, MPV_FORMAT_FLAG, &v);
+        mpv_set_property_async(m_mpv, 0, name, MPV_FORMAT_FLAG, &v);
     } else if (value.typeId() == QMetaType::Int) {
         int64_t v = static_cast<int64_t>(value.toInt());
-        mpv_set_property(m_mpv, name, MPV_FORMAT_INT64, &v);
+        mpv_set_property_async(m_mpv, 0, name, MPV_FORMAT_INT64, &v);
     } else if (value.typeId() == QMetaType::Double) {
         double v = value.toDouble();
-        mpv_set_property(m_mpv, name, MPV_FORMAT_DOUBLE, &v);
+        mpv_set_property_async(m_mpv, 0, name, MPV_FORMAT_DOUBLE, &v);
     } else {
-        mpv_set_property_string(m_mpv, name, value.toString().toUtf8().constData());
+        QByteArray bytes = value.toString().toUtf8();
+        const char *str = bytes.constData();
+        mpv_set_property_async(m_mpv, 0, name, MPV_FORMAT_STRING, &str);
     }
 }
 
@@ -328,9 +335,8 @@ void MpvWidget::toggleMute()
 QString MpvWidget::detectPreferredHwdec() const
 {
 #ifdef _WIN32
-    // On Windows, d3d11va-copy is highly compatible and supports GLSL shader scaling.
-    // Probing via D3D11CreateDevice is removed as it causes significant startup lag.
-    return "d3d11va-copy";
+    // On Windows, native d3d11va offers zero-copy GPU video rendering without CPU staging buffers.
+    return "d3d11va";
 #else
     return "auto-safe";
 #endif
@@ -343,8 +349,15 @@ QString MpvWidget::resolveHwdecAfterProbe(const QString& configuredMode, const Q
         return configuredMode;
     }
 
-    if (!isArm64Build && configuredMode == "d3d11va-copy") {
-        return "dxva2-copy";
+    if (configuredMode == "d3d11va") {
+        return "d3d11va-copy";
+    } else if (configuredMode == "d3d11va-copy") {
+        if (!isArm64Build) {
+            return "dxva2-copy";
+        }
+        return "no";
+    } else if (configuredMode == "dxva2-copy") {
+        return "no";
     }
     return "no";
 }

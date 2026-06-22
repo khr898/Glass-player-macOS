@@ -84,20 +84,18 @@ void WinOSIntegration::refreshMonitors() {
     HMONITOR hMonitor = MonitorFromWindow(GetDesktopWindow(), MONITOR_DEFAULTTOPRIMARY);
     DWORD numPhysicalMonitors;
     if (GetNumberOfPhysicalMonitorsFromHMONITOR(hMonitor, &numPhysicalMonitors)) {
-        std::vector<PHYSICAL_MONITOR> physicalMonitors(numPhysicalMonitors);
-        if (GetPhysicalMonitorsFromHMONITOR(hMonitor, numPhysicalMonitors, physicalMonitors.data())) {
-            for (const auto& pm : physicalMonitors) {
-                m_monitors.push_back({ pm.hPhysicalMonitor });
-            }
+        m_monitors.resize(numPhysicalMonitors);
+        if (!GetPhysicalMonitorsFromHMONITOR(hMonitor, numPhysicalMonitors, m_monitors.data())) {
+            m_monitors.clear();
         }
     }
 }
 
 void WinOSIntegration::releaseMonitors() {
-    for (auto& m : m_monitors) {
-        DestroyPhysicalMonitor(m.hPhysicalMonitor);
+    if (!m_monitors.empty()) {
+        DestroyPhysicalMonitors(static_cast<DWORD>(m_monitors.size()), m_monitors.data());
+        m_monitors.clear();
     }
-    m_monitors.clear();
 }
 
 // ─── Volume (Core Audio) ───────────────────────────────────────────────────────
@@ -232,6 +230,7 @@ float WinOSIntegration::getBrightnessWmi() {
 
     if (pEnumerator->Next(WBEM_INFINITE, 1, &pClassObject, &uReturn) == S_OK) {
         VARIANT vtProp;
+        VariantInit(&vtProp);
         if (SUCCEEDED(pClassObject->Get(L"CurrentBrightness", 0, &vtProp, 0, 0))) {
             result = (float)vtProp.bVal / 100.0f;
             VariantClear(&vtProp);
@@ -260,6 +259,7 @@ void WinOSIntegration::setBrightnessWmi(float level) {
     if (pEnumerator->Next(WBEM_INFINITE, 1, &pClassObject, &uReturn) == S_OK) {
         // Get the WbemObjectPath for ExecMethod
         VARIANT vtPath;
+        VariantInit(&vtPath);
         pClassObject->Get(L"__PATH", 0, &vtPath, 0, 0);
 
         IWbemClassObject* pInParamsDefinition = NULL;
@@ -272,10 +272,12 @@ void WinOSIntegration::setBrightnessWmi(float level) {
             if (pInParamsDefinition) {
                 pInParamsDefinition->SpawnInstance(0, &pInParams);
                 VARIANT vtTimeout;
+                VariantInit(&vtTimeout);
                 vtTimeout.vt = VT_I4; vtTimeout.lVal = 1;
                 pInParams->Put(L"Timeout", 0, &vtTimeout, 0);
 
                 VARIANT vtBrightness;
+                VariantInit(&vtBrightness);
                 vtBrightness.vt = VT_UI1; vtBrightness.bVal = brightness;
                 pInParams->Put(L"Brightness", 0, &vtBrightness, 0);
 
