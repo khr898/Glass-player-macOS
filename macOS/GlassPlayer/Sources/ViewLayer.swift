@@ -108,6 +108,9 @@ class ViewLayer: CAMetalLayer {
     /// Whether the layer has been uninitialized (teardown guard)
     var isUninited = false
 
+    /// Whether the window is occluded/minimized (throttling guard)
+    var isOccluded = false
+
     /// Set by VideoView during live window resize to skip expensive IOSurface
     /// recreation.  The existing texture is stretched to the new drawable size
     /// (cheap GPU scale) and the IOSurface is recreated once at final size.
@@ -470,7 +473,7 @@ class ViewLayer: CAMetalLayer {
         displayLock.lock()
         defer { displayLock.unlock() }
 
-        guard !isUninited else { return }
+        guard !isUninited && !isOccluded else { return }
         guard let mpv = mpv, let renderCtx = mpv.mpvRenderContext else { return }
 
         // Check if a new frame should be rendered

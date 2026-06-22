@@ -249,6 +249,11 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
         // Register for macOS Now Playing (Control Center media controls)
         setupNowPlaying()
 
+        // Register for window occlusion & minimization notifications for energy throttling
+        NotificationCenter.default.addObserver(self, selector: #selector(windowOcclusionChanged), name: NSWindow.didChangeOcclusionStateNotification, object: window)
+        NotificationCenter.default.addObserver(self, selector: #selector(windowMinimized), name: NSWindow.didMiniaturizeNotification, object: window)
+        NotificationCenter.default.addObserver(self, selector: #selector(windowDeminiaturized), name: NSWindow.didDeminiaturizeNotification, object: window)
+
         // Register for memory pressure → evict thumbnail cache (Phase 1B)
         UMAMemoryPressureMonitor.shared.onPressure { [weak self] in
             DispatchQueue.main.async {
@@ -2102,6 +2107,8 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
         // Stop system sync timer
         stopSystemSync()
 
+        NotificationCenter.default.removeObserver(self)
+
         // Clear Now Playing info from Control Center
         clearNowPlaying()
 
@@ -2172,6 +2179,23 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
     func windowDidResize(_ notification: Notification) {
         // Refresh edge tracking areas so they match the new window size
         setupEdgeTrackingAreas()
+    }
+
+    @objc private func windowOcclusionChanged(_ notification: Notification) {
+        if let win = window {
+            let occluded = !win.occlusionState.contains(.visible)
+            videoView.videoLayer.isOccluded = occluded
+        }
+    }
+
+    @objc private func windowMinimized(_ notification: Notification) {
+        videoView.videoLayer.isOccluded = true
+    }
+
+    @objc private func windowDeminiaturized(_ notification: Notification) {
+        if let win = window {
+            videoView.videoLayer.isOccluded = !win.occlusionState.contains(.visible)
+        }
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -2467,6 +2491,9 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
 
     /// Generate a thumbnail using a dedicated headless mpv instance
     private func generateThumbnail(at time: Double, cacheKey: Int) {
+        if let win = window, !win.occlusionState.contains(.visible) || win.isMiniaturized {
+            return
+        }
         guard !isGeneratingThumbnail else {
             pendingThumbnailTime = time
             return
