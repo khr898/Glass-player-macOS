@@ -250,6 +250,13 @@ process_deps() {
 process_deps "$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 echo "  Bundled $(ls -1 "$FRAMEWORKS_DIR" | wc -l | tr -d ' ') libraries"
 
+echo "=== Verifying no external dylib deps ==="
+otool -L "$APP_BUNDLE/Contents/MacOS/"* | \
+  grep -E '/opt/homebrew|/usr/local' && \
+  { echo "FAIL: external dylib leaked into bundle"; exit 1; } || \
+  echo "OK: bundle is self-contained"
+
+
 # ─── Sign ──────────────────────────────────────────────────────────────
 echo "=== Signing ==="
 # 🚨 APPLE SILICON MANDATE: 

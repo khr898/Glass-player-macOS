@@ -7,6 +7,7 @@
 #include <QKeyEvent>
 #include <QFile>
 #include <QTemporaryDir>
+#include <QStandardPaths>
 #include <QTimer>
 #include <QCursor>
 #include <QHash>
@@ -1094,8 +1095,14 @@ void MainWindow::onMuteClicked()
 // Copy shader from qrc to temp dir on first use
 static QString extractShader(const QString& name) {
     static QTemporaryDir tempDir;
-    if (!tempDir.isValid()) return {};
-    const QString outPath = tempDir.path() + "/" + name;
+    QString baseDir;
+    if (tempDir.isValid()) {
+        baseDir = tempDir.path();
+    } else {
+        baseDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/shaders";
+        QDir().mkpath(baseDir);
+    }
+    const QString outPath = baseDir + "/" + name;
     QFile outFile(outPath);
     if (!outFile.exists()) {
         QFile src(":/shaders/" + name);
