@@ -352,8 +352,13 @@ MainWindow::MainWindow(QWidget *parent)
             hideHud();
             // Reset watchdog baseline so a fresh file doesn't trigger immediately
             m_lastPositionTime = QDateTime::currentMSecsSinceEpoch();
+            m_systemSyncTimer->start();
+            m_stallWatchdog->start();
         } else {
             showHud();
+            syncSystemControls(); // final sync
+            m_systemSyncTimer->stop();
+            m_stallWatchdog->stop();
         }
     });
     
@@ -364,6 +369,8 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_mpvWidget, &MpvWidget::eofReached, this, [this](){
         m_isPlaying = false;
         m_playPauseBtn->setIcon(QIcon(":/icons/play.svg"));
+        m_systemSyncTimer->stop();
+        m_stallWatchdog->stop();
     });
 
     m_welcomeWindow = new WelcomeWindow(this);
@@ -395,7 +402,7 @@ MainWindow::MainWindow(QWidget *parent)
     m_systemSyncTimer = new QTimer(this);
     m_systemSyncTimer->setInterval(250);
     connect(m_systemSyncTimer, &QTimer::timeout, this, &MainWindow::syncSystemControls);
-    m_systemSyncTimer->start();
+    // Do not auto-start m_systemSyncTimer here
 
     // Stall watchdog: if playback is active but no position updates arrive for
     // > 5 s, nudge mpv with a zero-delta seek to unblock stuck demuxer/decoder.
@@ -416,7 +423,7 @@ MainWindow::MainWindow(QWidget *parent)
             }
         }
     });
-    m_stallWatchdog->start();
+    // Do not auto-start m_stallWatchdog here
 
     setMouseTracking(true);
     centralWidget()->setMouseTracking(true);
@@ -498,6 +505,7 @@ void MainWindow::setupUi()
 {
     setWindowTitle("Glass Player");
     resize(1280, 720);
+    setMinimumSize(700, 400);
     setStyleSheet("QMainWindow { background-color: black; }");
 
     m_centralWidget = new QWidget(this);
@@ -576,24 +584,28 @@ void MainWindow::setupTopBar()
     QPushButton *urlBtn = new QPushButton(m_topBar);
     urlBtn->setIcon(QIcon(":/icons/url.svg"));
     urlBtn->setIconSize(QSize(20, 20));
+    urlBtn->setFocusPolicy(Qt::NoFocus);
     connect(urlBtn, &QPushButton::clicked, this, &MainWindow::onUrlClicked);
     layout->addWidget(urlBtn);
 
     QPushButton *openBtn = new QPushButton(m_topBar);
     openBtn->setIcon(QIcon(":/icons/open_file.svg"));
     openBtn->setIconSize(QSize(20, 20));
+    openBtn->setFocusPolicy(Qt::NoFocus);
     connect(openBtn, &QPushButton::clicked, this, &MainWindow::onOpenClicked);
     layout->addWidget(openBtn);
 
     QPushButton *remoteBtn = new QPushButton(m_topBar);
     remoteBtn->setIcon(QIcon(":/icons/remote.svg"));
     remoteBtn->setIconSize(QSize(20, 20));
+    remoteBtn->setFocusPolicy(Qt::NoFocus);
     connect(remoteBtn, &QPushButton::clicked, this, &MainWindow::onRcloneClicked);
     layout->addWidget(remoteBtn);
 
     QPushButton *settingsBtn = new QPushButton(m_topBar);
     settingsBtn->setIcon(QIcon(":/icons/settings.svg"));
     settingsBtn->setIconSize(QSize(20, 20));
+    settingsBtn->setFocusPolicy(Qt::NoFocus);
     connect(settingsBtn, &QPushButton::clicked, this, &MainWindow::onSettingsClicked);
     layout->addWidget(settingsBtn);
 
@@ -631,6 +643,7 @@ void MainWindow::setupBottomBar()
     m_seekSlider = new ClickableSlider(Qt::Horizontal, m_bottomBar);
     m_seekSlider->setRange(0, 1000000);
     m_seekSlider->setMouseTracking(true);
+    m_seekSlider->setFocusPolicy(Qt::NoFocus);
     m_seekSlider->installEventFilter(this);
     connect(m_seekSlider, &QSlider::sliderMoved, this, &MainWindow::onSliderMoved);
     connect(m_seekSlider, &QSlider::sliderReleased, this, &MainWindow::onSliderReleased);
@@ -641,28 +654,36 @@ void MainWindow::setupBottomBar()
 
     m_subtitleBtn = new QPushButton(m_bottomBar);
     m_subtitleBtn->setIcon(QIcon(":/icons/subtitle.svg"));
+    m_subtitleBtn->setFocusPolicy(Qt::NoFocus);
     connect(m_subtitleBtn, &QPushButton::clicked, this, &MainWindow::onSubtitleClicked);
-
+ 
     m_audioBtn = new QPushButton(m_bottomBar);
     m_audioBtn->setIcon(QIcon(":/icons/audio.svg"));
+    m_audioBtn->setFocusPolicy(Qt::NoFocus);
     connect(m_audioBtn, &QPushButton::clicked, this, &MainWindow::onAudioClicked);
-
+ 
     m_shaderBtn = new QPushButton(m_bottomBar);
     m_shaderBtn->setIcon(QIcon(":/icons/shader.svg"));
+    m_shaderBtn->setFocusPolicy(Qt::NoFocus);
     connect(m_shaderBtn, &QPushButton::clicked, this, &MainWindow::onShaderClicked);
-
+ 
     m_rewindBtn = new QPushButton(m_bottomBar);
     m_rewindBtn->setIcon(QIcon(":/icons/rewind.svg"));
+    m_rewindBtn->setFocusPolicy(Qt::NoFocus);
     m_prevBtn = new QPushButton(m_bottomBar);
     m_prevBtn->setIcon(QIcon(":/icons/prev.svg"));
+    m_prevBtn->setFocusPolicy(Qt::NoFocus);
     m_playPauseBtn = new QPushButton(m_bottomBar);
     m_playPauseBtn->setIcon(QIcon(":/icons/pause.svg"));
     m_playPauseBtn->setObjectName("playPause");
     m_playPauseBtn->setIconSize(QSize(24, 24));
+    m_playPauseBtn->setFocusPolicy(Qt::NoFocus);
     m_nextBtn = new QPushButton(m_bottomBar);
     m_nextBtn->setIcon(QIcon(":/icons/next.svg"));
+    m_nextBtn->setFocusPolicy(Qt::NoFocus);
     m_forwardBtn = new QPushButton(m_bottomBar);
     m_forwardBtn->setIcon(QIcon(":/icons/forward.svg"));
+    m_forwardBtn->setFocusPolicy(Qt::NoFocus);
 
     connect(m_rewindBtn, &QPushButton::clicked, this, &MainWindow::onRewindClicked);
     connect(m_prevBtn, &QPushButton::clicked, this, &MainWindow::onPrevClicked);
@@ -672,30 +693,31 @@ void MainWindow::setupBottomBar()
 
     m_volumeBtn = new QPushButton(m_bottomBar);
     m_volumeBtn->setIcon(QIcon(":/icons/volume_mid.svg"));
+    m_volumeBtn->setFocusPolicy(Qt::NoFocus);
     connect(m_volumeBtn, &QPushButton::clicked, this, &MainWindow::onMuteClicked);
-
+ 
     m_volumeSlider = new ClickableSlider(Qt::Horizontal, m_bottomBar);
     m_volumeSlider->setRange(0, 200);
     m_volumeSlider->setValue(100);
     m_volumeSlider->setFixedWidth(70);
+    m_volumeSlider->setFocusPolicy(Qt::NoFocus);
     m_volumeSlider->setStyleSheet(
-        "QSlider::horizontal { height: 16px; background: transparent; }"
-        "QSlider::groove:horizontal { height: 4px; background: rgba(255, 255, 255, 46); border-radius: 2px; }"
-        "QSlider::sub-page:horizontal { background: #60CDFF; border-radius: 2px; }"
-        "QSlider::handle:horizontal { width: 10px; height: 10px; background: white; margin-top: -3px; margin-bottom: -3px; border-radius: 5px; border: none; }"
-        "QSlider::handle:horizontal:hover { width: 12px; height: 12px; background: white; border: 2px solid #60CDFF; margin-top: -4px; margin-bottom: -4px; border-radius: 6px; }"
+        "QSlider::horizontal { height: 16px; background: transparent; } " + Theme::kSliderHorizontalStyle
     );
     connect(m_volumeSlider, &QSlider::valueChanged, this, &MainWindow::onVolumeChanged);
 
     m_speedBtn = new QPushButton("1x", m_bottomBar);
     m_speedBtn->setStyleSheet(QString("font-weight: 600; font-size: 12px; font-family: %1;").arg(Theme::kFontFamily));
+    m_speedBtn->setFocusPolicy(Qt::NoFocus);
     connect(m_speedBtn, &QPushButton::clicked, this, &MainWindow::onSpeedClicked);
     
     m_aspectBtn = new QPushButton(m_bottomBar);
     m_aspectBtn->setIcon(QIcon(":/icons/aspect.svg"));
+    m_aspectBtn->setFocusPolicy(Qt::NoFocus);
     connect(m_aspectBtn, &QPushButton::clicked, this, &MainWindow::onAspectClicked);
     m_fullscreenBtn = new QPushButton(m_bottomBar);
     m_fullscreenBtn->setIcon(QIcon(":/icons/fullscreen.svg"));
+    m_fullscreenBtn->setFocusPolicy(Qt::NoFocus);
     connect(m_fullscreenBtn, &QPushButton::clicked, this, &MainWindow::toggleFullscreen);
 
     // Set icon sizes for all buttons in controls row
@@ -737,6 +759,7 @@ void MainWindow::setupBrightnessBar()
     m_brightnessSlider->setRange(0, 100);
     m_brightnessSlider->setValue(50); // Default to 50 (normal software brightness)
     m_brightnessSlider->setFixedWidth(20);
+    m_brightnessSlider->setFocusPolicy(Qt::NoFocus);
     connect(m_brightnessSlider, &QSlider::valueChanged, this, &MainWindow::onBrightnessChanged);
     layout->addWidget(m_brightnessSlider, 0, Qt::AlignHCenter);
 
@@ -773,6 +796,7 @@ void MainWindow::setupVolumeBar()
     m_volumeHoverSlider->setRange(0, 100);
     m_volumeHoverSlider->setValue(50);
     m_volumeHoverSlider->setFixedWidth(20);
+    m_volumeHoverSlider->setFocusPolicy(Qt::NoFocus);
     connect(m_volumeHoverSlider, &QSlider::valueChanged, this, &MainWindow::onVolumeChanged);
     layout->addWidget(m_volumeHoverSlider, 0, Qt::AlignHCenter);
 
@@ -1066,11 +1090,12 @@ void MainWindow::onVolumeChanged(int volume)
     if (m_syncingFromSystem) return;
 
     const int osVolume = qBound(0, volume, 100);
+    const int mpvVolume = qBound(0, volume, 200);
 
     m_syncingFromSystem = true;
     {
         QSignalBlocker blocker1(m_volumeSlider);
-        m_volumeSlider->setValue(osVolume);
+        m_volumeSlider->setValue(mpvVolume);
     }
     {
         QSignalBlocker blocker2(m_volumeHoverSlider);
@@ -1080,11 +1105,11 @@ void MainWindow::onVolumeChanged(int volume)
 
     // Set OS system volume and mute state
     WinOSIntegration::instance().setSystemVolume(osVolume / 100.0f);
-    WinOSIntegration::instance().setMuted(osVolume == 0);
+    WinOSIntegration::instance().setMuted(volume == 0);
 
-    // Set mpv volume to match
-    m_mpvWidget->setVolume(osVolume);
-    updateVolumeIcon(osVolume, osVolume == 0);
+    // Set mpv volume to match (up to 200%)
+    m_mpvWidget->setVolume(mpvVolume);
+    updateVolumeIcon(mpvVolume, volume == 0);
 }
 
 void MainWindow::onMuteClicked()
@@ -1840,6 +1865,8 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
         } else if (event->type() == QEvent::MouseMove) {
             showHud();
             updateHoverBars();
+        } else if (event->type() == QEvent::Leave) {
+            updateHoverBars();
         }
     }
     return QMainWindow::eventFilter(watched, event);
@@ -1889,6 +1916,11 @@ void MainWindow::syncSystemControls()
 {
     const float sysVolume = WinOSIntegration::instance().getSystemVolume();
     const int volumeValue = qRound(sysVolume * 100.0f);
+    
+    static int lastSystemVolume = -1;
+    bool systemVolumeChanged = (lastSystemVolume != volumeValue);
+    lastSystemVolume = volumeValue;
+    
     const bool muted = WinOSIntegration::instance().isMuted() || volumeValue == 0;
 
     const float sysBrightness = WinOSIntegration::instance().getSystemBrightness();
@@ -1897,8 +1929,10 @@ void MainWindow::syncSystemControls()
     m_syncingFromSystem = true;
     {
         QSignalBlocker mainBlocker(m_volumeSlider);
-        if (m_volumeSlider->value() != volumeValue) {
-            m_volumeSlider->setValue(volumeValue);
+        if (m_volumeSlider->value() <= 100 || systemVolumeChanged) {
+            if (m_volumeSlider->value() != volumeValue) {
+                m_volumeSlider->setValue(volumeValue);
+            }
         }
     }
     {
@@ -1916,12 +1950,14 @@ void MainWindow::syncSystemControls()
     m_syncingFromSystem = false;
 
     // Keep internal mpv player volume in sync
-    if (m_mpvWidget->getProperty("volume").toInt() != volumeValue)
-        m_mpvWidget->setVolume(volumeValue);
+    if (m_volumeSlider->value() <= 100 || systemVolumeChanged) {
+        if (m_mpvWidget->getProperty("volume").toInt() != volumeValue)
+            m_mpvWidget->setVolume(volumeValue);
+    }
 
     if (!m_volumeSlider->isSliderDown()) {
         m_isMuted = muted;
-        updateVolumeIcon(volumeValue, muted);
+        updateVolumeIcon(m_volumeSlider->value(), muted);
     }
 }
 
