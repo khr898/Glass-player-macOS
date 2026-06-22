@@ -112,6 +112,20 @@ protected:
         }
         QSlider::mouseMoveEvent(event);
     }
+
+protected:
+    void keyPressEvent(QKeyEvent *event) override
+    {
+        if (event->key() == Qt::Key_Space ||
+            event->key() == Qt::Key_Left ||
+            event->key() == Qt::Key_Right ||
+            event->key() == Qt::Key_Up ||
+            event->key() == Qt::Key_Down) {
+            event->ignore();
+            return;
+        }
+        QSlider::keyPressEvent(event);
+    }
 };
 
 class MainWindow : public QMainWindow
@@ -206,6 +220,8 @@ private:
     void updateVolumeIcon(int volume, bool muted);
     QString formatTime(double seconds);
     void applyShaderPreset(const QString& preset);
+    void updateShaderButton();
+    bool areShadersAvailable();
     void updateHoverBars();
     void updateResolutionBadge();
     void applyScrollDelta(int delta, double xPos);

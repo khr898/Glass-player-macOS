@@ -742,6 +742,7 @@ void MainWindow::setupBottomBar()
             btn->setIconSize(QSize(20, 20));
         }
     }
+    updateShaderButton();
 }
 
 void MainWindow::setupBrightnessBar()
@@ -1149,14 +1150,26 @@ static QString extractShader(const QString& name) {
         baseDir = tempDir.path();
     } else {
         baseDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/shaders";
-        QDir().mkpath(baseDir);
+        if (!QDir().exists(baseDir)) {
+            QDir().mkpath(baseDir);
+        }
     }
     const QString outPath = baseDir + "/" + name;
     QFile outFile(outPath);
     if (!outFile.exists()) {
         QFile src(":/shaders/" + name);
-        if (src.open(QIODevice::ReadOnly) && outFile.open(QIODevice::WriteOnly))
+        if (!src.exists()) {
+            return "";
+        }
+        if (src.open(QIODevice::ReadOnly) && outFile.open(QIODevice::WriteOnly)) {
             outFile.write(src.readAll());
+            outFile.close();
+        } else {
+            return "";
+        }
+    }
+    if (!outFile.exists() || outFile.size() == 0) {
+        return "";
     }
     return outPath;
 }
@@ -1343,8 +1356,7 @@ void MainWindow::applyShaderPreset(const QString& preset)
 
     if (resolvedPreset.isEmpty() || resolvedPreset == "Off") {
         m_mpvWidget->command(QVariantList() << "change-list" << "glsl-shaders" << "clr" << "");
-        m_shaderBtn->setGraphicsEffect(nullptr);
-        m_shaderBtn->setStyleSheet("");
+        updateShaderButton();
         return;
     }
 
@@ -1382,21 +1394,53 @@ void MainWindow::applyShaderPreset(const QString& preset)
 
     m_mpvWidget->command(QVariantList() << "change-list" << "glsl-shaders" << "set" << shaderStr);
 
-    // Apply beautiful accent blue glow to the shader button when one is active
-    QGraphicsDropShadowEffect *glow = new QGraphicsDropShadowEffect(m_shaderBtn);
-    glow->setBlurRadius(15);
-    glow->setColor(QColor(96, 205, 255, 200)); // vibrant accent blue glow (#60CDFF)
-    glow->setOffset(0, 0);
-    m_shaderBtn->setGraphicsEffect(glow);
-    m_shaderBtn->setStyleSheet(
-        QString(
-            "QPushButton { "
-            "  background: %1; "
-            "  border: 1px solid %2; "
-            "  border-radius: 4px; "
-            "}"
-        ).arg(Theme::kAccentSubtle, Theme::kAccent)
-    );
+    updateShaderButton();
+}
+
+void MainWindow::updateShaderButton()
+{
+    if (!m_shaderBtn) return;
+
+    m_shaderBtn->setVisible(areShadersAvailable());
+
+    QString currentPreset = m_settings.value("defaultShaderPreset", "Off").toString();
+    if (currentPreset.isEmpty() || currentPreset == "Off") {
+        m_shaderBtn->setGraphicsEffect(nullptr);
+        m_shaderBtn->setStyleSheet("");
+    } else {
+        // Apply beautiful accent blue glow to the shader button when one is active
+        QGraphicsDropShadowEffect *glow = new QGraphicsDropShadowEffect(m_shaderBtn);
+        glow->setBlurRadius(15);
+        glow->setColor(QColor(96, 205, 255, 200)); // vibrant accent blue glow (#60CDFF)
+        glow->setOffset(0, 0);
+        m_shaderBtn->setGraphicsEffect(glow);
+        m_shaderBtn->setStyleSheet(
+            QString(
+                "QPushButton { "
+                "  background: %1; "
+                "  border: 1px solid %2; "
+                "  border-radius: 4px; "
+                "}"
+            ).arg(Theme::kAccentSubtle, Theme::kAccent)
+        );
+    }
+}
+
+bool MainWindow::areShadersAvailable()
+{
+    static const QStringList testShaders = {
+        "Anime4K_Clamp_Highlights.glsl"
+    };
+    for (const QString &sh : testShaders) {
+        if (!QFile::exists(":/shaders/" + sh)) {
+            return false;
+        }
+        QString testPath = extractShader(sh);
+        if (testPath.isEmpty() || !QFile::exists(testPath)) {
+            return false;
+        }
+    }
+    return true;
 }
 
 QString MainWindow::formatTime(double seconds)
@@ -1636,7 +1680,7 @@ void MainWindow::onShaderClicked()
     menu.addSeparator();
 
     // HQ Header
-    QAction *hqHeader = menu.addAction("── HQ (Pro/Max GPU) ──");
+    QAction *hqHeader = menu.addAction("── Anime4K (HQ) ──");
     hqHeader->setEnabled(false);
 
     QStringList hqPresets = {"Mode A (HQ)", "Mode B (HQ)", "Mode C (HQ)",
@@ -1653,7 +1697,7 @@ void MainWindow::onShaderClicked()
     menu.addSeparator();
 
     // Fast Header
-    QAction *fastHeader = menu.addAction("── Fast (Lower GPU load) ──");
+    QAction *fastHeader = menu.addAction("── Anime4K (Fast) ──");
     fastHeader->setEnabled(false);
 
     QStringList fastPresets = {"Mode A (Fast)", "Mode B (Fast)", "Mode C (Fast)",
@@ -1789,10 +1833,14 @@ void MainWindow::updateHoverBars()
     
     auto localPos = m_mpvWidget->mapFromGlobal(QCursor::pos());
 
-    if (!draggingLeft && !draggingRight && !m_mpvWidget->rect().contains(localPos)) {
-        m_brightnessBar->hide();
-        m_volumeBar->hide();
-        return;
+    if (!draggingLeft && !draggingRight) {
+        if (!m_mpvWidget->rect().contains(localPos) ||
+            (m_topBar->isVisible() && m_topBar->geometry().contains(localPos)) ||
+            (m_bottomBar->isVisible() && m_bottomBar->geometry().contains(localPos))) {
+            m_brightnessBar->hide();
+            m_volumeBar->hide();
+            return;
+        }
     }
 
     int mw = m_mpvWidget->width();
