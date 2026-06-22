@@ -1,13 +1,41 @@
 #include "RcloneBrowser.h"
-#include <QRegularExpression>
-#include <QDebug>
-#include <QUrl>
-#include "Theme.h"
+#include <dwmapi.h>
+#include <winrt/Windows.Foundation.h>
+#include <winrt/Windows.Foundation.Collections.h>
+#include <winrt/Microsoft.UI.Xaml.Media.h>
+#include <winrt/Microsoft.UI.Xaml.Input.h>
+#include <winrt/Microsoft.UI.Xaml.Controls.Primitives.h>
+#include <winrt/Microsoft.UI.Windowing.h>
+#include <winrt/Windows.UI.h>
+#include <winrt/Windows.Web.Http.h>
+#include <regex>
+#include <stdexcept>
 
-RcloneBrowser::RcloneBrowser(QWidget *parent)
-    : QDialog(parent), m_networkManager(new QNetworkAccessManager(this))
+struct __declspec(uuid("EECDB3DB-E257-4A86-844C-5B09F6F35B04")) IWindowNative : IUnknown
 {
-    setWindowFlags(windowFlags() | Qt::WindowStaysOnTopHint);
+    virtual HRESULT __stdcall get_WindowHandle(HWND* hWnd) = 0;
+};
+
+RcloneBrowser::RcloneBrowser()
+{
+    m_window = winrt::Microsoft::UI::Xaml::Window();
+    m_window.as<IWindowNative>()->get_WindowHandle(&m_hwnd);
+
+    m_window.Title(L"Cloud Streams Browser");
+    
+    auto appWindow = m_window.AppWindow();
+    appWindow.Resize(winrt::Windows::Graphics::SizeInt32{ 700, 480 });
+
+    // Enable Mica Backdrop
+    winrt::Microsoft::UI::Xaml::Media::MicaBackdrop mica;
+    m_window.SystemBackdrop(mica);
+
+    // Dark Mode titlebar style
+    BOOL darkMode = TRUE;
+    DwmSetWindowAttribute(m_hwnd, 20 /* DWMWA_USE_IMMERSIVE_DARK_MODE */, &darkMode, sizeof(darkMode));
+
+    m_dispatcherQueue = winrt::Microsoft::UI::Dispatching::DispatcherQueue::GetForCurrentThread();
+
     setupUi();
 }
 
@@ -17,171 +45,145 @@ RcloneBrowser::~RcloneBrowser()
 
 void RcloneBrowser::setupUi()
 {
-    setWindowTitle("Remote Browser");
-    setMinimumSize(520, 600);
+    using namespace winrt::Microsoft::UI::Xaml;
+    using namespace winrt::Microsoft::UI::Xaml::Controls;
+    using namespace winrt::Microsoft::UI::Xaml::Media;
 
-    setStyleSheet(
-        QString(
-            "QDialog { "
-            "  background-color: %1; "
-            "} "
-            "QLineEdit { "
-            "  background: %2; "
-            "  color: %3; "
-            "  border: 1px solid %4; "
-            "  border-radius: 4px; "
-            "  padding: 6px 10px; "
-            "  font-family: %5; "
-            "  font-size: 13px; "
-            "} "
-            "QLineEdit:focus { "
-            "  border: 1px solid %6; "
-            "} "
-            "QPushButton { "
-            "  background-color: %2; "
-            "  color: %3; "
-            "  border: 1px solid %4; "
-            "  border-radius: 4px; "
-            "  padding: 6px 12px; "
-            "  font-family: %5; "
-            "  font-size: 13px; "
-            "  font-weight: 600; "
-            "} "
-            "QPushButton:hover { "
-            "  background-color: %7; "
-            "  border-color: %8; "
-            "} "
-            "QPushButton:pressed { "
-            "  background-color: %9; "
-            "  border-color: %4; "
-            "} "
-            "QPushButton:disabled { "
-            "  background-color: transparent; "
-            "  color: rgba(255, 255, 255, 60); "
-            "  border-color: rgba(255, 255, 255, 15); "
-            "} "
-            "QListWidget { "
-            "  background-color: %1; "
-            "  border: 1px solid %4; "
-            "  border-radius: 4px; "
-            "  outline: none; "
-            "} "
-            "QListWidget::item { "
-            "  height: 32px; "
-            "  padding-left: 10px; "
-            "  color: %3; "
-            "  font-family: %5; "
-            "  font-size: 13px; "
-            "  border-radius: 4px; "
-            "  margin: 2px 4px; "
-            "} "
-            "QListWidget::item:hover { "
-            "  background-color: %7; "
-            "} "
-            "QListWidget::item:selected { "
-            "  background-color: %11; "
-            "  color: %6; "
-            "  font-weight: bold; "
-            "} "
-        ).arg(Theme::kBgSurface, Theme::kBgSurfaceSecondary, Theme::kTextPrimary, Theme::kBorderDefault, Theme::kFontFamily,
-              Theme::kAccent, Theme::kBgHover, Theme::kBorderElevated, Theme::kBgPressed, Theme::kCloseHover, Theme::kAccentSubtle)
-    );
+    Grid rootGrid = Grid();
+    rootGrid.Padding(Thickness{ 20 });
 
-    QVBoxLayout *mainLayout = new QVBoxLayout(this);
-    mainLayout->setContentsMargins(16, 16, 16, 16);
-    mainLayout->setSpacing(12);
+    RowDefinition r1, r2, r3;
+    r1.Height(GridLength{ 1, GridUnitType::Auto });
+    r2.Height(GridLength{ 1, GridUnitType::Auto });
+    r3.Height(GridLength{ 1, GridUnitType::Star });
+    rootGrid.RowDefinitions().Append(r1);
+    rootGrid.RowDefinitions().Append(r2);
+    rootGrid.RowDefinitions().Append(r3);
 
-    // Connection Bar
-    QHBoxLayout *connLayout = new QHBoxLayout();
-    m_urlField = new QLineEdit(this);
-    m_urlField->setPlaceholderText("http://localhost:8080");
-    m_connectBtn = new QPushButton("Connect", this);
-    m_connectBtn->setCursor(Qt::PointingHandCursor);
-    connect(m_connectBtn, &QPushButton::clicked, this, &RcloneBrowser::onConnectClicked);
+    // Connection URL Row
+    Grid connGrid = Grid();
+    connGrid.Margin(Thickness{ 0, 0, 0, 10 });
+    ColumnDefinition c1, c2;
+    c1.Width(GridLength{ 1, GridUnitType::Star });
+    c2.Width(GridLength{ 1, GridUnitType::Auto });
+    connGrid.ColumnDefinitions().Append(c1);
+    connGrid.ColumnDefinitions().Append(c2);
+    rootGrid.SetRow(connGrid, 0);
+
+    m_urlField = TextBox();
+    m_urlField.PlaceholderText(L"http://localhost:8080");
+    m_urlField.Text(L"http://localhost:8080");
+    m_urlField.VerticalAlignment(VerticalAlignment::Center);
+    connGrid.SetColumn(m_urlField, 0);
+    connGrid.Children().Append(m_urlField);
+
+    m_connectBtn = Button();
+    m_connectBtn.Content(winrt::box_value(L"Connect"));
+    m_connectBtn.Margin(Thickness{ 10, 0, 0, 0 });
+    m_connectBtn.Background(SolidColorBrush(winrt::Windows::UI::ColorHelper::FromArgb(255, 0, 120, 215)));
+    m_connectBtn.Foreground(SolidColorBrush(winrt::Windows::UI::Colors::White()));
+    m_connectBtn.Click([this](auto const&, auto const&) { onConnectClicked(); });
+    connGrid.SetColumn(m_connectBtn, 1);
+    connGrid.Children().Append(m_connectBtn);
+
+    rootGrid.Children().Append(connGrid);
+
+    // Navigation buttons row
+    StackPanel navPanel;
+    navPanel.Orientation(Orientation::Horizontal);
+    navPanel.Margin(Thickness{ 0, 0, 0, 10 });
+    rootGrid.SetRow(navPanel, 1);
+
+    m_backBtn = Button();
+    m_backBtn.Content(winrt::box_value(L"←"));
+    m_backBtn.Width(36);
+    m_backBtn.IsEnabled(false);
+    m_backBtn.Margin(Thickness{ 0, 0, 5, 0 });
+    m_backBtn.Click([this](auto const&, auto const&) { onBackClicked(); });
+    navPanel.Children().Append(m_backBtn);
+
+    m_upBtn = Button();
+    m_upBtn.Content(winrt::box_value(L"↑"));
+    m_upBtn.Width(36);
+    m_upBtn.IsEnabled(false);
+    m_upBtn.Margin(Thickness{ 0, 0, 5, 0 });
+    m_upBtn.Click([this](auto const&, auto const&) { onUpClicked(); });
+    navPanel.Children().Append(m_upBtn);
+
+    m_refreshBtn = Button();
+    m_refreshBtn.Content(winrt::box_value(L"⟳"));
+    m_refreshBtn.Width(36);
+    m_refreshBtn.IsEnabled(false);
+    m_refreshBtn.Click([this](auto const&, auto const&) { onRefreshClicked(); });
+    navPanel.Children().Append(m_refreshBtn);
+
+    rootGrid.Children().Append(navPanel);
+
+    // ListView
+    m_listView = ListView();
+    m_listView.Background(SolidColorBrush(winrt::Windows::UI::ColorHelper::FromArgb(15, 255, 255, 255)));
+    m_listView.BorderBrush(SolidColorBrush(winrt::Windows::UI::ColorHelper::FromArgb(40, 255, 255, 255)));
+    m_listView.BorderThickness(Thickness{ 1 });
+    m_listView.CornerRadius(CornerRadius{ 4 });
     
-    connLayout->addWidget(m_urlField);
-    connLayout->addWidget(m_connectBtn);
-    mainLayout->addLayout(connLayout);
+    // Connect double click handler
+    m_listView.DoubleTapped([this](auto const&, auto const&) {
+        onItemDoubleClicked();
+    });
 
-    // Nav Bar
-    QHBoxLayout *navLayout = new QHBoxLayout();
-    m_backBtn = new QPushButton("←", this);
-    m_upBtn = new QPushButton("↑", this);
-    m_refreshBtn = new QPushButton("⟳", this);
-    
-    m_backBtn->setCursor(Qt::PointingHandCursor);
-    m_upBtn->setCursor(Qt::PointingHandCursor);
-    m_refreshBtn->setCursor(Qt::PointingHandCursor);
+    rootGrid.SetRow(m_listView, 2);
+    rootGrid.Children().Append(m_listView);
 
-    m_backBtn->setFixedWidth(36);
-    m_upBtn->setFixedWidth(36);
-    m_refreshBtn->setFixedWidth(36);
-
-    connect(m_backBtn, &QPushButton::clicked, this, &RcloneBrowser::onBackClicked);
-    connect(m_upBtn, &QPushButton::clicked, this, &RcloneBrowser::onUpClicked);
-    connect(m_refreshBtn, &QPushButton::clicked, this, &RcloneBrowser::onRefreshClicked);
-
-    m_backBtn->setEnabled(false);
-    m_upBtn->setEnabled(false);
-    m_refreshBtn->setEnabled(false);
-
-    navLayout->addWidget(m_backBtn);
-    navLayout->addWidget(m_upBtn);
-    navLayout->addWidget(m_refreshBtn);
-    navLayout->addStretch();
-    mainLayout->addLayout(navLayout);
-
-    // List View
-    m_listWidget = new QListWidget(this);
-    m_listWidget->setFrameShape(QFrame::NoFrame);
-    connect(m_listWidget, &QListWidget::itemDoubleClicked, this, &RcloneBrowser::onItemDoubleClicked);
-    mainLayout->addWidget(m_listWidget);
+    m_window.Content(rootGrid);
 }
 
 void RcloneBrowser::onConnectClicked()
 {
-    QString url = m_urlField->text().trimmed();
-    if (url.isEmpty()) return;
+    std::wstring url = m_urlField.Text().c_str();
+    if (url.empty()) return;
 
-    if (!url.contains("://")) {
-        url = "http://" + url;
+    if (url.find(L"://") == std::wstring::npos) {
+        url = L"http://" + url;
     }
-    while (url.endsWith("/")) {
-        url.chop(1);
+    while (!url.empty() && url.back() == L'/') {
+        url.pop_back();
     }
 
     m_baseUrl = url;
-    m_currentPath = "/";
+    m_currentPath = L"/";
     m_pathHistory.clear();
     m_isConnected = true;
 
-    m_connectBtn->setText("Reconnect");
-    m_refreshBtn->setEnabled(true);
-    
+    m_connectBtn.Content(winrt::box_value(L"Reconnect"));
+    m_refreshBtn.IsEnabled(true);
+
     fetchDirectory();
 }
 
 void RcloneBrowser::onBackClicked()
 {
-    if (m_pathHistory.isEmpty()) return;
-    m_currentPath = m_pathHistory.takeLast();
+    if (m_pathHistory.empty()) return;
+    m_currentPath = m_pathHistory.back();
+    m_pathHistory.pop_back();
     fetchDirectory();
 }
 
 void RcloneBrowser::onUpClicked()
 {
-    if (m_currentPath == "/") return;
-    m_pathHistory.append(m_currentPath);
-    
-    QStringList parts = m_currentPath.split("/", Qt::SkipEmptyParts);
-    if (!parts.isEmpty()) {
-        parts.removeLast();
+    if (m_currentPath == L"/") return;
+    m_pathHistory.push_back(m_currentPath);
+
+    // Navigate up one level in HTTP folder structure
+    std::wstring path = m_currentPath;
+    if (!path.empty() && path.back() == L'/') {
+        path.pop_back();
     }
     
-    if (parts.isEmpty()) {
-        m_currentPath = "/";
+    size_t lastSlash = path.find_last_of(L'/');
+    if (lastSlash == std::wstring::npos || lastSlash == 0) {
+        m_currentPath = L"/";
     } else {
-        m_currentPath = "/" + parts.join("/") + "/";
+        m_currentPath = path.substr(0, lastSlash + 1);
     }
     fetchDirectory();
 }
@@ -192,92 +194,107 @@ void RcloneBrowser::onRefreshClicked()
     fetchDirectory();
 }
 
-void RcloneBrowser::onItemDoubleClicked(QListWidgetItem *item)
+void RcloneBrowser::onItemDoubleClicked()
 {
-    QString href = item->data(Qt::UserRole).toString();
-    bool isDir = item->data(Qt::UserRole + 1).toBool();
+    int index = m_listView.SelectedIndex();
+    if (index < 0 || index >= static_cast<int>(m_currentItems.size())) return;
 
-    if (isDir) {
-        m_pathHistory.append(m_currentPath);
-        m_currentPath = m_currentPath + href;
+    auto const& item = m_currentItems[index];
+    if (item.isDir) {
+        m_pathHistory.push_back(m_currentPath);
+        m_currentPath = m_currentPath + item.href;
         fetchDirectory();
     } else {
-        QString fullUrl = m_baseUrl + m_currentPath + href;
-        emit fileSelected(fullUrl);
-        accept();
+        std::wstring fullUrl = m_baseUrl + m_currentPath + item.href;
+        if (m_fileSelectedCallback) {
+            m_fileSelectedCallback(fullUrl);
+        }
     }
 }
 
 void RcloneBrowser::fetchDirectory()
 {
-    if (m_currentReply) {
-        m_currentReply->abort();
-        m_currentReply->deleteLater();
-        m_currentReply = nullptr;
-    }
+    m_backBtn.IsEnabled(!m_pathHistory.empty());
+    m_upBtn.IsEnabled(m_currentPath != L"/");
 
-    m_backBtn->setEnabled(!m_pathHistory.isEmpty());
-    m_upBtn->setEnabled(m_currentPath != "/");
+    m_listView.Items().Clear();
+    m_listView.Items().Append(winrt::box_value(L"Loading..."));
 
-    m_listWidget->clear();
-    m_listWidget->addItem("Loading...");
+    std::wstring urlString = m_baseUrl + m_currentPath;
 
-    QString urlString = m_baseUrl + m_currentPath;
-    QNetworkRequest request((QUrl(urlString)));
-    m_currentReply = m_networkManager->get(request);
-    connect(m_currentReply, &QNetworkReply::finished, this, [this]() {
-        onNetworkReply(m_currentReply);
+    // Use winrt::Windows::Web::Http::HttpClient
+    winrt::Windows::Web::Http::HttpClient httpClient;
+    winrt::Windows::Foundation::Uri uri(urlString);
+
+    httpClient.GetStringAsync(uri).Completed([this](auto const& op, auto const& status) {
+        if (status == winrt::Windows::Foundation::AsyncStatus::Completed) {
+            auto html = op.GetResults();
+            m_dispatcherQueue.TryEnqueue([this, html = std::wstring(html)]() {
+                parseDirectoryListing(html);
+            });
+        } else {
+            m_dispatcherQueue.TryEnqueue([this]() {
+                m_listView.Items().Clear();
+                m_listView.Items().Append(winrt::box_value(L"Error connecting to server."));
+            });
+        }
     });
 }
 
-void RcloneBrowser::onNetworkReply(QNetworkReply *reply)
+void RcloneBrowser::parseDirectoryListing(const std::wstring& html)
 {
-    m_currentReply = nullptr;
-    if (reply->error() != QNetworkReply::NoError) {
-        if (reply->error() != QNetworkReply::OperationCanceledError) {
-            m_listWidget->clear();
-            m_listWidget->addItem("Error connecting to server.");
+    m_listView.Items().Clear();
+    m_currentItems.clear();
+
+    // Standard regex to parse HTML anchors: <a href="link">name</a> size
+    std::wregex regex(L"<a\\s+href=\"([^\"]+)\"\\s*>([^<]+)</a>\\s*([^<]*)", std::regex_constants::icase);
+    auto it = std::wsregex_iterator(html.begin(), html.end(), regex);
+    auto end = std::wsregex_iterator();
+
+    for (; it != end; ++it) {
+        std::wsmatch match = *it;
+        std::wstring href = match[1].str();
+        std::wstring name = match[2].str();
+        std::wstring size = match[3].str();
+
+        // Trim name and size
+        name.erase(0, name.find_first_not_of(L" \t\r\n"));
+        name.erase(name.find_last_not_of(L" \t\r\n") + 1);
+        size.erase(0, size.find_first_not_of(L" \t\r\n"));
+        size.erase(size.find_last_not_of(L" \t\r\n") + 1);
+
+        if (href == L"../" || href == L".." || href == L"/" || href == L"./") {
+            continue;
         }
-        reply->deleteLater();
-        return;
+
+        bool isDir = (!href.empty() && href.back() == L'/');
+        
+        RcloneItem item;
+        item.name = name;
+        item.href = href;
+        item.isDir = isDir;
+
+        if (isDir) {
+            item.displayString = L"📁 " + name;
+        } else {
+            item.displayString = L"📄 " + name + (size.empty() ? L"" : L"   (" + size + L")");
+        }
+
+        m_currentItems.push_back(item);
+        m_listView.Items().Append(winrt::box_value(item.displayString));
     }
 
-    QString html = QString::fromUtf8(reply->readAll());
-    parseDirectoryListing(html);
-    reply->deleteLater();
+    if (m_currentItems.empty()) {
+        m_listView.Items().Append(winrt::box_value(L"Empty directory"));
+    }
 }
 
-void RcloneBrowser::parseDirectoryListing(const QString &html)
+void RcloneBrowser::show()
 {
-    m_listWidget->clear();
-    
-    // Simple regex for `<a href="link">name</a> size`
-    static const QRegularExpression regex("<a\\s+href=\"([^\"]+)\"\\s*>([^<]+)</a>\\s*([^<]*)");
-    QRegularExpressionMatchIterator i = regex.globalMatch(html);
-    
-    while (i.hasNext()) {
-        QRegularExpressionMatch match = i.next();
-        QString href = match.captured(1);
-        QString name = match.captured(2).trimmed();
-        QString size = match.captured(3).trimmed();
-        
-        if (href == "../" || href == ".." || href == "/" || href == "./") continue;
-        
-        bool isDir = href.endsWith("/");
-        
-        QListWidgetItem *item = new QListWidgetItem();
-        if (isDir) {
-            item->setText("[DIR] " + name);
-        } else {
-            item->setText(name + "  (" + size + ")");
-        }
-        
-        item->setData(Qt::UserRole, href);
-        item->setData(Qt::UserRole + 1, isDir);
-        m_listWidget->addItem(item);
-    }
-    
-    if (m_listWidget->count() == 0) {
-        m_listWidget->addItem("Empty directory");
-    }
+    m_window.Activate();
+}
+
+void RcloneBrowser::close()
+{
+    m_window.Close();
 }

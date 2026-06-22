@@ -1,35 +1,45 @@
 #include "WelcomeWindow.h"
-#include <QVBoxLayout>
-#include <QHBoxLayout>
-#include <QFileDialog>
-#include <QGraphicsDropShadowEffect>
-#include <QIcon>
-#include <QApplication>
-#include <QFileInfo>
-#include <QMimeData>
-#include <QDragEnterEvent>
-#include <QDropEvent>
-#include <QPropertyAnimation>
-#include <QShowEvent>
-#include "Theme.h"
+#include <winrt/Windows.Foundation.h>
+#include <winrt/Windows.Foundation.Collections.h>
+#include <winrt/Microsoft.UI.Xaml.Media.h>
+#include <winrt/Microsoft.UI.Xaml.Input.h>
+#include <winrt/Microsoft.UI.Xaml.Shapes.h>
+#include <winrt/Microsoft.UI.Xaml.Controls.Primitives.h>
+#include <winrt/Microsoft.UI.Windowing.h>
+#include <winrt/Windows.ApplicationModel.DataTransfer.h>
+#include <winrt/Windows.Storage.Pickers.h>
+#include <winrt/Windows.UI.h>
+#include <winrt/Windows.UI.Text.h>
+#include <shlobj.h>
+#include <shobjidl.h>
+#include <dwmapi.h>
 
-static bool isPlayableFile(const QString& filePath) {
-    if (filePath.contains("://")) {
-        return true;
-    }
-    static const QStringList kSupportedExtensions = {
-        "mp4", "mkv", "avi", "mov", "flv", "webm", "wmv", "m4v", "3gp", "ts", "mts", "m2ts", "vob", "ogv", "asf",
-        "mp3", "m4a", "aac", "flac", "wav", "ac3", "dts", "ogg", "opus", "wma", "mka"
-    };
-    QFileInfo info(filePath);
-    QString ext = info.suffix().toLower();
-    return kSupportedExtensions.contains(ext);
-}
-
-WelcomeWindow::WelcomeWindow(QWidget *parent)
-    : QDialog(parent)
+struct __declspec(uuid("EECDB3DB-E257-4A86-844C-5B09F6F35B04")) IWindowNative : IUnknown
 {
-    setAcceptDrops(true);
+    virtual HRESULT __stdcall get_WindowHandle(HWND* hWnd) = 0;
+};
+
+WelcomeWindow::WelcomeWindow()
+{
+    m_window = winrt::Microsoft::UI::Xaml::Window();
+    m_window.as<IWindowNative>()->get_WindowHandle(&m_hwnd);
+    m_dispatcherQueue = winrt::Microsoft::UI::Dispatching::DispatcherQueue::GetForCurrentThread();
+
+    // Configure window dimensions (650x450) and center on screen
+    m_window.Title(L"Glass Player - Welcome");
+    auto appWindow = m_window.AppWindow();
+    appWindow.Resize(winrt::Windows::Graphics::SizeInt32{ 650, 450 });
+
+    // Enable Mica Backdrop
+    winrt::Microsoft::UI::Xaml::Media::MicaBackdrop mica;
+    m_window.SystemBackdrop(mica);
+
+    // Dark Titlebar Theme
+    BOOL darkMode = TRUE;
+    DwmSetWindowAttribute(m_hwnd, 20 /* DWMWA_USE_IMMERSIVE_DARK_MODE */, &darkMode, sizeof(darkMode));
+
+    m_window.ExtendsContentIntoTitleBar(true);
+
     setupUi();
 }
 
@@ -39,283 +49,158 @@ WelcomeWindow::~WelcomeWindow()
 
 void WelcomeWindow::setupUi()
 {
-    setWindowTitle("Glass Player");
+    using namespace winrt::Microsoft::UI::Xaml;
+    using namespace winrt::Microsoft::UI::Xaml::Controls;
+    using namespace winrt::Microsoft::UI::Xaml::Media;
+
+    Grid rootGrid = Grid();
+    rootGrid.Padding(Thickness{ 30, 40, 30, 30 });
+
+    RowDefinition r1, r2, r3;
+    r1.Height(GridLength{ 1, GridUnitType::Auto });
+    r2.Height(GridLength{ 1, GridUnitType::Star });
+    r3.Height(GridLength{ 1, GridUnitType::Auto });
+    rootGrid.RowDefinitions().Append(r1);
+    rootGrid.RowDefinitions().Append(r2);
+    rootGrid.RowDefinitions().Append(r3);
+
+    // Title area
+    StackPanel header;
+    header.Orientation(Orientation::Vertical);
+    header.Margin(Thickness{ 0, 10, 0, 20 });
+    rootGrid.SetRow(header, 0);
+
+    TextBlock title = TextBlock();
+    title.Text(L"Glass Player");
+    title.FontSize(32);
+    title.FontWeight(winrt::Windows::UI::Text::FontWeights::SemiBold());
+    title.Foreground(SolidColorBrush(winrt::Windows::UI::Colors::White()));
+    header.Children().Append(title);
+
+    TextBlock subtitle = TextBlock();
+    subtitle.Text(L"A lightweight, high-performance media player");
+    subtitle.FontSize(13);
+    subtitle.Foreground(SolidColorBrush(winrt::Windows::UI::Colors::Gray()));
+    subtitle.Margin(Thickness{ 2, 4, 0, 0 });
+    header.Children().Append(subtitle);
+
+    rootGrid.Children().Append(header);
+
+    // Drag and Drop Area
+    Border dropBorder = Border();
+    dropBorder.BorderBrush(SolidColorBrush(winrt::Windows::UI::ColorHelper::FromArgb(80, 255, 255, 255)));
+    dropBorder.BorderThickness(Thickness{ 2 });
+    dropBorder.CornerRadius(CornerRadius{ 8 });
+    dropBorder.Background(SolidColorBrush(winrt::Windows::UI::ColorHelper::FromArgb(20, 255, 255, 255)));
+    dropBorder.Margin(Thickness{ 0, 0, 0, 20 });
+    rootGrid.SetRow(dropBorder, 1);
+
+    Grid dropGrid = Grid();
+    dropGrid.HorizontalAlignment(HorizontalAlignment::Center);
+    dropGrid.VerticalAlignment(VerticalAlignment::Center);
+
+    StackPanel dropContent;
+    dropContent.Orientation(Orientation::Vertical);
+    dropContent.HorizontalAlignment(HorizontalAlignment::Center);
+
+    TextBlock dropIcon = TextBlock();
+    dropIcon.Text(L"📥");
+    dropIcon.FontSize(48);
+    dropIcon.HorizontalAlignment(HorizontalAlignment::Center);
+    dropIcon.Margin(Thickness{ 0, 0, 0, 10 });
+    dropContent.Children().Append(dropIcon);
+
+    TextBlock dropText = TextBlock();
+    dropText.Text(L"Drag & drop a media file here to start playing");
+    dropText.FontSize(15);
+    dropText.Foreground(SolidColorBrush(winrt::Windows::UI::Colors::LightGray()));
+    dropText.HorizontalAlignment(HorizontalAlignment::Center);
+    dropContent.Children().Append(dropText);
+
+    dropGrid.Children().Append(dropContent);
+    dropBorder.Child(dropGrid);
+
+    // Wire Drag and Drop
+    dropBorder.AllowDrop(true);
+    dropBorder.DragOver([](auto const&, DragEventArgs const& e) {
+        e.AcceptedOperation(winrt::Windows::ApplicationModel::DataTransfer::DataPackageOperation::Copy);
+    });
     
-    // Size accommodates both the content frame and the drop shadow margins
-    setFixedSize(520, 390);
-
-    // Make window frameless, top-level dialog, and translucent
-    setWindowFlags(Qt::Dialog | Qt::FramelessWindowHint | Qt::WindowSystemMenuHint);
-    setAttribute(Qt::WA_TranslucentBackground);
-
-    // Dialog layout leaves a gap for the drop shadow to render
-    QVBoxLayout *dialogLayout = new QVBoxLayout(this);
-    dialogLayout->setContentsMargins(15, 15, 15, 15);
-
-    // Primary Container (Glass Card)
-    m_mainFrame = new QFrame(this);
-    m_mainFrame->setObjectName("mainFrame");
-    m_mainFrame->setStyleSheet(
-        QString(
-            "QFrame#mainFrame { "
-            "  background-color: %1; "
-            "  border: 1px solid %2; "
-            "  border-radius: 8px; "
-            "}"
-        ).arg(Theme::kBgSurface, Theme::kBorderElevated)
-    );
-
-    // Breathtaking Drop Shadow Effect
-    QGraphicsDropShadowEffect *shadow = new QGraphicsDropShadowEffect(m_mainFrame);
-    shadow->setBlurRadius(16);
-    shadow->setXOffset(0);
-    shadow->setYOffset(4);
-    shadow->setColor(QColor(0, 0, 0, 180));
-    m_mainFrame->setGraphicsEffect(shadow);
-
-    dialogLayout->addWidget(m_mainFrame);
-
-    // Inner layout for controls
-    QVBoxLayout *mainLayout = new QVBoxLayout(m_mainFrame);
-    mainLayout->setAlignment(Qt::AlignTop);
-    mainLayout->setContentsMargins(24, 16, 24, 24);
-    mainLayout->setSpacing(0);
-
-    // ── Sleek Custom Title Bar Row ──
-    QHBoxLayout *titleBarLayout = new QHBoxLayout();
-    titleBarLayout->setContentsMargins(0, 0, 0, 0);
-    
-    m_closeBtn = new QPushButton("⨉", m_mainFrame);
-    m_closeBtn->setObjectName("closeBtn");
-    m_closeBtn->setCursor(Qt::PointingHandCursor);
-    m_closeBtn->setStyleSheet(
-        QString(
-            "QPushButton#closeBtn { "
-            "  background: transparent; "
-            "  color: %1; "
-            "  border: none; "
-            "  font-size: 14px; "
-            "  font-weight: bold; "
-            "  min-width: 32px; "
-            "  max-width: 32px; "
-            "  min-height: 32px; "
-            "  max-height: 32px; "
-            "  border-radius: 4px; "
-            "  margin-top: -2px; "
-            "  margin-right: -2px; "
-            "} "
-            "QPushButton#closeBtn:hover { "
-            "  background-color: %2; "
-            "  color: #ffffff; "
-            "} "
-            "QPushButton#closeBtn:pressed { "
-            "  background-color: %3; "
-            "  color: #ffffff; "
-            "}"
-        ).arg(Theme::kTextSecondary, Theme::kCloseHover, Theme::kClosePressed)
-    );
-    connect(m_closeBtn, &QPushButton::clicked, this, &WelcomeWindow::reject);
-    
-    titleBarLayout->addStretch();
-    titleBarLayout->addWidget(m_closeBtn);
-    mainLayout->addLayout(titleBarLayout);
-
-    // ── App Icon Centerpiece ──
-    QLabel *iconLabel = new QLabel(m_mainFrame);
-    iconLabel->setObjectName("appIconLabel");
-    iconLabel->setFixedSize(72, 72);
-    iconLabel->setAlignment(Qt::AlignCenter);
-    
-    // Scale vector graphic sharply
-    QIcon appIcon(":/icons/app.svg");
-    if (!appIcon.isNull()) {
-        iconLabel->setPixmap(appIcon.pixmap(52, 52));
-    }
-    
-    iconLabel->setStyleSheet(
-        QString(
-            "QLabel#appIconLabel { "
-            "  background-color: %1; "
-            "  border: 1px solid %2; "
-            "  border-radius: 12px; "
-            "  padding: 8px; "
-            "}"
-        ).arg(Theme::kBgSurfaceSecondary, Theme::kBorderDefault)
-    );
-    
-    mainLayout->addWidget(iconLabel, 0, Qt::AlignHCenter);
-    mainLayout->addSpacing(12);
-
-    // ── Modern Bold Title ──
-    QLabel *titleLabel = new QLabel("Glass Player", m_mainFrame);
-    titleLabel->setAlignment(Qt::AlignCenter);
-    titleLabel->setStyleSheet(
-        QString(
-            "QLabel { "
-            "  color: %1; "
-            "  font-family: %2; "
-            "  font-size: 22px; "
-            "  font-weight: 600; "
-            "  letter-spacing: 0.5px; "
-            "  background: transparent; "
-            "}"
-        ).arg(Theme::kTextPrimary, Theme::kFontFamily)
-    );
-    mainLayout->addWidget(titleLabel);
-
-    // ── Organic Subtitle ──
-    QLabel *subtitleLabel = new QLabel("Drop a video file here, or choose an option below", m_mainFrame);
-    subtitleLabel->setAlignment(Qt::AlignCenter);
-    subtitleLabel->setStyleSheet(
-        QString(
-            "QLabel { "
-            "  color: %1; "
-            "  font-family: %2; "
-            "  font-size: 13px; "
-            "  font-weight: 400; "
-            "  background: transparent; "
-            "}"
-        ).arg(Theme::kTextSecondary, Theme::kFontFamily)
-    );
-    mainLayout->addWidget(subtitleLabel);
-    
-    mainLayout->addSpacing(28);
-
-    // ── Premium Actions Layout ──
-    QHBoxLayout *buttonsLayout = new QHBoxLayout();
-    buttonsLayout->setAlignment(Qt::AlignCenter);
-    buttonsLayout->setSpacing(24);
-
-    QString buttonStyle = 
-        QString(
-            "QToolButton { "
-            "  background-color: %1; "
-            "  color: %2; "
-            "  border: 1px solid %3; "
-            "  border-radius: 8px; "
-            "  font-family: %4; "
-            "  font-size: 13px; "
-            "  font-weight: 600; "
-            "  padding-top: 18px; "
-            "  padding-bottom: 14px; "
-            "} "
-            "QToolButton:hover { "
-            "  background-color: %5; "
-            "  border: 1px solid %6; "
-            "} "
-            "QToolButton:pressed { "
-            "  background-color: %7; "
-            "  border: 1px solid %8; "
-            "}"
-        ).arg(Theme::kBgSurfaceSecondary, Theme::kTextPrimary, Theme::kBorderDefault, Theme::kFontFamily,
-              Theme::kBgHover, Theme::kBorderElevated, Theme::kBgPressed, Theme::kBorderDefault);
-
-    // 1. Open File Card Button
-    m_openFileBtn = new QToolButton(m_mainFrame);
-    m_openFileBtn->setText("Open File");
-    m_openFileBtn->setIcon(QIcon(":/icons/open_file.svg"));
-    m_openFileBtn->setIconSize(QSize(28, 28));
-    m_openFileBtn->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
-    m_openFileBtn->setFixedSize(180, 100);
-    m_openFileBtn->setCursor(Qt::PointingHandCursor);
-    m_openFileBtn->setStyleSheet(buttonStyle);
-    connect(m_openFileBtn, &QToolButton::clicked, this, &WelcomeWindow::onOpenFileClicked);
-
-    // 2. Remote Cloud Browser Card Button
-    m_rcloneBtn = new QToolButton(m_mainFrame);
-    m_rcloneBtn->setText("Remote Browser");
-    m_rcloneBtn->setIcon(QIcon(":/icons/remote.svg"));
-    m_rcloneBtn->setIconSize(QSize(28, 28));
-    m_rcloneBtn->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
-    m_rcloneBtn->setFixedSize(180, 100);
-    m_rcloneBtn->setCursor(Qt::PointingHandCursor);
-    m_rcloneBtn->setStyleSheet(buttonStyle);
-    connect(m_rcloneBtn, &QToolButton::clicked, this, &WelcomeWindow::onRcloneClicked);
-
-    buttonsLayout->addWidget(m_openFileBtn);
-    buttonsLayout->addWidget(m_rcloneBtn);
-
-    mainLayout->addLayout(buttonsLayout);
-    mainLayout->addSpacing(8);
-}
-
-// ── Drag & Drop Implementation ──
-void WelcomeWindow::dragEnterEvent(QDragEnterEvent *event)
-{
-    if (event->mimeData()->hasUrls()) {
-        QList<QUrl> urls = event->mimeData()->urls();
-        if (!urls.isEmpty()) {
-            QString filePath = urls.first().toLocalFile();
-            if (isPlayableFile(filePath)) {
-                event->acceptProposedAction();
-                return;
-            }
+    dropBorder.Drop([this](auto const&, DragEventArgs const& e) {
+        if (e.DataView().Contains(winrt::Windows::ApplicationModel::DataTransfer::StandardDataFormats::StorageItems())) {
+            e.DataView().GetStorageItemsAsync().Completed([this](auto const& op, auto const& status) {
+                if (status == winrt::Windows::Foundation::AsyncStatus::Completed) {
+                    auto items = op.GetResults();
+                    if (items.Size() > 0) {
+                        auto file = items.GetAt(0).as<winrt::Windows::Storage::IStorageFile>();
+                        if (file) {
+                            m_dispatcherQueue.TryEnqueue([this, path = file.Path()]() {
+                                if (m_fileOpenedCallback) m_fileOpenedCallback(path.c_str());
+                            });
+                        }
+                    }
+                }
+            });
         }
-    }
-    event->ignore();
-}
+    });
 
-void WelcomeWindow::dropEvent(QDropEvent *event)
-{
-    const QMimeData *mimeData = event->mimeData();
-    if (mimeData->hasUrls()) {
-        QList<QUrl> urlList = mimeData->urls();
-        if (!urlList.isEmpty()) {
-            QString filePath = urlList.first().toLocalFile();
-            if (isPlayableFile(filePath)) {
-                emit fileOpened(filePath);
-                accept();
+    rootGrid.Children().Append(dropBorder);
+
+    // Buttons at bottom
+    StackPanel btnPanel;
+    btnPanel.Orientation(Orientation::Horizontal);
+    btnPanel.HorizontalAlignment(HorizontalAlignment::Center);
+    rootGrid.SetRow(btnPanel, 2);
+
+    Button openFileBtn = Button();
+    openFileBtn.Content(winrt::box_value(L"Open File"));
+    openFileBtn.Width(130);
+    openFileBtn.Height(36);
+    openFileBtn.Margin(Thickness{ 0, 0, 15, 0 });
+    
+    // Premium style (accent color)
+    openFileBtn.Background(SolidColorBrush(winrt::Windows::UI::ColorHelper::FromArgb(255, 0, 120, 215)));
+    openFileBtn.Foreground(SolidColorBrush(winrt::Windows::UI::Colors::White()));
+    
+    openFileBtn.Click([this](auto const&, auto const&) {
+        winrt::Windows::Storage::Pickers::FileOpenPicker picker;
+        picker.as<IInitializeWithWindow>()->Initialize(m_hwnd);
+        picker.FileTypeFilter().Append(L"*");
+        picker.PickSingleFileAsync().Completed([this](auto const& op, auto const& status) {
+            if (status == winrt::Windows::Foundation::AsyncStatus::Completed) {
+                auto file = op.GetResults();
+                if (file) {
+                    m_dispatcherQueue.TryEnqueue([this, path = file.Path()]() {
+                        if (m_fileOpenedCallback) m_fileOpenedCallback(path.c_str());
+                    });
+                }
             }
+        });
+    });
+    btnPanel.Children().Append(openFileBtn);
+
+    Button rcloneBtn = Button();
+    rcloneBtn.Content(winrt::box_value(L"Cloud Streams"));
+    rcloneBtn.Width(130);
+    rcloneBtn.Height(36);
+    rcloneBtn.Click([this](auto const&, auto const&) {
+        if (m_openRcloneBrowserCallback) {
+            m_openRcloneBrowserCallback();
         }
-    }
+    });
+    btnPanel.Children().Append(rcloneBtn);
+
+    rootGrid.Children().Append(btnPanel);
+
+    m_window.Content(rootGrid);
 }
 
-// ── Frameless Windows Movement ──
-void WelcomeWindow::mousePressEvent(QMouseEvent *event)
+void WelcomeWindow::show()
 {
-    if (event->button() == Qt::LeftButton) {
-        m_dragActive = true;
-        m_dragPosition = event->globalPosition().toPoint() - frameGeometry().topLeft();
-        event->accept();
-    }
+    m_window.Activate();
 }
 
-void WelcomeWindow::mouseMoveEvent(QMouseEvent *event)
+void WelcomeWindow::close()
 {
-    if (m_dragActive && (event->buttons() & Qt::LeftButton)) {
-        move(event->globalPosition().toPoint() - m_dragPosition);
-        event->accept();
-    }
-}
-
-void WelcomeWindow::mouseReleaseEvent(QMouseEvent *event)
-{
-    m_dragActive = false;
-}
-
-// ── Slots ──
-void WelcomeWindow::onOpenFileClicked()
-{
-    QString file = QFileDialog::getOpenFileName(this, "Open Video", "",
-        "Media Files (*.mp4 *.mkv *.avi *.mov *.flv *.webm *.wmv *.m4v *.3gp *.ts *.mts *.m2ts *.vob *.ogv *.asf *.mp3 *.m4a *.aac *.flac *.wav *.ac3 *.dts *.ogg *.opus *.wma *.mka);;Video Files (*.mp4 *.mkv *.avi *.mov *.flv *.webm *.wmv *.m4v *.3gp *.ts *.mts *.m2ts *.vob *.ogv *.asf);;Audio Files (*.mp3 *.m4a *.aac *.flac *.wav *.ac3 *.dts *.ogg *.opus *.wma *.mka);;All Files (*.*)");
-    if (!file.isEmpty()) {
-        emit fileOpened(file);
-        accept();
-    }
-}
-
-void WelcomeWindow::onRcloneClicked()
-{
-    emit openRcloneBrowser();
-    accept();
-}
-
-void WelcomeWindow::showEvent(QShowEvent *event)
-{
-    QDialog::showEvent(event);
-    QPropertyAnimation *anim = new QPropertyAnimation(this, "windowOpacity");
-    anim->setDuration(200);
-    anim->setStartValue(0.0);
-    anim->setEndValue(1.0);
-    anim->start(QAbstractAnimation::DeleteWhenStopped);
+    m_window.Close();
 }

@@ -2,16 +2,15 @@ cmake_minimum_required(VERSION 3.20)
 
 project(GlassPlayerWindows VERSION 1.0 LANGUAGES CXX)
 
+set(CMAKE_VS_NUGET_PACKAGE_RESTORE ON)
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 string(TOLOWER "${CMAKE_GENERATOR_PLATFORM}" _gen_platform_lower)
 
-find_package(Qt6 COMPONENTS Core Gui Widgets OpenGLWidgets Network Svg SvgWidgets REQUIRED)
+# Windows App SDK and C++/WinRT are managed via NuGet package references below
 
-set(CMAKE_AUTOMOC ON)
-set(CMAKE_AUTORCC ON)
-set(CMAKE_AUTOUIC ON)
 
 # Add mpv dependency
 find_package(PkgConfig QUIET)
@@ -72,7 +71,6 @@ endif()
 
 add_executable(GlassPlayer WIN32
     main.cpp
-    Theme.h
     MainWindow.cpp
     MainWindow.h
     WelcomeWindow.cpp
@@ -81,16 +79,19 @@ add_executable(GlassPlayer WIN32
     SettingsWindow.h
     RcloneBrowser.cpp
     RcloneBrowser.h
-    MpvWidget.cpp
-    MpvWidget.h
+    MpvManager.cpp
+    MpvManager.h
     WinOSIntegration.cpp
     WinOSIntegration.h
     app.rc
-    resources.qrc
+)
+
+set_target_properties(GlassPlayer PROPERTIES
+    VS_GLOBAL_TargetPlatformMinVersion "10.0.17763.0"
 )
 
 target_include_directories(GlassPlayer PRIVATE ${MPV_INCLUDE_DIRS})
-target_link_libraries(GlassPlayer PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets Qt6::OpenGLWidgets Qt6::Network Qt6::Svg Qt6::SvgWidgets ${MPV_LIBRARIES} d3d11.lib dxgi.lib wbemuuid.lib dxva2.lib)
+target_link_libraries(GlassPlayer PRIVATE ${MPV_LIBRARIES} d3d11.lib dxgi.lib wbemuuid.lib dxva2.lib dwmapi.lib Shlwapi.lib Pathcch.lib Microsoft.WindowsAppRuntime.Bootstrap.lib)
 
 # Copy libmpv-2.dll to the build directory so it can be run directly from IDE
 if (MPV_RUNTIME_DLL AND EXISTS "${MPV_RUNTIME_DLL}")
@@ -145,13 +146,8 @@ if(WIN32)
         install(FILES ${MPV_RUNTIME_DLL} DESTINATION bin)
     endif()
     
-    get_target_property(_qmake_executable Qt6::qmake IMPORTED_LOCATION)
-    get_filename_component(_qt_bin_dir "${_qmake_executable}" DIRECTORY)
-    find_program(WINDEPLOYQT_EXECUTABLE windeployqt HINTS "${_qt_bin_dir}")
-    
-    if(NOT CMAKE_CROSSCOMPILING AND WINDEPLOYQT_EXECUTABLE)
-        install(CODE "execute_process(COMMAND ${WINDEPLOYQT_EXECUTABLE} --no-translations --no-opengl-sw \"\${CMAKE_INSTALL_PREFIX}/bin/GlassPlayer.exe\")")
-    endif()
+    # Windows App SDK handles its own deployment dll copying via NuGet targets
+
 endif()
 
 if(WIN32)

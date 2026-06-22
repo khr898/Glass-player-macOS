@@ -1,141 +1,203 @@
-#include <QApplication>
-#include <QCommandLineParser>
-#include <QCommandLineOption>
-#include <QLocalServer>
-#include <QLocalSocket>
-#include <QDebug>
-#include <QFont>
-#include <QPalette>
-#include <QColor>
-#include <QSurfaceFormat>
+#include <windows.h>
+#undef GetCurrentTime
+#include <MddBootstrap.h>
+#include <winrt/Windows.Foundation.h>
+#include <winrt/Microsoft.UI.Xaml.h>
+#include <winrt/Microsoft.UI.Xaml.Controls.h>
+#include <shellapi.h>
+#include <string>
+#include <vector>
+#include <fstream>
+#include <iomanip>
+
 #include "MainWindow.h"
-#include "Theme.h"
+#include "WelcomeWindow.h"
 
-int main(int argc, char *argv[])
+inline void LogMessage(const std::wstring& msg)
 {
-    // Optimize DXGI swapchain pacing and minimize staging buffer copy latency
-    qputenv("QT_D3D11_STAGING_BUFFER_COUNT", "1");
-    qputenv("QT_ANGLE_PLATFORM", "d3d11");
-
-    // Force V-Sync sync interval via surface format swap interval configuration
-    QSurfaceFormat format = QSurfaceFormat::defaultFormat();
-    format.setSwapInterval(1);
-    format.setDepthBufferSize(24);
-    format.setStencilBufferSize(8);
-    format.setProfile(QSurfaceFormat::CoreProfile);
-    QSurfaceFormat::setDefaultFormat(format);
-
-    // Enable high DPI scaling
-    QApplication::setHighDpiScaleFactorRoundingPolicy(Qt::HighDpiScaleFactorRoundingPolicy::PassThrough);
-
-    QApplication app(argc, argv);
-    app.setApplicationName("Glass Player");
-    app.setOrganizationName("Glass Player");
-    app.setWindowIcon(QIcon(":/icons/app.svg"));
-
-    // Set application-wide font matching WinUI Segoe UI Variable Text (or Segoe UI fallback)
-    QFont font("Segoe UI Variable Text", 10);
-    font.setFamilies(QStringList() << "Segoe UI Variable Text" << "Segoe UI" << "Arial");
-    app.setFont(font);
-
-    // Dark Fluent Palette
-    QPalette darkPalette;
-    darkPalette.setColor(QPalette::Window, QColor(32, 32, 32));
-    darkPalette.setColor(QPalette::WindowText, QColor(255, 255, 255, 237));
-    darkPalette.setColor(QPalette::Base, QColor(20, 20, 20));
-    darkPalette.setColor(QPalette::AlternateBase, QColor(32, 32, 32));
-    darkPalette.setColor(QPalette::ToolTipBase, QColor(32, 32, 32));
-    darkPalette.setColor(QPalette::ToolTipText, QColor(255, 255, 255, 237));
-    darkPalette.setColor(QPalette::Text, QColor(255, 255, 255, 237));
-    darkPalette.setColor(QPalette::Button, QColor(45, 45, 45));
-    darkPalette.setColor(QPalette::ButtonText, QColor(255, 255, 255, 237));
-    darkPalette.setColor(QPalette::BrightText, Qt::white);
-    darkPalette.setColor(QPalette::Link, QColor(96, 205, 255));
-    darkPalette.setColor(QPalette::Highlight, QColor(96, 205, 255, 51));
-    darkPalette.setColor(QPalette::HighlightedText, QColor(96, 205, 255));
-    darkPalette.setColor(QPalette::Disabled, QPalette::WindowText, QColor(255, 255, 255, 115));
-    darkPalette.setColor(QPalette::Disabled, QPalette::Text, QColor(255, 255, 255, 115));
-    darkPalette.setColor(QPalette::Disabled, QPalette::ButtonText, QColor(255, 255, 255, 115));
-    app.setPalette(darkPalette);
-
-    // Global QToolTip style
-    app.setStyleSheet("QToolTip { color: rgba(255, 255, 255, 237); background-color: rgba(32, 32, 32, 240); border: 1px solid rgba(255, 255, 255, 46); border-radius: 4px; padding: 4px 8px; }");
-
-    const QString serverName = "GlassPlayerIPCServer";
-    
-    // Check if arguments are provided to control the player
-    QStringList cmdArgs = app.arguments();
-    cmdArgs.removeFirst(); // Remove executable path
-    
-    if (!cmdArgs.isEmpty()) {
-        QLocalSocket socket;
-        socket.connectToServer(serverName);
-        if (socket.waitForConnected(500)) {
-            QString command = cmdArgs.join(" ");
-            socket.write(command.toUtf8());
-            socket.waitForBytesWritten(1000);
-            return 0; // Exit secondary instance immediately after sending command
+    wchar_t tempPath[MAX_PATH];
+    if (GetTempPathW(MAX_PATH, tempPath)) {
+        std::wstring logPath = std::wstring(tempPath) + L"glass_player_debug.log";
+        std::wofstream logFile(logPath, std::ios::app);
+        if (logFile.is_open()) {
+            logFile << msg << std::endl;
         }
     }
+}
 
-    // This is the primary instance. Clean up previous socket server leftovers.
-    QLocalServer::removeServer(serverName);
-
-    QLocalServer server;
-    if (!server.listen(serverName)) {
-        qWarning() << "Failed to start local IPC server:" << server.errorString();
+// Custom App class inheriting from WinUI 3 Application
+struct App : winrt::Microsoft::UI::Xaml::ApplicationT<App>
+{
+    App(std::wstring const& cmdLine) : m_cmdLine(cmdLine)
+    {
+        LogMessage(L"App::App - Constructor called");
     }
 
-    MainWindow w;
-
-    // Connect the local IPC server to execute received CLI commands on the player
-    QObject::connect(&server, &QLocalServer::newConnection, &w, [&server, &w]() {
-        QLocalSocket *socket = server.nextPendingConnection();
-        if (socket) {
-            QObject::connect(socket, &QLocalSocket::readyRead, socket, [&w, socket]() {
-                QString command = QString::fromUtf8(socket->readAll()).trimmed();
-                if (!command.isEmpty()) {
-                    w.executeCommand(command);
+    void OnLaunched(winrt::Microsoft::UI::Xaml::LaunchActivatedEventArgs const&)
+    {
+        LogMessage(L"App::OnLaunched - Started");
+        // Parse arguments for options and file path
+        std::wstring fileToOpen;
+        std::wstring anime4kPreset;
+        
+        int argc = 0;
+        LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);
+        if (argv) {
+            for (int i = 1; i < argc; ++i) {
+                std::wstring arg = argv[i];
+                if ((arg == L"-a" || arg == L"--anime4k") && i + 1 < argc) {
+                    anime4kPreset = argv[++i];
+                } else if (arg[0] != L'-') {
+                    fileToOpen = arg;
                 }
-            });
-            QObject::connect(socket, &QLocalSocket::disconnected, socket, &QLocalSocket::deleteLater);
+            }
+            LocalFree(argv);
+        }
+
+        LogMessage(L"App::OnLaunched - Creating MainWindow");
+        // Initialize and display main window
+        m_mainWindow = std::make_shared<MainWindow>();
+        LogMessage(L"App::OnLaunched - MainWindow created");
+        
+        if (!anime4kPreset.empty()) {
+            m_mainWindow->setAnime4kPreset(anime4kPreset);
+        }
+
+        if (!fileToOpen.empty()) {
+            LogMessage(L"App::OnLaunched - Opening file: " + fileToOpen);
+            m_mainWindow->suppressWelcome();
+            m_mainWindow->openFile(fileToOpen);
+            m_mainWindow->show();
+        } else {
+            if (m_mainWindow->shouldShowWelcome()) {
+                LogMessage(L"App::OnLaunched - Creating WelcomeWindow");
+                m_welcomeWindow = std::make_shared<WelcomeWindow>();
+                
+                // Set up events on the welcome screen
+                m_welcomeWindow->fileOpened([this](std::wstring const& path) {
+                    m_welcomeWindow->close();
+                    m_mainWindow->openFile(path);
+                    m_mainWindow->show();
+                });
+                
+                m_welcomeWindow->openRcloneBrowser([this]() {
+                    m_welcomeWindow->close();
+                    m_mainWindow->openRcloneBrowserDirectly();
+                    m_mainWindow->show();
+                });
+
+                LogMessage(L"App::OnLaunched - Showing WelcomeWindow");
+                // Show welcome screen. Only show main window if a file is loaded or browser is open.
+                m_welcomeWindow->show();
+            } else {
+                LogMessage(L"App::OnLaunched - Showing MainWindow directly");
+                m_mainWindow->show();
+            }
+        }
+        LogMessage(L"App::OnLaunched - Completed");
+    }
+
+private:
+    std::wstring m_cmdLine;
+    std::shared_ptr<MainWindow> m_mainWindow{ nullptr };
+    std::shared_ptr<WelcomeWindow> m_welcomeWindow{ nullptr };
+};
+
+int APIENTRY wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLine, int nCmdShow)
+{
+    LogMessage(L"wWinMain - Started");
+    // 1. Single-instance check
+    HANDLE hMutex = CreateMutexW(nullptr, TRUE, L"Local\\GlassPlayerMutex");
+    if (hMutex == nullptr) {
+        LogMessage(L"wWinMain - CreateMutex failed");
+        return 0;
+    }
+    
+    if (GetLastError() == ERROR_ALREADY_EXISTS) {
+        LogMessage(L"wWinMain - Instance already exists, forwarding arguments");
+        // Locate primary instance window
+        HWND hwndPrimary = nullptr;
+        for (int i = 0; i < 5; ++i) {
+            hwndPrimary = FindWindowW(L"GlassPlayerVideoWindowClass", nullptr);
+            if (hwndPrimary) break;
+            Sleep(100);
+        }
+        
+        if (hwndPrimary) {
+            // Forward CLI arguments to the active instance
+            int argc = 0;
+            LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);
+            if (argv && argc > 1) {
+                std::wstring command;
+                for (int i = 1; i < argc; ++i) {
+                    if (i > 1) command += L" ";
+                    command += argv[i];
+                }
+                
+                COPYDATASTRUCT cds;
+                cds.dwData = 1; // command arguments code
+                cds.cbData = (DWORD)((command.length() + 1) * sizeof(wchar_t));
+                cds.lpData = (void*)command.c_str();
+                
+                SendMessageW(hwndPrimary, WM_COPYDATA, 0, reinterpret_cast<LPARAM>(&cds));
+                LocalFree(argv);
+                LogMessage(L"wWinMain - Arguments forwarded: " + command);
+            } else {
+                LogMessage(L"wWinMain - No arguments to forward");
+            }
+            // Focus primary window
+            ShowWindow(hwndPrimary, SW_RESTORE);
+            SetForegroundWindow(hwndPrimary);
+        } else {
+            LogMessage(L"wWinMain - Primary window not found");
+        }
+        CloseHandle(hMutex);
+        LogMessage(L"wWinMain - Exiting second instance");
+        return 0;
+    }
+
+    LogMessage(L"wWinMain - Primary instance, initializing Windows App SDK bootstrapper");
+    // 2. Initialize Windows App SDK bootstrap
+    // Major 1, Minor 5 (0x00010005)
+    HRESULT hr = MddBootstrapInitialize2(
+        0x00010005,
+        L"",
+        PACKAGE_VERSION{ 0 },
+        MddBootstrapInitializeOptions_OnError_DebugBreak
+    );
+    
+    if (FAILED(hr)) {
+        LogMessage(L"wWinMain - MddBootstrapInitialize2 failed with hr=" + std::to_wstring(hr));
+        MessageBoxW(nullptr, L"Failed to initialize Windows App SDK bootstrap. Please ensure Windows App Runtime is installed.", L"Glass Player - Error", MB_OK | MB_ICONERROR);
+        CloseHandle(hMutex);
+        return hr;
+    }
+
+    LogMessage(L"wWinMain - Bootstrapper initialized successfully. Initializing apartment");
+    // 3. Initialize Threading Apartment
+    winrt::init_apartment(winrt::apartment_type::single_threaded);
+
+    LogMessage(L"wWinMain - Starting WinUI 3 Application loop");
+    // 4. Start WinUI 3 Application Loop
+    winrt::Microsoft::UI::Xaml::Application::Start([&](auto&&) {
+        try {
+            LogMessage(L"wWinMain - Inside Application::Start, creating App");
+            winrt::make<App>(lpCmdLine);
+            LogMessage(L"wWinMain - App created successfully");
+        } catch (winrt::hresult_error const& ex) {
+            LogMessage(L"wWinMain - hresult_error: " + std::wstring(ex.message()));
+        } catch (std::exception const& ex) {
+            LogMessage(L"wWinMain - std::exception: " + std::wstring(winrt::to_hstring(ex.what())));
+        } catch (...) {
+            LogMessage(L"wWinMain - Unknown exception in Application::Start");
         }
     });
 
-    QCommandLineParser parser;
-    parser.setApplicationDescription("Glass Player");
-    parser.addHelpOption();
-
-    QCommandLineOption anime4kOption(QStringList() << "a" << "anime4k",
-        "Enable Anime4K with preset <preset> (e.g. ModeA, ModeB, ModeC, ModeAA, ModeBB, ModeCA).",
-        "preset");
-    parser.addOption(anime4kOption);
-
-    parser.addPositionalArgument("file", "The file to open.");
-
-    parser.process(app);
-
-    if (parser.isSet(anime4kOption)) {
-        w.setAnime4kPreset(parser.value(anime4kOption));
-    }
-
-    const QStringList args = parser.positionalArguments();
-    if (!args.isEmpty()) {
-        w.suppressWelcome();   // Don't show welcome when a file is opened directly
-        w.openFile(args.first());
-        w.show();
-    } else {
-        // Show the welcome screen dialog first. Only show the main window if accepted.
-        if (w.shouldShowWelcome()) {
-            if (w.runWelcomeScreen() == QDialog::Accepted) {
-                w.show();
-            } else {
-                return 0; // Clean exit without showing the black window
-            }
-        } else {
-            w.show();
-        }
-    }
-
-    return app.exec();
+    LogMessage(L"wWinMain - Application loop exited. Shutting down bootstrapper");
+    // 5. Clean up
+    MddBootstrapShutdown();
+    CloseHandle(hMutex);
+    
+    LogMessage(L"wWinMain - Completed and exiting");
+    return 0;
 }

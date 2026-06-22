@@ -1,8 +1,44 @@
 #include "WinOSIntegration.h"
 #include <algorithm>
 #include <comdef.h>
+#include <dwmapi.h>
 
 #pragma comment(lib, "wbemuuid.lib")
+#pragma comment(lib, "dwmapi.lib")
+
+#ifndef DWMWA_SYSTEMBACKDROP_TYPE
+#define DWMWA_SYSTEMBACKDROP_TYPE 38
+#endif
+#ifndef DWMWA_MICA_EFFECT
+#define DWMWA_MICA_EFFECT 1029
+#endif
+#ifndef DWMWA_USE_IMMERSIVE_DARK_MODE
+#define DWMWA_USE_IMMERSIVE_DARK_MODE 20
+#endif
+#ifndef DWMWA_BORDER_COLOR
+#define DWMWA_BORDER_COLOR 34
+#endif
+#ifndef DWMWA_COLOR_NONE
+#define DWMWA_COLOR_NONE 0xFFFFFFFE
+#endif
+
+// DWM enum values as raw integers to avoid SDK conflict redefinitions:
+// DWMSBT_TRANSLUCENTAUTHORING = 3 (Acrylic backdrop)
+
+struct ACCENT_POLICY {
+    DWORD AccentState;
+    DWORD AccentFlags;
+    DWORD GradientColor;
+    DWORD AnimationId;
+};
+
+struct WINDOWCOMPOSITIONATTRIBDATA {
+    DWORD Attribute;
+    PVOID pvData;
+    DWORD cbData;
+};
+
+typedef BOOL(WINAPI* pfnSetWindowCompositionAttribute)(HWND, WINDOWCOMPOSITIONATTRIBDATA*);
 
 float WinOSIntegration::clamp01(float value) {
     return std::clamp(value, 0.0f, 1.0f);
@@ -293,4 +329,55 @@ void WinOSIntegration::setBrightnessWmi(float level) {
         pClassObject->Release();
     }
     pEnumerator->Release();
+}
+
+void WinOSIntegration::applyFrostedGlass(HWND hwnd)
+{
+    if (!hwnd) return;
+
+    // Use dark mode title bar for DWM matching
+    BOOL darkMode = TRUE;
+    DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &darkMode, sizeof(darkMode));
+
+    // Suppress the native border on Windows 11 to avoid double borders/outlines on frameless windows
+    DWORD borderNone = DWMWA_COLOR_NONE;
+    DwmSetWindowAttribute(hwnd, DWMWA_BORDER_COLOR, &borderNone, sizeof(borderNone));
+
+    // Try Windows 11 System Backdrop API first (Acrylic/Mica)
+    // Acrylic type value is 3 (DWMSBT_TRANSLUCENTAUTHORING)
+    int backdrop = 3; 
+    HRESULT hr = DwmSetWindowAttribute(hwnd, DWMWA_SYSTEMBACKDROP_TYPE, &backdrop, sizeof(backdrop));
+    
+    if (SUCCEEDED(hr)) {
+        return; // Windows 11 22H2+ successfully applied Acrylic
+    }
+
+    // Try Windows 11 21H2 Mica fallback
+    BOOL mica = TRUE;
+    hr = DwmSetWindowAttribute(hwnd, DWMWA_MICA_EFFECT, &mica, sizeof(mica));
+    if (SUCCEEDED(hr)) {
+        return;
+    }
+
+    // Try Windows 10 Acrylic fallback via SetWindowCompositionAttribute
+    HMODULE hUser = GetModuleHandleW(L"user32.dll");
+    if (hUser) {
+        pfnSetWindowCompositionAttribute setWindowCompositionAttribute = 
+            (pfnSetWindowCompositionAttribute)GetProcAddress(hUser, "SetWindowCompositionAttribute");
+        if (setWindowCompositionAttribute) {
+            ACCENT_POLICY policy = {0};
+            // ACCENT_ENABLE_ACRYLICBLURBEHIND is 4
+            policy.AccentState = 4;
+            // Semi-transparent tint color in ABGR format
+            policy.GradientColor = 0xC81E1E1E; // 0xC8 alpha (about 200/255), dark grey tint
+            policy.AccentFlags = 2; // draw border/shadow
+
+            WINDOWCOMPOSITIONATTRIBDATA data = {0};
+            data.Attribute = 19; // WCA_ACCENT_POLICY
+            data.pvData = &policy;
+            data.cbData = sizeof(policy);
+
+            setWindowCompositionAttribute(hwnd, &data);
+        }
+    }
 }

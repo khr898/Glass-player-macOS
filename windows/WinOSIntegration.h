@@ -28,7 +28,8 @@ public:
     float getSystemBrightness();
     void setSystemBrightness(float level);
 
-
+    // Frosted glass integration (Acrylic/Mica)
+    void applyFrostedGlass(HWND hwnd);
 
 private:
     WinOSIntegration();

@@ -1054,12 +1054,14 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
         if let preset = sender.representedObject as? String {
             _ = mpv.applyShaderPreset(preset)
             updateShaderButton()
+            updateFormatBadges()
         }
     }
 
     @objc private func clearShadersAction() {
         mpv.clearShaders()
         updateShaderButton()
+        updateFormatBadges()
     }
 
     @objc private func setSpeedAction(_ sender: NSMenuItem) {
@@ -1363,7 +1365,7 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
             
             let isUpscaling = info.width > 0 && info.height > 0 && viewportW > 0 && viewportH > 0 && (viewportW > info.width || viewportH > info.height)
             
-            if isUpscaling {
+            if isUpscaling && mpv.currentShaderPreset != nil {
                 let upscaledName = mpv.formatResolution(w: Int64(viewportW), h: Int64(viewportH))
                 let upscaledText = "\(res) ➔ \(upscaledName)"
                 // Soft blue tint to highlight active upscaling
@@ -2761,6 +2763,7 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
             _ = mpv.applyShaderPreset(nextPreset)
         }
         updateShaderButton()
+        updateFormatBadges()
         mpv.showText("Anime4K Shader: \(nextPreset)")
     }
 

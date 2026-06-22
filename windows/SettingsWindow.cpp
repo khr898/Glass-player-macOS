@@ -1,14 +1,70 @@
 #include "SettingsWindow.h"
-#include <QScrollArea>
-#include <QPushButton>
-#include <QKeyEvent>
-#include <QKeySequence>
-#include <QGridLayout>
+#include <dwmapi.h>
+#include <winrt/Windows.Foundation.h>
+#include <winrt/Windows.Foundation.Collections.h>
+#include <winrt/Microsoft.UI.Xaml.Media.h>
+#include <winrt/Microsoft.UI.Xaml.Controls.Primitives.h>
+#include <winrt/Microsoft.UI.Windowing.h>
+#include <winrt/Windows.UI.h>
+#include <winrt/Windows.UI.Text.h>
 
-SettingsWindow::SettingsWindow(QWidget *parent)
-    : QDialog(parent), m_settings("GlassPlayer", "Settings")
+struct __declspec(uuid("EECDB3DB-E257-4A86-844C-5B09F6F35B04")) IWindowNative : IUnknown
 {
-    setWindowFlags(windowFlags() | Qt::WindowStaysOnTopHint);
+    virtual HRESULT __stdcall get_WindowHandle(HWND* hWnd) = 0;
+};
+
+// Helper struct for Registry-based configuration
+struct RegistryConfig {
+    static std::wstring getString(const std::wstring& key, const std::wstring& defaultValue) {
+        HKEY hKey;
+        if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\Glass Player\\Glass Player", 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
+            wchar_t buf[256];
+            DWORD size = sizeof(buf);
+            if (RegQueryValueExW(hKey, key.c_str(), nullptr, nullptr, (LPBYTE)buf, &size) == ERROR_SUCCESS) {
+                RegCloseKey(hKey);
+                return buf;
+            }
+            RegCloseKey(hKey);
+        }
+        return defaultValue;
+    }
+
+    static void setString(const std::wstring& key, const std::wstring& value) {
+        HKEY hKey;
+        if (RegCreateKeyExW(HKEY_CURRENT_USER, L"Software\\Glass Player\\Glass Player", 0, nullptr, REG_OPTION_NON_VOLATILE, KEY_WRITE, nullptr, &hKey, nullptr) == ERROR_SUCCESS) {
+            RegSetValueExW(hKey, key.c_str(), 0, REG_SZ, (const BYTE*)value.c_str(), (DWORD)((value.length() + 1) * sizeof(wchar_t)));
+            RegCloseKey(hKey);
+        }
+    }
+
+    static bool getBool(const std::wstring& key, bool defaultValue) {
+        std::wstring res = getString(key, defaultValue ? L"true" : L"false");
+        return res == L"true";
+    }
+
+    static void setBool(const std::wstring& key, bool value) {
+        setString(key, value ? L"true" : L"false");
+    }
+};
+
+SettingsWindow::SettingsWindow()
+{
+    m_window = winrt::Microsoft::UI::Xaml::Window();
+    m_window.as<IWindowNative>()->get_WindowHandle(&m_hwnd);
+
+    m_window.Title(L"Settings");
+    
+    auto appWindow = m_window.AppWindow();
+    appWindow.Resize(winrt::Windows::Graphics::SizeInt32{ 750, 500 });
+
+    // Enable Mica Backdrop
+    winrt::Microsoft::UI::Xaml::Media::MicaBackdrop mica;
+    m_window.SystemBackdrop(mica);
+
+    // Immersive Dark Mode titlebar
+    BOOL darkMode = TRUE;
+    DwmSetWindowAttribute(m_hwnd, 20 /* DWMWA_USE_IMMERSIVE_DARK_MODE */, &darkMode, sizeof(darkMode));
+
     setupUi();
 }
 
@@ -18,521 +74,350 @@ SettingsWindow::~SettingsWindow()
 
 void SettingsWindow::setupUi()
 {
-    setWindowTitle("Settings");
-    setMinimumSize(720, 560);
+    using namespace winrt::Microsoft::UI::Xaml;
+    using namespace winrt::Microsoft::UI::Xaml::Controls;
+    using namespace winrt::Microsoft::UI::Xaml::Media;
 
-    setStyleSheet(
-        QString(
-            "QDialog { "
-            "  background-color: %1; "
-            "  color: %2; "
-            "} "
-            "QListWidget { "
-            "  background-color: %1; "
-            "  border: none; "
-            "  border-right: 1px solid %3; "
-            "  outline: none; "
-            "  padding-top: 10px; "
-            "} "
-            "QListWidget::item { "
-            "  height: 36px; "
-            "  padding-left: 15px; "
-            "  border-left: 3px solid transparent; "
-            "  color: %4; "
-            "  font-family: %5; "
-            "  font-size: 13px; "
-            "} "
-            "QListWidget::item:hover { "
-            "  background-color: %6; "
-            "  color: %2; "
-            "} "
-            "QListWidget::item:selected { "
-            "  background-color: %7; "
-            "  border-left: 3px solid %8; "
-            "  color: %8; "
-            "  font-weight: bold; "
-            "} "
-            "QScrollArea { "
-            "  background: transparent; "
-            "  border: none; "
-            "} "
-            "QScrollBar:vertical { "
-            "  background: transparent; "
-            "  width: 8px; "
-            "  margin: 0px; "
-            "} "
-            "QScrollBar::handle:vertical { "
-            "  background: %3; "
-            "  min-height: 20px; "
-            "  border-radius: 4px; "
-            "} "
-            "QScrollBar::handle:vertical:hover { "
-            "  background: %4; "
-            "} "
-            "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { "
-            "  height: 0px; "
-            "} "
-            "QLabel { "
-            "  color: %2; "
-            "  font-family: %5; "
-            "  font-size: 13px; "
-            "} "
-            "QLabel#headerLabel { "
-            "  font-size: 20px; "
-            "  font-weight: 600; "
-            "  color: %2; "
-            "  margin-top: 10px; "
-            "  margin-bottom: 5px; "
-            "} "
-            "QLabel#subHeaderLabel { "
-            "  font-size: 16px; "
-            "  font-weight: 600; "
-            "  color: %2; "
-            "  margin-top: 10px; "
-            "  margin-bottom: 5px; "
-            "} "
-            "QCheckBox { "
-            "  color: %2; "
-            "  font-family: %5; "
-            "  font-size: 13px; "
-            "  spacing: 8px; "
-            "} "
-            "QComboBox { "
-            "  background-color: %9; "
-            "  color: %2; "
-            "  border: 1px solid %3; "
-            "  border-radius: 4px; "
-            "  padding: 4px 28px 4px 10px; "
-            "  min-width: 120px; "
-            "  font-family: %5; "
-            "  font-size: 13px; "
-            "} "
-            "QComboBox:hover { "
-            "  background-color: %6; "
-            "  border-color: %10; "
-            "} "
-            "QComboBox QAbstractItemView { "
-            "  background-color: rgb(40, 40, 40); "
-            "  color: %2; "
-            "  border: 1px solid %10; "
-            "  selection-background-color: %7; "
-            "  selection-color: %8; "
-            "  outline: none; "
-            "} "
-        ).arg(Theme::kBgSurface, Theme::kTextPrimary, Theme::kBorderDefault, Theme::kTextSecondary, Theme::kFontFamily,
-              Theme::kBgHover, Theme::kAccentSubtle, Theme::kAccent, Theme::kBgSurfaceSecondary, Theme::kBorderElevated)
-    );
+    m_navView = NavigationView();
+    m_navView.PaneDisplayMode(NavigationViewPaneDisplayMode::Left);
+    m_navView.IsSettingsVisible(false);
+    m_navView.IsBackButtonVisible(NavigationViewBackButtonVisible::Collapsed);
 
-    QHBoxLayout *mainLayout = new QHBoxLayout(this);
-    mainLayout->setContentsMargins(0, 0, 0, 0);
-    mainLayout->setSpacing(0);
+    // Setup Sidebar Items
+    std::vector<std::wstring> sections = {
+        L"General", L"Video", L"Audio", L"Subtitles", L"Network", L"Scaling", L"Color", L"Anime4K", L"Shortcuts"
+    };
 
-    m_sidebar = new QListWidget(this);
-    m_sidebar->setFixedWidth(180);
-    m_sidebar->setStyleSheet(
-        "QListWidget { background: transparent; border: none; outline: none; padding-top: 10px; }"
-    );
-    connect(m_sidebar, &QListWidget::currentRowChanged, this, &SettingsWindow::onSidebarItemChanged);
-    mainLayout->addWidget(m_sidebar);
-
-    m_contentStack = new QStackedWidget(this);
-    mainLayout->addWidget(m_contentStack, 1);
-
-    buildGeneralSection();
-    buildVideoSection();
-    buildAudioSection();
-    buildSubtitlesSection();
-    buildNetworkSection();
-    buildScalingSection();
-    buildColorSection();
-    buildAnime4KSection();
-    buildShortcutsSection();
-
-    if (m_sidebar->count() > 0) {
-        m_sidebar->setCurrentRow(0);
+    for (auto const& sec : sections) {
+        NavigationViewItem item;
+        item.Content(winrt::box_value(sec));
+        item.Tag(winrt::box_value(sec));
+        m_navView.MenuItems().Append(item);
     }
-}
 
-void SettingsWindow::onSidebarItemChanged(int currentRow)
-{
-    m_contentStack->setCurrentIndex(currentRow);
-}
-
-void SettingsWindow::emitSettingChange(const QString &key, const QVariant &value)
-{
-    m_settings.setValue(key, value);
-    emit settingChanged(key, value);
-}
-
-QWidget* SettingsWindow::createSectionWidget()
-{
-    QScrollArea *scroll = new QScrollArea(this);
-    scroll->setWidgetResizable(true);
-    scroll->setFrameShape(QFrame::NoFrame);
-
-    QWidget *container = new QWidget(scroll);
-    QVBoxLayout *layout = new QVBoxLayout(container);
-    layout->setAlignment(Qt::AlignTop);
-    layout->setSpacing(12);
-    layout->setContentsMargins(20, 20, 20, 20);
-    
-    scroll->setWidget(container);
-    m_contentStack->addWidget(scroll);
-    
-    return container;
-}
-
-QCheckBox* SettingsWindow::addToggle(QWidget *parent, QVBoxLayout *layout, const QString &title, const QString &key, bool defaultValue)
-{
-    QCheckBox *cb = new QCheckBox(title, parent);
-    bool val = m_settings.value(key, defaultValue).toBool();
-    cb->setChecked(val);
-    connect(cb, &QCheckBox::toggled, this, [this, key](bool checked){
-        emitSettingChange(key, checked);
+    // Handle section changes
+    m_navView.SelectionChanged([this](auto const& sender, NavigationViewSelectionChangedEventArgs const& args) {
+        auto item = args.SelectedItem().as<NavigationViewItem>();
+        if (item) {
+            std::wstring tag = winrt::unbox_value<winrt::hstring>(item.Tag()).c_str();
+            
+            if (tag == L"General") m_navView.Content(buildGeneralSection());
+            else if (tag == L"Video") m_navView.Content(buildVideoSection());
+            else if (tag == L"Audio") m_navView.Content(buildAudioSection());
+            else if (tag == L"Subtitles") m_navView.Content(buildSubtitlesSection());
+            else if (tag == L"Network") m_navView.Content(buildNetworkSection());
+            else if (tag == L"Scaling") m_navView.Content(buildScalingSection());
+            else if (tag == L"Color") m_navView.Content(buildColorSection());
+            else if (tag == L"Anime4K") m_navView.Content(buildAnime4KSection());
+            else if (tag == L"Shortcuts") m_navView.Content(buildShortcutsSection());
+        }
     });
-    layout->addWidget(cb);
+
+    // Default selection
+    m_navView.SelectedItem(m_navView.MenuItems().GetAt(0));
+
+    m_window.Content(m_navView);
+}
+
+winrt::Microsoft::UI::Xaml::UIElement SettingsWindow::buildGeneralSection()
+{
+    using namespace winrt::Microsoft::UI::Xaml;
+    using namespace winrt::Microsoft::UI::Xaml::Controls;
+
+    StackPanel panel;
+    panel.Padding(Thickness{ 20 });
+    panel.Spacing(15);
+
+    TextBlock header = TextBlock();
+    header.Text(L"General Settings");
+    header.FontSize(20);
+    header.FontWeight(winrt::Windows::UI::Text::FontWeights::SemiBold());
+    panel.Children().Append(header);
+
+    addToggle(panel, L"Remember Position", L"rememberPosition", true);
+    addCombo(panel, L"Window Resize Behavior", L"windowResize", { L"Keep Aspect", L"Resize Freely" }, L"Keep Aspect");
+    addCombo(panel, L"Cursor Auto-hide (ms)", L"cursorAutohide", { L"1000", L"2000", L"3000", L"Never" }, L"2000");
+
+    return panel;
+}
+
+winrt::Microsoft::UI::Xaml::UIElement SettingsWindow::buildVideoSection()
+{
+    using namespace winrt::Microsoft::UI::Xaml;
+    using namespace winrt::Microsoft::UI::Xaml::Controls;
+
+    StackPanel panel;
+    panel.Padding(Thickness{ 20 });
+    panel.Spacing(15);
+
+    TextBlock header = TextBlock();
+    header.Text(L"Video Settings");
+    header.FontSize(20);
+    header.FontWeight(winrt::Windows::UI::Text::FontWeights::SemiBold());
+    panel.Children().Append(header);
+
+    addCombo(panel, L"Hardware Decoding", L"hwdec", { L"d3d11va", L"nvdec", L"qsv", L"none" }, L"d3d11va");
+    addCombo(panel, L"Hardware Decode Codecs", L"hwdecCodecs", { L"all", L"h264,hevc", L"hevc,vp9" }, L"all");
+    addToggle(panel, L"Deband Filter", L"deband", true);
+
+    return panel;
+}
+
+winrt::Microsoft::UI::Xaml::UIElement SettingsWindow::buildAudioSection()
+{
+    using namespace winrt::Microsoft::UI::Xaml;
+    using namespace winrt::Microsoft::UI::Xaml::Controls;
+
+    StackPanel panel;
+    panel.Padding(Thickness{ 20 });
+    panel.Spacing(15);
+
+    TextBlock header = TextBlock();
+    header.Text(L"Audio Settings");
+    header.FontSize(20);
+    header.FontWeight(winrt::Windows::UI::Text::FontWeights::SemiBold());
+    panel.Children().Append(header);
+
+    addCombo(panel, L"Audio Output API", L"audioOutput", { L"wasapi", L"openal", L"sdl" }, L"wasapi");
+    addCombo(panel, L"Maximum Volume Limit", L"volumeMax", { L"100", L"130", L"150", L"200" }, L"200");
+    addToggle(panel, L"Enable Audio Pass-through (Bitstream)", L"audioPassThrough", false);
+
+    return panel;
+}
+
+winrt::Microsoft::UI::Xaml::UIElement SettingsWindow::buildSubtitlesSection()
+{
+    using namespace winrt::Microsoft::UI::Xaml;
+    using namespace winrt::Microsoft::UI::Xaml::Controls;
+
+    StackPanel panel;
+    panel.Padding(Thickness{ 20 });
+    panel.Spacing(15);
+
+    TextBlock header = TextBlock();
+    header.Text(L"Subtitles Settings");
+    header.FontSize(20);
+    header.FontWeight(winrt::Windows::UI::Text::FontWeights::SemiBold());
+    panel.Children().Append(header);
+
+    addCombo(panel, L"Subtitle Font Size", L"subFontSize", { L"40", L"48", L"55", L"64" }, L"48");
+    addCombo(panel, L"Font Style", L"subFont", { L"Segoe UI", L"Arial", L"Trebuchet MS" }, L"Segoe UI");
+    addCombo(panel, L"Border Outline Size", L"subBorderSize", { L"1", L"2", L"3", L"4" }, L"2");
+
+    return panel;
+}
+
+winrt::Microsoft::UI::Xaml::UIElement SettingsWindow::buildNetworkSection()
+{
+    using namespace winrt::Microsoft::UI::Xaml;
+    using namespace winrt::Microsoft::UI::Xaml::Controls;
+
+    StackPanel panel;
+    panel.Padding(Thickness{ 20 });
+    panel.Spacing(15);
+
+    TextBlock header = TextBlock();
+    header.Text(L"Network Cache Settings");
+    header.FontSize(20);
+    header.FontWeight(winrt::Windows::UI::Text::FontWeights::SemiBold());
+    panel.Children().Append(header);
+
+    addCombo(panel, L"Demuxer Cache Size (MB)", L"cacheSizeMB", { L"50", L"150", L"500", L"1024" }, L"150");
+    addCombo(panel, L"Network Timeout (secs)", L"networkTimeout", { L"15", L"30", L"60" }, L"30");
+
+    return panel;
+}
+
+winrt::Microsoft::UI::Xaml::UIElement SettingsWindow::buildScalingSection()
+{
+    using namespace winrt::Microsoft::UI::Xaml;
+    using namespace winrt::Microsoft::UI::Xaml::Controls;
+
+    StackPanel panel;
+    panel.Padding(Thickness{ 20 });
+    panel.Spacing(15);
+
+    TextBlock header = TextBlock();
+    header.Text(L"Scaling & Rendering Filters");
+    header.FontSize(20);
+    header.FontWeight(winrt::Windows::UI::Text::FontWeights::SemiBold());
+    panel.Children().Append(header);
+
+    addCombo(panel, L"Upscale Scaling Filter", L"scaleFilter", { L"spline36", L"lanczos", L"ewa_lanczossharp", L"bilinear" }, L"spline36");
+    addCombo(panel, L"Downscale Scaling Filter", L"dscaleFilter", { L"mitchell", L"spline36", L"bilinear" }, L"mitchell");
+
+    return panel;
+}
+
+winrt::Microsoft::UI::Xaml::UIElement SettingsWindow::buildColorSection()
+{
+    using namespace winrt::Microsoft::UI::Xaml;
+    using namespace winrt::Microsoft::UI::Xaml::Controls;
+
+    StackPanel panel;
+    panel.Padding(Thickness{ 20 });
+    panel.Spacing(15);
+
+    TextBlock header = TextBlock();
+    header.Text(L"Color & HDR Tone Mapping");
+    header.FontSize(20);
+    header.FontWeight(winrt::Windows::UI::Text::FontWeights::SemiBold());
+    panel.Children().Append(header);
+
+    addCombo(panel, L"Tone Mapping Curve", L"toneMapping", { L"bt.2390", L"hable", L"reinhard", L"mobius" }, L"bt.2390");
+    addCombo(panel, L"Tone Mapping Mode", L"toneMappingMode", { L"auto", L"clip", L"linear" }, L"auto");
+
+    return panel;
+}
+
+winrt::Microsoft::UI::Xaml::UIElement SettingsWindow::buildAnime4KSection()
+{
+    using namespace winrt::Microsoft::UI::Xaml;
+    using namespace winrt::Microsoft::UI::Xaml::Controls;
+
+    StackPanel panel;
+    panel.Padding(Thickness{ 20 });
+    panel.Spacing(15);
+
+    TextBlock header = TextBlock();
+    header.Text(L"Anime4K Real-time Upscaling");
+    header.FontSize(20);
+    header.FontWeight(winrt::Windows::UI::Text::FontWeights::SemiBold());
+    panel.Children().Append(header);
+
+    addCombo(panel, L"Default Shader Preset", L"defaultShaderPreset", { L"ModeA", L"ModeB", L"ModeC", L"ModeAA", L"ModeBB", L"ModeCA", L"None" }, L"None");
+
+    return panel;
+}
+
+winrt::Microsoft::UI::Xaml::UIElement SettingsWindow::buildShortcutsSection()
+{
+    using namespace winrt::Microsoft::UI::Xaml;
+    using namespace winrt::Microsoft::UI::Xaml::Controls;
+    using namespace winrt::Microsoft::UI::Xaml::Media;
+
+    StackPanel panel;
+    panel.Padding(Thickness{ 20 });
+    panel.Spacing(10);
+
+    TextBlock header = TextBlock();
+    header.Text(L"Keyboard Shortcuts");
+    header.FontSize(20);
+    header.FontWeight(winrt::Windows::UI::Text::FontWeights::SemiBold());
+    panel.Children().Append(header);
+
+    // List shortcuts
+    struct HotkeyInfo {
+        std::wstring action;
+        std::wstring key;
+    };
+    std::vector<HotkeyInfo> hotkeys = {
+        { L"Play / Pause", L"Space / K" },
+        { L"Toggle Fullscreen", L"F" },
+        { L"Exit Fullscreen", L"Escape" },
+        { L"Seek Backward 5s", L"Left Arrow" },
+        { L"Seek Forward 5s", L"Right Arrow" },
+        { L"Volume Up", L"Up Arrow" },
+        { L"Volume Down", L"Down Arrow" },
+        { L"Mute / Unmute", L"M" }
+    };
+
+    for (auto const& hk : hotkeys) {
+        Grid rowGrid = Grid();
+        ColumnDefinition c1, c2;
+        c1.Width(GridLength{ 1, GridUnitType::Star });
+        c2.Width(GridLength{ 1, GridUnitType::Auto });
+        rowGrid.ColumnDefinitions().Append(c1);
+        rowGrid.ColumnDefinitions().Append(c2);
+
+        TextBlock desc = TextBlock();
+        desc.Text(hk.action);
+        desc.Foreground(SolidColorBrush(winrt::Windows::UI::Colors::LightGray()));
+        desc.VerticalAlignment(VerticalAlignment::Center);
+        rowGrid.SetColumn(desc, 0);
+        rowGrid.Children().Append(desc);
+
+        Border keyBorder = Border();
+        keyBorder.Background(SolidColorBrush(winrt::Windows::UI::ColorHelper::FromArgb(40, 255, 255, 255)));
+        keyBorder.CornerRadius(CornerRadius{ 4 });
+        keyBorder.Padding(Thickness{ 8, 4, 8, 4 });
+        rowGrid.SetColumn(keyBorder, 1);
+
+        TextBlock keyText = TextBlock();
+        keyText.Text(hk.key);
+        keyText.Foreground(SolidColorBrush(winrt::Windows::UI::Colors::White()));
+        keyText.FontSize(11);
+        keyText.FontWeight(winrt::Windows::UI::Text::FontWeights::Bold());
+        keyBorder.Child(keyText);
+
+        rowGrid.Children().Append(keyBorder);
+        panel.Children().Append(rowGrid);
+    }
+
+    return panel;
+}
+
+winrt::Microsoft::UI::Xaml::Controls::ToggleSwitch SettingsWindow::addToggle(
+    winrt::Microsoft::UI::Xaml::Controls::StackPanel& panel,
+    const std::wstring& title, const std::wstring& key, bool defaultValue)
+{
+    using namespace winrt::Microsoft::UI::Xaml::Controls;
+
+    ToggleSwitch ts = ToggleSwitch();
+    ts.Header(winrt::box_value(title));
+    
+    bool currentVal = RegistryConfig::getBool(key, defaultValue);
+    ts.IsOn(currentVal);
+
+    ts.Toggled([key](auto const& sender, auto const&) {
+        auto toggle = sender.as<ToggleSwitch>();
+        RegistryConfig::setBool(key, toggle.IsOn());
+    });
+
+    panel.Children().Append(ts);
+    return ts;
+}
+
+winrt::Microsoft::UI::Xaml::Controls::ComboBox SettingsWindow::addCombo(
+    winrt::Microsoft::UI::Xaml::Controls::StackPanel& panel,
+    const std::wstring& title, const std::wstring& key,
+    const std::vector<std::wstring>& options, const std::wstring& defaultValue)
+{
+    using namespace winrt::Microsoft::UI::Xaml::Controls;
+
+    ComboBox cb = ComboBox();
+    cb.Header(winrt::box_value(title));
+    cb.Width(200);
+
+    std::wstring currentVal = RegistryConfig::getString(key, defaultValue);
+    int selectedIndex = 0;
+
+    for (size_t i = 0; i < options.size(); ++i) {
+        cb.Items().Append(winrt::box_value(options[i]));
+        if (options[i] == currentVal) {
+            selectedIndex = static_cast<int>(i);
+        }
+    }
+    cb.SelectedIndex(selectedIndex);
+
+    cb.SelectionChanged([key, options](auto const& sender, auto const&) {
+        auto combo = sender.as<ComboBox>();
+        int idx = combo.SelectedIndex();
+        if (idx >= 0 && idx < static_cast<int>(options.size())) {
+            RegistryConfig::setString(key, options[idx]);
+        }
+    });
+
+    panel.Children().Append(cb);
     return cb;
 }
 
-QComboBox* SettingsWindow::addCombo(QWidget *parent, QVBoxLayout *layout, const QString &title, const QString &key, const QStringList &options, const QString &defaultValue)
+void SettingsWindow::show()
 {
-    QHBoxLayout *hLayout = new QHBoxLayout();
-    QLabel *lbl = new QLabel(title, parent);
-    QComboBox *cb = new QComboBox(parent);
-    cb->addItems(options);
-    
-    QString val = m_settings.value(key, defaultValue).toString();
-    int idx = cb->findText(val);
-    if (idx >= 0) cb->setCurrentIndex(idx);
-
-    connect(cb, &QComboBox::currentTextChanged, this, [this, key](const QString &text){
-        emitSettingChange(key, text);
-    });
-    
-    hLayout->addWidget(lbl);
-    hLayout->addWidget(cb);
-    hLayout->addStretch();
-    layout->addLayout(hLayout);
-    return cb;
+    m_window.Activate();
 }
 
-void SettingsWindow::buildGeneralSection()
+void SettingsWindow::close()
 {
-    m_sidebar->addItem("General");
-    QWidget *container = createSectionWidget();
-    QVBoxLayout *layout = qobject_cast<QVBoxLayout*>(container->layout());
-
-    QLabel *header = new QLabel("General", container);
-    header->setObjectName("headerLabel");
-    layout->addWidget(header);
-
-    addToggle(container, layout, "Resume playback where you left off", "resumePlayback", true);
-    addToggle(container, layout, "Pause when window loses focus", "pauseOnFocusLoss", false);
-    addToggle(container, layout, "Show welcome window on launch", "showWelcome", true);
-    addToggle(container, layout, "Quit when all windows are closed", "quitWhenAllClosed", false);
-    addToggle(container, layout, "Keep window on top during playback", "keepOnTop", false);
-    
-    addCombo(container, layout, "Window Resize Behavior", "windowResize", 
-             {"Never resize", "Fit to video", "Resize to 50%", "Resize to 75%", "Resize to 100%"}, "Never resize");
-             
-    addCombo(container, layout, "Cursor Auto-hide (ms)", "cursorAutohide", 
-             {"500", "800", "1000", "2000", "3000", "never"}, "800");
-}
-
-void SettingsWindow::buildVideoSection()
-{
-    m_sidebar->addItem("Video");
-    QWidget *container = createSectionWidget();
-    QVBoxLayout *layout = qobject_cast<QVBoxLayout*>(container->layout());
-
-    QLabel *header = new QLabel("Video", container);
-    header->setObjectName("headerLabel");
-    layout->addWidget(header);
-
-    addCombo(container, layout, "Hardware Decoding", "hwdec", 
-             {"d3d11va", "d3d11va-copy", "dxva2-copy", "auto-safe", "auto", "no"}, "auto-safe");
-             
-    addCombo(container, layout, "Hardware Decode Codecs", "hwdecCodecs", 
-             {"all", "h264,hevc,vp9,av1"}, "all");
-             
-    addCombo(container, layout, "Default Speed", "defaultSpeed", 
-             {"0.25x", "0.5x", "0.75x", "1x", "1.25x", "1.5x", "2x", "3x", "4x"}, "1x");
-             
-    addCombo(container, layout, "Screenshot Format", "screenshotFormat", 
-             {"png", "jpg", "webp"}, "png");
-             
-    addCombo(container, layout, "Screenshot JPEG Quality", "screenshotJpegQuality", 
-             {"50", "70", "85", "95", "100"}, "85");
-
-    layout->addSpacing(10);
-    QLabel *debandHeader = new QLabel("Debanding", container);
-    debandHeader->setObjectName("subHeaderLabel");
-    layout->addWidget(debandHeader);
-
-    addToggle(container, layout, "Enable debanding", "debandEnabled", false);
-    
-    addCombo(container, layout, "Deband Iterations", "debandIterations", 
-             {"1", "2", "3", "4", "8"}, "4");
-             
-    addCombo(container, layout, "Deband Threshold", "debandThreshold", 
-             {"20", "25", "30", "35", "40", "48", "64"}, "35");
-             
-    addCombo(container, layout, "Deband Range", "debandRange", 
-             {"8", "12", "16", "20", "24", "32"}, "16");
-             
-    addCombo(container, layout, "Deband Grain", "debandGrain", 
-             {"0", "2", "4", "6", "8", "12", "16", "24", "48"}, "4");
-}
-
-void SettingsWindow::buildAudioSection()
-{
-    m_sidebar->addItem("Audio");
-    QWidget *container = createSectionWidget();
-    QVBoxLayout *layout = qobject_cast<QVBoxLayout*>(container->layout());
-
-    QLabel *header = new QLabel("Audio", container);
-    header->setObjectName("headerLabel");
-    layout->addWidget(header);
-
-    addCombo(container, layout, "Maximum Volume", "volumeMax", 
-             {"100%", "150%", "200%", "300%"}, "200%");
-             
-    addCombo(container, layout, "Audio Output", "audioOutput", 
-             {"wasapi", "openal", "auto"}, "wasapi");
-             
-    addCombo(container, layout, "Audio Channels", "audioChannels", 
-             {"auto", "auto-safe", "stereo", "5.1", "7.1"}, "auto");
-             
-    addToggle(container, layout, "Audio passthrough (AC3, EAC3, TrueHD, DTS-HD)", "audioPassthrough", false);
-    
-    addCombo(container, layout, "Preferred Audio Language", "audioLang", 
-             {"eng,en,jpn,jp", "jpn,jp,eng,en", "eng,en", "jpn,jp", "kor,ko,eng,en", "chi,zh,eng,en"}, "eng,en,jpn,jp");
-             
-    addCombo(container, layout, "Default Audio Delay", "audioDelay", 
-             {"-0.50", "-0.25", "-0.10", "0", "0.10", "0.25", "0.50"}, "0");
-             
-    addCombo(container, layout, "Default Volume", "defaultVolume", 
-             {"25", "50", "75", "100", "125", "150"}, "100");
-}
-
-void SettingsWindow::buildSubtitlesSection()
-{
-    m_sidebar->addItem("Subtitles");
-    QWidget *container = createSectionWidget();
-    QVBoxLayout *layout = qobject_cast<QVBoxLayout*>(container->layout());
-
-    QLabel *header = new QLabel("Subtitles", container);
-    header->setObjectName("headerLabel");
-    layout->addWidget(header);
-
-    addToggle(container, layout, "Auto-load external subtitles", "subAutoLoad", true);
-    
-    addCombo(container, layout, "Preferred Subtitle Language", "subLang", 
-             {"eng,en,enUS", "jpn,jp", "kor,ko", "chi,zh", "spa,es", "fre,fr", "ger,de", "por,pt"}, "eng,en,enUS");
-             
-    addCombo(container, layout, "Font Size", "subFontSize", 
-             {"20", "24", "28", "32", "36", "40", "48", "56", "64"}, "36");
-             
-    addCombo(container, layout, "Font", "subFont", 
-             {"(Default)", "Segoe UI", "Arial", "Courier New", "Verdana", "Times New Roman"}, "(Default)");
-             
-    addCombo(container, layout, "Position", "subPosition", 
-             {"Bottom", "Top"}, "Bottom");
-             
-    addCombo(container, layout, "Border Size", "subBorderSize", 
-             {"0", "1", "2", "3", "4", "5"}, "3");
-             
-    addCombo(container, layout, "Shadow Offset", "subShadowOffset", 
-             {"0", "1", "2", "3", "4"}, "0");
-             
-    addToggle(container, layout, "Override ASS styles", "subAssOverride", false);
-}
-
-void SettingsWindow::buildNetworkSection()
-{
-    m_sidebar->addItem("Network");
-    QWidget *container = createSectionWidget();
-    QVBoxLayout *layout = qobject_cast<QVBoxLayout*>(container->layout());
-
-    QLabel *header = new QLabel("Network & Streaming", container);
-    header->setObjectName("headerLabel");
-    layout->addWidget(header);
-
-    addToggle(container, layout, "Enable cache", "cacheEnabled", true);
-    
-    addCombo(container, layout, "Demuxer Cache Size", "cacheSizeMB", 
-             {"64 MB", "128 MB", "256 MB", "512 MB", "1024 MB", "2000 MB"}, "2000 MB");
-             
-    addCombo(container, layout, "Demuxer Back Buffer", "cacheBackMB", 
-             {"64 MB", "128 MB", "256 MB", "500 MB", "1024 MB"}, "500 MB");
-             
-    addCombo(container, layout, "Read-ahead (seconds)", "readaheadSecs", 
-             {"10", "30", "60", "120", "300"}, "60");
-             
-    addCombo(container, layout, "Cache Duration (seconds)", "cacheSecs", 
-             {"30", "60", "120", "300", "600"}, "120");
-             
-    addCombo(container, layout, "Network Timeout (seconds)", "networkTimeout", 
-             {"15", "30", "60", "120"}, "60");
-             
-    addToggle(container, layout, "Force seekable streams", "forceSeekable", true);
-    addToggle(container, layout, "Auto reconnect on failure", "reconnect", true);
-    
-    addCombo(container, layout, "User Agent", "userAgent", 
-             {"(Default)", "Mozilla/5.0 (Windows NT)", "VLC/3.0"}, "(Default)");
-}
-
-void SettingsWindow::buildScalingSection()
-{
-    m_sidebar->addItem("Scaling");
-    QWidget *container = createSectionWidget();
-    QVBoxLayout *layout = qobject_cast<QVBoxLayout*>(container->layout());
-
-    QLabel *header = new QLabel("Scaling & Rendering", container);
-    header->setObjectName("headerLabel");
-    layout->addWidget(header);
-
-    addCombo(container, layout, "Video Profile", "videoProfile", 
-             {"default", "high-quality", "fast"}, "high-quality");
-
-    addCombo(container, layout, "Upscale Filter", "scaleFilter", 
-             {"ewa_lanczossharp", "ewa_lanczos", "lanczos", "spline36", "mitchell", "bilinear", "catmull_rom"}, "ewa_lanczossharp");
-             
-    addCombo(container, layout, "Downscale Filter", "dscaleFilter", 
-             {"mitchell", "lanczos", "spline36", "bilinear", "catmull_rom", "ewa_lanczos"}, "mitchell");
-             
-    addCombo(container, layout, "Chroma Scaler", "cscaleFilter", 
-             {"mitchell", "lanczos", "spline36", "bilinear", "catmull_rom", "ewa_lanczos", "ewa_lanczossharp"}, "mitchell");
-             
-    addCombo(container, layout, "Dither Depth", "ditherDepth", 
-             {"auto", "no", "8", "10"}, "auto");
-             
-    addCombo(container, layout, "Dither Algorithm", "ditherAlgo", 
-             {"fruit", "ordered", "error-diffusion", "no"}, "fruit");
-             
-    addToggle(container, layout, "Correct downscaling", "correctDownscaling", true);
-    addToggle(container, layout, "Linear downscaling", "linearDownscaling", true);
-    addToggle(container, layout, "Sigmoid upscaling", "sigmoidUpscaling", true);
-}
-
-void SettingsWindow::buildColorSection()
-{
-    m_sidebar->addItem("Color");
-    QWidget *container = createSectionWidget();
-    QVBoxLayout *layout = qobject_cast<QVBoxLayout*>(container->layout());
-
-    QLabel *header = new QLabel("Color & HDR", container);
-    header->setObjectName("headerLabel");
-    layout->addWidget(header);
-
-    addCombo(container, layout, "Tone Mapping", "toneMapping", 
-             {"auto", "spline", "bt.2390", "reinhard", "hable", "mobius", "clip", "gamma", "linear"}, "spline");
-             
-    addCombo(container, layout, "Tone Mapping Mode", "toneMappingMode", 
-             {"auto", "luma", "max", "rgb", "hybrid"}, "auto");
-             
-    addToggle(container, layout, "HDR compute peak (dynamic)", "hdrComputePeak", true);
-    addToggle(container, layout, "Target colorspace hint (EDR/XDR)", "targetColorspaceHint", true);
-    
-    addCombo(container, layout, "Target Peak", "targetPeak", 
-             {"auto", "100", "200", "400", "600", "1000", "1600"}, "auto");
-             
-    addCombo(container, layout, "Gamut Mapping", "gamutMapping", 
-             {"perceptual", "relative", "saturation", "absolute", "desaturate", "darken", "warn", "linear"}, "perceptual");
-             
-    addCombo(container, layout, "ICC Profile", "iccProfile", 
-             {"(None)", "(Auto)"}, "(None)");
-}
-
-void SettingsWindow::buildAnime4KSection()
-{
-    m_sidebar->addItem("Anime4K");
-    QWidget *container = createSectionWidget();
-    QVBoxLayout *layout = qobject_cast<QVBoxLayout*>(container->layout());
-
-    QLabel *header = new QLabel("Anime4K", container);
-    header->setObjectName("headerLabel");
-    layout->addWidget(header);
-
-    addCombo(container, layout, "Default Preset", "defaultShaderPreset", {
-        "Off",
-        "Mode A (HQ)", "Mode B (HQ)", "Mode C (HQ)",
-        "Mode A+A (HQ)", "Mode B+B (HQ)", "Mode C+A (HQ)",
-        "Mode A (Fast)", "Mode B (Fast)", "Mode C (Fast)",
-        "Mode A+A (Fast)", "Mode B+B (Fast)", "Mode C+A (Fast)"
-    }, "Off");
-}
-
-void SettingsWindow::buildShortcutsSection()
-{
-    m_sidebar->addItem("Shortcuts");
-    QWidget *container = createSectionWidget();
-    QVBoxLayout *layout = qobject_cast<QVBoxLayout*>(container->layout());
-
-    QLabel *header = new QLabel("Keyboard Shortcuts", container);
-    header->setObjectName("headerLabel");
-    layout->addWidget(header);
-
-    QLabel *desc = new QLabel("Click any shortcut button below and press a new key combination to change it. Press Escape to cancel.", container);
-    desc->setStyleSheet(QString("color: %1; font-size: 12px; margin-bottom: 8px;").arg(Theme::kTextTertiary));
-    layout->addWidget(desc);
-
-    // Scrollable area for shortcut definitions
-    QScrollArea *scroll = new QScrollArea(container);
-    scroll->setWidgetResizable(true);
-    scroll->setFrameShape(QFrame::NoFrame);
-    scroll->setStyleSheet("QScrollArea { background: transparent; }");
-    
-    QWidget *gridContainer = new QWidget(scroll);
-    gridContainer->setStyleSheet("background: transparent;");
-    QGridLayout *gridLayout = new QGridLayout(gridContainer);
-    gridLayout->setContentsMargins(0, 0, 0, 0);
-    gridLayout->setSpacing(10);
-    
-    struct ShortcutDef {
-        QString key;
-        QString description;
-        QString defaultKey;
-    };
-    
-    QList<ShortcutDef> shortcutDefs = {
-        {"PlayPause", "Play / Pause", "Space"},
-        {"Fullscreen", "Toggle Fullscreen", "F"},
-        {"SeekBackward", "Seek Backward 5s", "Left"},
-        {"SeekForward", "Seek Forward 5s", "Right"},
-        {"VolumeUp", "Volume Up", "Up"},
-        {"VolumeDown", "Volume Down", "Down"},
-        {"Mute", "Mute / Unmute", "M"},
-        {"BrightnessUp", "Brightness Up", "Ctrl+Up"},
-        {"BrightnessDown", "Brightness Down", "Ctrl+Down"},
-        {"SubtitleCycle", "Cycle Subtitle Track", "S"},
-        {"AudioCycle", "Cycle Audio Track", "Ctrl+A"},
-        {"AspectCycle", "Cycle Aspect Ratio", "Shift+A"},
-        {"ShaderCycle", "Toggle/Cycle Anime4K", "Ctrl+K"},
-        {"OpenFile", "Open File", "Ctrl+O"},
-        {"OpenUrl", "Open URL", "Ctrl+U"},
-        {"OpenSettings", "Open Settings", "Ctrl+,"},
-        {"AudioDelayIncrease", "Audio Delay Increase (1ms)", "Ctrl+]"},
-        {"AudioDelayDecrease", "Audio Delay Decrease (1ms)", "Ctrl+["}
-    };
-
-    int row = 0;
-    for (const auto &sh : shortcutDefs) {
-        QLabel *lbl = new QLabel(sh.description, gridContainer);
-        lbl->setStyleSheet(QString("font-size: 13px; font-weight: 500; color: %1;").arg(Theme::kTextPrimary));
-        
-        QString currentSeq = m_settings.value("shortcut" + sh.key, sh.defaultKey).toString();
-        ShortcutButton *btn = new ShortcutButton(sh.key, currentSeq, gridContainer);
-        
-        connect(btn, &ShortcutButton::shortcutChanged, this, [this](const QString &key, const QString &seq){
-            emitSettingChange("shortcut" + key, seq);
-        });
-        
-        gridLayout->addWidget(lbl, row, 0, Qt::AlignLeft | Qt::AlignVCenter);
-        gridLayout->addWidget(btn, row, 1, Qt::AlignRight | Qt::AlignVCenter);
-        row++;
-    }
-    
-    scroll->setWidget(gridContainer);
-    layout->addWidget(scroll, 1);
+    m_window.Close();
 }

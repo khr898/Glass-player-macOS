@@ -1,0 +1,24 @@
+<Project>
+  <Import Project="$(MSBuildProjectDirectory)\obj\$(MSBuildProjectName).vcxproj.nuget.g.targets" Condition="Exists('$(MSBuildProjectDirectory)\obj\$(MSBuildProjectName).vcxproj.nuget.g.targets')" />
+
+  <!-- Override CopyLocalFilesOutputGroup to bypass RemovePayloadDuplicates task which requires missing AppxPackaging tools -->
+  <Target Name="CopyLocalFilesOutputGroup"
+          DependsOnTargets="$(CopyLocalFilesOutputGroupDependsOn)"
+          Returns="@(CopyLocalFilesOutputGroupOutput)">
+    <ItemGroup>
+      <CopyLocalFilesOutputGroupOutput Include="@(ReferenceCopyLocalPaths)"
+                                       Condition="'%(ReferenceCopyLocalPaths.Extension)' != '.xml' or '$(AppxCopyLocalFilesOutputGroupIncludeXmlFiles)' == 'true'">
+        <TargetPath>%(ReferenceCopyLocalPaths.DestinationSubDirectory)%(ReferenceCopyLocalPaths.Filename)%(ReferenceCopyLocalPaths.Extension)</TargetPath>
+      </CopyLocalFilesOutputGroupOutput>
+    </ItemGroup>
+  </Target>
+
+  <!-- Override GetMrtPackagingOutputs to bypass ExpandPayloadDirectories task which requires missing AppxPackaging tools -->
+  <Target Name="GetMrtPackagingOutputs" Returns="@(PackagingOutputs)" />
+
+  <!-- Override _GetDefaultResourceLanguage to bypass GetDefaultResourceLanguage task which requires missing AppxPackaging tools -->
+  <Target Name="_GetDefaultResourceLanguage" />
+
+  <!-- Override _GetPackageArchitecture to bypass GetPackageArchitecture task which requires missing AppxPackaging tools -->
+  <Target Name="_GetPackageArchitecture" />
+</Project>
