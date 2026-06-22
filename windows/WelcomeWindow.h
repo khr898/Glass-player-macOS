@@ -1,32 +1,47 @@
 #pragma once
 
-#include <windows.h>
-#undef GetCurrentTime
-#include <string>
-#include <functional>
-#include <winrt/Microsoft.UI.Xaml.h>
-#include <winrt/Microsoft.UI.Xaml.Controls.h>
-#include <winrt/Microsoft.UI.Dispatching.h>
+#include <QDialog>
+#include <QLabel>
+#include <QPushButton>
+#include <QToolButton>
+#include <QFrame>
+#include <QDragEnterEvent>
+#include <QDropEvent>
+#include <QMimeData>
+#include <QMouseEvent>
 
-class WelcomeWindow
+class WelcomeWindow : public QDialog
 {
+    Q_OBJECT
+
 public:
-    WelcomeWindow();
+    explicit WelcomeWindow(QWidget *parent = nullptr);
     ~WelcomeWindow();
 
-    void show();
-    void close();
+signals:
+    void fileOpened(const QString &filePath);
+    void openRcloneBrowser();
 
-    void fileOpened(std::function<void(const std::wstring&)> cb) { m_fileOpenedCallback = cb; }
-    void openRcloneBrowser(std::function<void()> cb) { m_openRcloneBrowserCallback = cb; }
+protected:
+    void dragEnterEvent(QDragEnterEvent *event) override;
+    void dropEvent(QDropEvent *event) override;
+    void mousePressEvent(QMouseEvent *event) override;
+    void mouseMoveEvent(QMouseEvent *event) override;
+    void mouseReleaseEvent(QMouseEvent *event) override;
+    void showEvent(QShowEvent *event) override;
+    void changeEvent(QEvent *event) override;
+
+private slots:
+    void onOpenFileClicked();
+    void onRcloneClicked();
 
 private:
     void setupUi();
 
-    winrt::Microsoft::UI::Xaml::Window m_window{ nullptr };
-    HWND m_hwnd{ nullptr };
-    winrt::Microsoft::UI::Dispatching::DispatcherQueue m_dispatcherQueue{ nullptr };
-
-    std::function<void(const std::wstring&)> m_fileOpenedCallback;
-    std::function<void()> m_openRcloneBrowserCallback;
+    QFrame *m_mainFrame = nullptr;
+    QPushButton *m_closeBtn = nullptr;
+    QToolButton *m_openFileBtn = nullptr;
+    QToolButton *m_rcloneBtn = nullptr;
+    bool m_dragActive = false;
+    QPoint m_dragPosition;
 };

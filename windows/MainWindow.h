@@ -1,97 +1,290 @@
 #pragma once
 
-#include <windows.h>
-#undef GetCurrentTime
-#include <string>
-#include <memory>
-#include <functional>
-#include <winrt/Microsoft.UI.Xaml.h>
-#include <winrt/Microsoft.UI.Xaml.Controls.h>
-#include <winrt/Microsoft.UI.Xaml.Media.h>
-#include <winrt/Microsoft.UI.Dispatching.h>
+#include <QMainWindow>
+#include <QSlider>
+#include <QPushButton>
+#include <QLabel>
+#include <QVBoxLayout>
+#include <QHBoxLayout>
+#include <QComboBox>
+#include <QLineEdit>
+#include <QSettings>
+#include <QMouseEvent>
+#include "MpvWidget.h"
+#include "WelcomeWindow.h"
+#include "SettingsWindow.h"
+#include "RcloneBrowser.h"
 
-#include "MpvManager.h"
+#include <QStyleOptionSlider>
+#include <QCursor>
+#include <QGraphicsOpacityEffect>
+#include <QPropertyAnimation>
 
-class MainWindow : public std::enable_shared_from_this<MainWindow>
+class ClickableSlider : public QSlider
 {
+    Q_OBJECT
 public:
-    MainWindow();
+    explicit ClickableSlider(Qt::Orientation orientation, QWidget *parent = nullptr)
+        : QSlider(orientation, parent)
+    {
+    }
+
+protected:
+    void mousePressEvent(QMouseEvent *event) override
+    {
+        if (event->button() == Qt::LeftButton) {
+            QStyleOptionSlider opt;
+            initStyleOption(&opt);
+            int handleLength = style()->pixelMetric(QStyle::PM_SliderLength, &opt, this);
+            int val = 0;
+            if (orientation() == Qt::Horizontal) {
+                val = style()->sliderValueFromPosition(
+                    minimum(),
+                    maximum(),
+                    event->pos().x() - handleLength / 2,
+                    width() - handleLength
+                );
+            } else {
+                val = style()->sliderValueFromPosition(
+                    minimum(),
+                    maximum(),
+                    height() - event->pos().y() - handleLength / 2,
+                    height() - handleLength
+                );
+            }
+            val = qBound(minimum(), val, maximum());
+            setValue(val);
+            emit sliderMoved(val);
+        }
+        QSlider::mousePressEvent(event);
+    }
+
+    void mouseMoveEvent(QMouseEvent *event) override
+    {
+        if (event->buttons() & Qt::LeftButton) {
+            QStyleOptionSlider opt;
+            initStyleOption(&opt);
+            int handleLength = style()->pixelMetric(QStyle::PM_SliderLength, &opt, this);
+            int val = 0;
+            if (orientation() == Qt::Horizontal) {
+                val = style()->sliderValueFromPosition(
+                    minimum(),
+                    maximum(),
+                    event->pos().x() - handleLength / 2,
+                    width() - handleLength
+                );
+            } else {
+                val = style()->sliderValueFromPosition(
+                    minimum(),
+                    maximum(),
+                    height() - event->pos().y() - handleLength / 2,
+                    height() - handleLength
+                );
+            }
+            val = qBound(minimum(), val, maximum());
+            setValue(val);
+            emit sliderMoved(val);
+        }
+        QSlider::mouseMoveEvent(event);
+    }
+
+protected:
+    void keyPressEvent(QKeyEvent *event) override
+    {
+        if (event->key() == Qt::Key_Space ||
+            event->key() == Qt::Key_Left ||
+            event->key() == Qt::Key_Right ||
+            event->key() == Qt::Key_Up ||
+            event->key() == Qt::Key_Down) {
+            event->ignore();
+            return;
+        }
+        QSlider::keyPressEvent(event);
+    }
+};
+
+class MainWindow : public QMainWindow
+{
+    Q_OBJECT
+
+public:
+    explicit MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
-    void openFile(const std::wstring& filePath);
-    void setAnime4kPreset(const std::wstring& preset);
-    void suppressWelcome();
+    static int s_windowCount;
+
+    void openFile(const QString &file);
+    void setAnime4kPreset(const QString& preset);
+    void suppressWelcome();       // Call before show() when a file arg is provided
     bool shouldShowWelcome() const;
-    void openRcloneBrowserDirectly();
-    void show();
-    void executeCommand(const std::wstring& command);
+    int runWelcomeScreen();
+
+    struct TrackInfo {
+        int id;
+        QString type; // "video", "audio", "sub"
+        QString label;
+        bool selected;
+    };
+
+    struct ShortcutInfo {
+        QString key;
+        QString description;
+        QString defaultKey;
+    };
+    static QList<ShortcutInfo> getShortcutDefinitions();
+
+    QList<TrackInfo> getTracks();
+    void setSubtitleTrack(int id);
+    void setAudioTrack(int id);
+    void addExternalSubtitle();
+    void addExternalAudio();
+    void executeCommand(const QString &commandLine);
+
+private slots:
+    void onPlayPauseClicked();
+    void onOpenClicked();
+    void onSettingsClicked();
+    void onFileLoaded();
+    void onStartFile();    // Resets UI when a new file begins loading
+    void onRcloneClicked();
+    void onSliderMoved(int position);
+    void onVolumeChanged(int volume);
+    void onMuteClicked();
+
+    void applySettingToMpv(const QString &key, const QVariant &value);
+
+    void updatePosition(double position);
+    void updateDuration(double duration);
+
+    void toggleFullscreen();
+
+    void hideHud();
+    void showHud();
+
+    void onRewindClicked();
+    void onForwardClicked();
+    void onPrevClicked();
+    void onNextClicked();
+    void onSpeedClicked();
+    void onAspectClicked();
+    void onSubtitleClicked();
+    void onAudioClicked();
+    void onShaderClicked();
+    void onUrlClicked();
+    void onUrlSubmitted();
+    void onFullscreenClicked();
+    void onBrightnessChanged(int level);
+
+protected:
+    void keyPressEvent(QKeyEvent *event) override;
+    void resizeEvent(QResizeEvent *event) override;
+    void changeEvent(QEvent *event) override;
+    void mouseMoveEvent(QMouseEvent *event) override;
+    void wheelEvent(QWheelEvent *event) override;
+    void mouseDoubleClickEvent(QMouseEvent *event) override;
+    bool eventFilter(QObject *watched, QEvent *event) override;
+    bool nativeEvent(const QByteArray &eventType, void *message, qintptr *result) override;
 
 private:
-    static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
-    LRESULT handleMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+    void setupUi();
+    void setupTopBar();
+    void setupBottomBar();
+    void setupBrightnessBar();
+    void setupVolumeBar();
+    void updateHudPositions();
+    void syncSystemControls();
+    void updateVolumeIcon(int volume, bool muted);
+    QString formatTime(double seconds);
+    void applyShaderPreset(const QString& preset);
+    void updateShaderButton();
+    bool areShadersAvailable();
+    void updateHoverBars();
+    void updateResolutionBadge();
+    void applyScrollDelta(int delta, double xPos);
+    void animateWidgetOpacity(QWidget *widget, QGraphicsOpacityEffect *effect, qreal targetOpacity, int durationMs);
 
-    void registerWindowClass();
-    void createVideoWindow();
-    void createHudWindow();
-    void syncHudPosition();
+    MpvWidget *m_mpvWidget;
+    QWidget *m_centralWidget;
+    WelcomeWindow *m_welcomeWindow;
+    SettingsWindow *m_settingsWindow;
+    RcloneBrowser *m_rcloneBrowser;
+    QSettings m_settings;
 
-    // UI creation
-    void setupHudLayout();
-    void updateHudData(double pos);
-    void updateDuration(double dur);
-    void onPlayPauseClicked();
-    void onSliderMoved(double val);
-    void onVolumeChanged(double val);
-    void onMuteClicked();
-    void onSettingsClicked();
-    void onRcloneClicked();
-    void toggleFullscreen();
-    void showHudElements();
-    void hideHudElements();
-    void updateVolumeIcon();
-    std::wstring formatTime(double seconds);
+    // HUD Overlays
+    QWidget *m_topBar;
+    QWidget *m_bottomBar;
+    QWidget *m_brightnessBar;
+    QWidget *m_volumeBar;
+    QGraphicsOpacityEffect *m_topBarOpacityEffect = nullptr;
+    QGraphicsOpacityEffect *m_bottomBarOpacityEffect = nullptr;
+    QGraphicsOpacityEffect *m_brightnessBarOpacityEffect = nullptr;
+    QGraphicsOpacityEffect *m_volumeBarOpacityEffect = nullptr;
+    QLabel *m_titleLabel;
+    QLabel *m_resolutionBadge;
+    QLineEdit *m_urlEdit;
 
-    // HWNDs
-    HWND m_hwndVideo{ nullptr };
-    HWND m_hwndChildVideo{ nullptr };
-    HWND m_hwndHud{ nullptr };
+    // Bottom Bar Elements
+    ClickableSlider *m_seekSlider;
+    ClickableSlider *m_volumeSlider;
+    ClickableSlider *m_brightnessSlider;
+    ClickableSlider *m_volumeHoverSlider;
+    QLabel *m_currentTimeLabel;
+    QLabel *m_remainingTimeLabel;
 
-    // WinUI 3 HUD Window
-    winrt::Microsoft::UI::Xaml::Window m_hudWindow{ nullptr };
+    QPushButton *m_playPauseBtn;
+    QPushButton *m_rewindBtn;
+    QPushButton *m_forwardBtn;
+    QPushButton *m_prevBtn;
+    QPushButton *m_nextBtn;
 
-    // Player manager
-    std::unique_ptr<MpvManager> m_mpv;
+    QPushButton *m_subtitleBtn;
+    QPushButton *m_audioBtn;
+    QPushButton *m_shaderBtn;
+    QPushButton *m_volumeBtn;
+    QPushButton *m_speedBtn;
+    QPushButton *m_aspectBtn;
+    QPushButton *m_fullscreenBtn;
 
-    // Window state
-    bool m_welcomeSuppressed{ false };
-    bool m_isFullscreen{ false };
-    WINDOWPLACEMENT m_wpPrev{ sizeof(WINDOWPLACEMENT) };
+    QTimer *m_hudTimer;
+    QTimer *m_systemSyncTimer;
+    QTimer *m_clickTimer;
+    QTimer *m_stallWatchdog;     // Fires if playback stalls for > 5 s
 
-    // Playback state
-    double m_duration{ 0.0 };
-    double m_position{ 0.0 };
-    bool m_isPlaying{ false };
-    bool m_isMuted{ false };
-    int m_volume{ 100 };
-    std::wstring m_currentFilePath;
+    double m_duration = 0;
+    bool m_isPlaying = true;
+    bool m_isMuted = false;
+    bool m_welcomeSuppressed = false;
+    bool m_syncingFromSystem = false;
+    bool m_firstFileLoaded = true;
 
-    winrt::Microsoft::UI::Dispatching::DispatcherQueue m_dispatcherQueue{ nullptr };
+    void handleShortcutTrigger(const QString &action);
+    void cycleSubtitleTrack();
+    void cycleAudioTrack();
+    void cycleAspectOverride();
+    void cycleShaderPreset();
+    void adjustAudioDelay(double deltaSeconds);
+    QHash<QString, class QShortcut*> m_shortcuts;
 
-    // HUD Auto-hide
-    winrt::Microsoft::UI::Dispatching::DispatcherQueueTimer m_hudTimer{ nullptr };
-    bool m_hudVisible{ true };
+    // Timeline preview, smooth scrub, and hover
+    void handleTimelineHover(QPoint pos);
+    void hideTimelinePreview();
+    void generateThumbnail(double time, int cacheKey);
+    void onSliderReleased();
 
-    // WinUI Controls
-    winrt::Microsoft::UI::Xaml::Controls::Grid m_rootGrid{ nullptr };
-    winrt::Microsoft::UI::Xaml::Controls::Grid m_topBar{ nullptr };
-    winrt::Microsoft::UI::Xaml::Controls::Grid m_bottomBar{ nullptr };
-    winrt::Microsoft::UI::Xaml::Controls::Slider m_seekSlider{ nullptr };
-    winrt::Microsoft::UI::Xaml::Controls::Slider m_volumeSlider{ nullptr };
-    winrt::Microsoft::UI::Xaml::Controls::Button m_playPauseBtn{ nullptr };
-    winrt::Microsoft::UI::Xaml::Controls::Button m_muteBtn{ nullptr };
-    winrt::Microsoft::UI::Xaml::Controls::TextBlock m_titleLabel{ nullptr };
-    winrt::Microsoft::UI::Xaml::Controls::TextBlock m_timeLabel{ nullptr };
-    winrt::Microsoft::UI::Xaml::Controls::TextBlock m_remainingTimeLabel{ nullptr };
-    winrt::Microsoft::UI::Xaml::Controls::Border m_resolutionBadge{ nullptr };
-    winrt::Microsoft::UI::Xaml::Controls::TextBlock m_resolutionText{ nullptr };
+    class TimelinePreviewWidget *m_previewWidget = nullptr;
+    class ThumbnailMpv *m_thumbnailMpv = nullptr;
+    QString m_currentFile;
+    QHash<int, QImage> m_thumbnailCache;
+    bool m_isGeneratingThumbnail = false;
+    double m_pendingThumbnailTime = -1;
+    double m_lastHoverTime = 0;
+    bool m_isSeeking = false;
+    qint64 m_lastSeekTime = 0;
+    qint64 m_lastPositionTime = 0;  // ms timestamp of last positionChanged signal
+    bool m_seekInProgress = false;
+    bool m_seekCommandPending = false;
+    double m_queuedSeekTarget = -1.0;
+    QTimer *m_seekTimeoutTimer = nullptr;
+    qint64 m_lastClickTime = 0;
 };
+

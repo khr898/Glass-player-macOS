@@ -1,60 +1,53 @@
 #pragma once
 
-#include <windows.h>
-#undef GetCurrentTime
-#include <string>
-#include <vector>
-#include <functional>
-#include <winrt/Microsoft.UI.Xaml.h>
-#include <winrt/Microsoft.UI.Xaml.Controls.h>
-#include <winrt/Microsoft.UI.Dispatching.h>
+#include <QDialog>
+#include <QLineEdit>
+#include <QPushButton>
+#include <QListWidget>
+#include <QVBoxLayout>
+#include <QHBoxLayout>
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
 
-class RcloneBrowser
+class RcloneBrowser : public QDialog
 {
+    Q_OBJECT
+
 public:
-    RcloneBrowser();
+    explicit RcloneBrowser(QWidget *parent = nullptr);
     ~RcloneBrowser();
 
-    void show();
-    void close();
+signals:
+    void fileSelected(const QString &url);
 
-    void fileSelected(std::function<void(const std::wstring&)> cb) { m_fileSelectedCallback = cb; }
-
-private:
-    void setupUi();
-    void fetchDirectory();
-    void parseDirectoryListing(const std::wstring& html);
+private slots:
     void onConnectClicked();
     void onBackClicked();
     void onUpClicked();
     void onRefreshClicked();
-    void onItemDoubleClicked();
+    void onItemDoubleClicked(QListWidgetItem *item);
+    void onNetworkReply(QNetworkReply *reply);
 
-    winrt::Microsoft::UI::Xaml::Window m_window{ nullptr };
-    HWND m_hwnd{ nullptr };
-    winrt::Microsoft::UI::Dispatching::DispatcherQueue m_dispatcherQueue{ nullptr };
+protected:
+    void changeEvent(QEvent *event) override;
 
-    std::function<void(const std::wstring&)> m_fileSelectedCallback;
+private:
+    void setupUi();
+    void fetchDirectory();
+    void parseDirectoryListing(const QString &html);
 
-    // Controls
-    winrt::Microsoft::UI::Xaml::Controls::TextBox m_urlField{ nullptr };
-    winrt::Microsoft::UI::Xaml::Controls::Button m_connectBtn{ nullptr };
-    winrt::Microsoft::UI::Xaml::Controls::Button m_backBtn{ nullptr };
-    winrt::Microsoft::UI::Xaml::Controls::Button m_upBtn{ nullptr };
-    winrt::Microsoft::UI::Xaml::Controls::Button m_refreshBtn{ nullptr };
-    winrt::Microsoft::UI::Xaml::Controls::ListView m_listView{ nullptr };
+    QLineEdit *m_urlField;
+    QPushButton *m_connectBtn;
+    QPushButton *m_backBtn;
+    QPushButton *m_upBtn;
+    QPushButton *m_refreshBtn;
+    QListWidget *m_listWidget;
 
-    // Navigation state
-    std::wstring m_baseUrl;
-    std::wstring m_currentPath;
-    std::vector<std::wstring> m_pathHistory;
-    bool m_isConnected{ false };
+    QNetworkAccessManager *m_networkManager;
+    QNetworkReply *m_currentReply = nullptr;
 
-    struct RcloneItem {
-        std::wstring name;
-        std::wstring href;
-        bool isDir;
-        std::wstring displayString;
-    };
-    std::vector<RcloneItem> m_currentItems;
+    QString m_baseUrl;
+    QString m_currentPath;
+    QStringList m_pathHistory;
+    bool m_isConnected = false;
 };
