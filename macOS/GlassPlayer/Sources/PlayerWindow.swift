@@ -230,6 +230,10 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
         mpv.delegate = self
         mpv.initialize()
 
+        if mpv.shadersAvailable {
+            shaderButton.isHidden = false
+        }
+
         // Connect rendering
         videoView.videoLayer.initMPVRendering(mpv)
 
@@ -2139,6 +2143,10 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
         // Restart auto-hide when player regains focus
         if !isPaused {
             resetHideTimer()
+        }
+        if mpv.shadersAvailable {
+            shaderButton.isHidden = false
+            updateShaderButton()
         }
     }
 
