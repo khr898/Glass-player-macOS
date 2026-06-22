@@ -81,7 +81,7 @@ class SettingsWindow: NSWindowController, NSTableViewDelegate, NSTableViewDataSo
         "toneMapping":         "tone-mapping",
         "toneMappingMode":     "tone-mapping-mode",
         "hdrComputePeak":      "hdr-compute-peak",
-        "targetColorspaceHint":"target-colorspace-hint",
+        "targetColorspaceHint":"user-data/enable-hdr",
         "targetPeak":          "target-peak",
         "gamutMapping":        "gamut-mapping-mode",
         "iccProfile":          "icc-profile",
@@ -464,7 +464,7 @@ class SettingsWindow: NSWindowController, NSTableViewDelegate, NSTableViewDataSo
         views.append(makeToggleRow(
             title: "Audio passthrough (AC3, EAC3, TrueHD, DTS-HD)",
             key: "audioPassthrough",
-            defaultValue: true
+            defaultValue: false
         ))
         views.append(makePopUpRow(
             title: "Preferred Audio Language",

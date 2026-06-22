@@ -557,6 +557,21 @@ void MainWindow::setupTopBar()
     m_titleLabel->setStyleSheet(QString("QLabel { color: %1; font-family: %2; font-weight: 400; font-size: 13px; }").arg(Theme::kTextSecondary, Theme::kFontFamily));
     layout->addWidget(m_titleLabel);
 
+    m_resolutionBadge = new QLabel(m_topBar);
+    m_resolutionBadge->setObjectName("resolutionBadge");
+    m_resolutionBadge->setStyleSheet(
+        "QLabel#resolutionBadge { "
+        "  background-color: rgba(255, 255, 255, 0.15); "
+        "  color: white; "
+        "  border-radius: 4px; "
+        "  padding: 2px 6px; "
+        "  font-size: 11px; "
+        "  font-weight: bold; "
+        "}"
+    );
+    layout->addWidget(m_resolutionBadge);
+    m_resolutionBadge->hide();
+
     m_urlEdit = new QLineEdit(m_topBar);
     m_urlEdit->setPlaceholderText("Paste URL (YouTube, HTTP, etc.)");
     m_urlEdit->setStyleSheet(
@@ -974,6 +989,12 @@ void MainWindow::onSettingsClicked()
 void MainWindow::onFileLoaded()
 {
     if (isFullScreen()) return;
+
+    updateResolutionBadge();
+
+    // Kickstart and unblock stuck demuxer/decoder
+    m_mpvWidget->command(QVariantList() << "seek" << 0 << "absolute+exact");
+    m_mpvWidget->setProperty("pause", false);
 
     if (!m_firstFileLoaded) {
         return;
@@ -1436,6 +1457,7 @@ void MainWindow::resizeEvent(QResizeEvent *event)
 {
     QMainWindow::resizeEvent(event);
     updateHudPositions();
+    updateResolutionBadge();
 }
 
 void MainWindow::onRewindClicked() { m_mpvWidget->seek(-5.0); }
@@ -1779,6 +1801,85 @@ void MainWindow::updateHoverBars()
 
     m_brightnessBar->setVisible(inLeftZone);
     m_volumeBar->setVisible(inRightZone);
+}
+
+void MainWindow::updateResolutionBadge()
+{
+    if (!m_resolutionBadge || !m_mpvWidget) return;
+
+    int vw = m_mpvWidget->getProperty("video-params/w").toInt();
+    int vh = m_mpvWidget->getProperty("video-params/h").toInt();
+    if (vw <= 0 || vh <= 0) {
+        m_resolutionBadge->hide();
+        return;
+    }
+
+    // Determine viewport size
+    int viewportW = m_mpvWidget->width();
+    int viewportH = m_mpvWidget->height();
+
+    // Helper to format resolution name (parity with macOS formatResolution)
+    auto formatResolution = [](int w, int h) -> QString {
+        struct Res { QString name; int w; int h; };
+        static const Res standards[] = {
+            {"4K", 3840, 2160},
+            {"1600p", 2560, 1600},
+            {"1440p", 2560, 1440},
+            {"1200p", 1920, 1200},
+            {"1080p", 1920, 1080},
+            {"900p", 1600, 900},
+            {"768p", 1024, 768},
+            {"720p", 1280, 720},
+            {"576p", 1024, 576},
+            {"540p", 960, 540},
+            {"480p", 854, 480},
+            {"360p", 640, 360}
+        };
+
+        for (const auto& std : standards) {
+            double hDiff = qAbs(static_cast<double>(h - std.h)) / std.h;
+            double wDiff = qAbs(static_cast<double>(w - std.w)) / std.w;
+            if (hDiff <= 0.03 || wDiff <= 0.03) {
+                return std.name;
+            }
+        }
+        return QString("%1p").arg(h);
+    };
+
+    QString originalName = formatResolution(vw, vh);
+
+    // Check if we are upscaling (viewport size larger than original size)
+    bool isUpscaling = (viewportW > vw) || (viewportH > vh);
+
+    if (isUpscaling) {
+        QString upscaledName = formatResolution(viewportW, viewportH);
+        m_resolutionBadge->setText(QString("%1 ➔ %2").arg(originalName, upscaledName));
+        // Style with soft blue tint to indicate active enhancement/upscaling
+        m_resolutionBadge->setStyleSheet(
+            "QLabel#resolutionBadge { "
+            "  background-color: rgba(25, 118, 210, 0.25); " // soft blue tint
+            "  color: #60CDFF; " // accent blue text
+            "  border-radius: 4px; "
+            "  padding: 2px 6px; "
+            "  font-size: 11px; "
+            "  font-weight: bold; "
+            "}"
+        );
+    } else {
+        m_resolutionBadge->setText(originalName);
+        m_resolutionBadge->setStyleSheet(
+            "QLabel#resolutionBadge { "
+            "  background-color: rgba(255, 255, 255, 0.15); "
+            "  color: white; "
+            "  border-radius: 4px; "
+            "  padding: 2px 6px; "
+            "  font-size: 11px; "
+            "  font-weight: bold; "
+            "}"
+        );
+    }
+
+    m_resolutionBadge->show();
 }
 
 void MainWindow::applyScrollDelta(int delta, double xPos)

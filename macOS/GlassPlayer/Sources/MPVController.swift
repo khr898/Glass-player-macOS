@@ -78,6 +78,7 @@ protocol MPVControllerDelegate: AnyObject {
     func mpvStartFile()       // Called when mpv begins loading a new file
     func mpvPlaybackEnded()
     func mpvTracksChanged(_ tracks: [TrackInfo])
+    func mpvPlaybackRestarted()
 }
 
 // ---------------------------------------------------------------------------
@@ -229,6 +230,7 @@ class MPVController {
         setOption("vo", "libmpv")
         setOption("hwdec", "videotoolbox")
         setOption("hwdec-codecs", "all")
+        setOption("hwdec-software-fallback", "yes")
         setOption("keep-open", "yes")
         setOption("input-default-bindings", "yes")
         setOption("input-vo-keyboard", "no")
@@ -240,7 +242,7 @@ class MPVController {
         // Audio
         setOption("ao", "avfoundation")
         setOption("audio-channels", "auto")
-        setOption("audio-spdif", "ac3,eac3,truehd,dts-hd")
+        setOption("audio-spdif", "")
 
         // Volume max 200%
         setOption("volume-max", "200")
@@ -355,6 +357,7 @@ class MPVController {
 
     func loadFile(_ path: String) {
         command(["loadfile", path])
+        mpv_command_string(mpvHandle, "set pause no")
     }
 
     func loadUrl(_ url: String) {
@@ -362,6 +365,7 @@ class MPVController {
         guard !trimmed.isEmpty else { return }
         let normalized = normalizeInputURL(trimmed)
         command(["loadfile", normalized])
+        mpv_command_string(mpvHandle, "set pause no")
     }
 
     func togglePause() {
@@ -631,6 +635,33 @@ class MPVController {
         return info
     }
 
+    func formatResolution(w: Int64, h: Int64) -> String {
+        guard w > 0, h > 0 else { return "Unknown" }
+        let standards: [(name: String, w: Int64, h: Int64)] = [
+            ("4K", 3840, 2160),
+            ("1600p", 2560, 1600),
+            ("1440p", 2560, 1440),
+            ("1200p", 1920, 1200),
+            ("1080p", 1920, 1080),
+            ("900p", 1600, 900),
+            ("768p", 1024, 768),
+            ("720p", 1280, 720),
+            ("576p", 1024, 576),
+            ("540p", 960, 540),
+            ("480p", 854, 480),
+            ("360p", 640, 360)
+        ]
+
+        for std in standards {
+            let hDiff = abs(Double(h - std.h)) / Double(std.h)
+            let wDiff = abs(Double(w - std.w)) / Double(std.w)
+            if hDiff <= 0.03 || wDiff <= 0.03 {
+                return std.name
+            }
+        }
+        return "\(h)p"
+    }
+
     /// Detect format badges from current media properties.
     /// Mimics Apple TV / Infuse format badge detection.
     func getFormatBadges() -> FormatBadges {
@@ -638,10 +669,9 @@ class MPVController {
         var badges = FormatBadges()
 
         // ── Resolution badge ──
-        let h = info.height
-        if h >= 2160 { badges.resolution = "4K" }
-        else if h >= 1080 { badges.resolution = "1080p" }
-        else if h >= 720 { badges.resolution = "720p" }
+        if info.width > 0 && info.height > 0 {
+            badges.resolution = formatResolution(w: info.width, h: info.height)
+        }
 
         // ── HDR / Dolby Vision detection ──
         // Dolby Vision: pixelformat contains "dovi" or codec is HEVC with DV profile,
@@ -772,6 +802,9 @@ class MPVController {
                     self.fileLoadedAt = CACurrentMediaTime()
                     self.refreshTrackList()
                     DispatchQueue.main.async { [weak self] in self?.delegate?.mpvFileLoaded() }
+
+                case MPV_EVENT_PLAYBACK_RESTART:
+                    DispatchQueue.main.async { [weak self] in self?.delegate?.mpvPlaybackRestarted() }
 
                 case MPV_EVENT_END_FILE:
                     if let endData = event.pointee.data?.assumingMemoryBound(to: mpv_event_end_file.self).pointee {
@@ -1011,7 +1044,7 @@ class MPVController {
             ("toneMapping",         "tone-mapping",         false, false),
             ("toneMappingMode",     "tone-mapping-mode",    false, false),
             ("hdrComputePeak",      "hdr-compute-peak",     true,  false),
-            ("targetColorspaceHint","target-colorspace-hint",true, false),
+            ("targetColorspaceHint","user-data/enable-hdr",true, false),
             ("targetPeak",          "target-peak",          false, false),
             ("gamutMapping",        "gamut-mapping-mode",   false, false),
             ("iccProfile",          "icc-profile",          false, false),

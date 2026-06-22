@@ -154,6 +154,9 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
     private var idleWatchdog: Timer?
     private var lastTimePosReceived: CFTimeInterval = 0
     private var seekTimeoutTimer: Timer?
+    private var isSeekInProgress = false
+    private var seekCommandPending = false
+    private var queuedSeekTarget: Double = -1
 
     // ── System brightness/volume sync ──
     private var systemSyncTimer: Timer?
@@ -521,9 +524,16 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
             self.startSeekTimeoutTimer()
             self.showTimelinePreview(atPosition: position, time: time)
             let now = CACurrentMediaTime()
-            if now - self.lastSeekTime > 0.03 {
+            if now - self.lastSeekTime > 0.025 {
                 self.lastSeekTime = now
-                self.mpv.seek(to: time)
+                if self.isSeekInProgress {
+                    self.queuedSeekTarget = time
+                    self.seekCommandPending = true
+                } else {
+                    self.isSeekInProgress = true
+                    self.startSeekTimeoutTimer()
+                    self.mpv.seekKeyframe(to: time)
+                }
             }
         }
         // On release: final exact seek (use exact thumbnail time if available)
@@ -534,12 +544,20 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
             let seekTarget = (self.lastConfirmedThumbnailTime >= 0)
                 ? self.lastConfirmedThumbnailTime
                 : (value / 100.0) * self.duration
-            self.mpv.seek(to: seekTarget)
+            if self.isSeekInProgress {
+                self.queuedSeekTarget = seekTarget
+                self.seekCommandPending = true
+            } else {
+                self.isSeekInProgress = true
+                self.startSeekTimeoutTimer()
+                self.mpv.seek(to: seekTarget)
+            }
             self.lastConfirmedThumbnailTime = -1
-            self.stopSeekTimeoutTimer()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
-                self?.isSeeking = false
-                self?.lastDisplayedSecond = -1
+                if let self = self, !self.isSeekInProgress {
+                    self.isSeeking = false
+                    self.lastDisplayedSecond = -1
+                }
             }
         }
         controlsContainer.addSubview(timelineSlider)
@@ -1338,8 +1356,23 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
 
         // ── Resolution badge ──
         if let res = badges.resolution {
-            badgeStack.addArrangedSubview(makeFormatBadge(res,
-                bg: NSColor.white.withAlphaComponent(0.15)))
+            let info = mpv.getVideoInfo()
+            let scale = videoView.videoLayer.contentsScale
+            let viewportW = Int(videoView.videoLayer.bounds.width * scale)
+            let viewportH = Int(videoView.videoLayer.bounds.height * scale)
+            
+            let isUpscaling = info.width > 0 && info.height > 0 && viewportW > 0 && viewportH > 0 && (viewportW > info.width || viewportH > info.height)
+            
+            if isUpscaling {
+                let upscaledName = mpv.formatResolution(w: Int64(viewportW), h: Int64(viewportH))
+                let upscaledText = "\(res) ➔ \(upscaledName)"
+                // Soft blue tint to highlight active upscaling
+                badgeStack.addArrangedSubview(makeFormatBadge(upscaledText,
+                    bg: NSColor(red: 0.1, green: 0.5, blue: 1.0, alpha: 0.25)))
+            } else {
+                badgeStack.addArrangedSubview(makeFormatBadge(res,
+                    bg: NSColor.white.withAlphaComponent(0.15)))
+            }
         }
 
         // ── Audio format badges ──
@@ -1946,10 +1979,28 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
         }
     }
 
+    func mpvPlaybackRestarted() {
+        stopSeekTimeoutTimer()
+        if seekCommandPending {
+            seekCommandPending = false
+            isSeekInProgress = true
+            startSeekTimeoutTimer()
+            mpv.seek(to: queuedSeekTarget)
+        } else {
+            isSeekInProgress = false
+            isSeeking = false
+            lastDisplayedSecond = -1
+        }
+    }
+
     func mpvFileLoaded() {
         print("[PlayerWindow] File loaded")
         isFirstPause = true  // reset for new file
         lastTimePosReceived = CACurrentMediaTime()
+
+        // Kickstart and unblock stuck demuxer/decoder
+        mpv.seek(to: 0)
+        mpv.setPropertyString("pause", "no")
 
         let shouldAutoApply = UserDefaults.standard.bool(forKey: "autoApplyShaders")
         if shouldAutoApply && mpv.shadersAvailable {
@@ -2179,6 +2230,7 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
     func windowDidResize(_ notification: Notification) {
         // Refresh edge tracking areas so they match the new window size
         setupEdgeTrackingAreas()
+        updateFormatBadges()
     }
 
     @objc private func windowOcclusionChanged(_ notification: Notification) {

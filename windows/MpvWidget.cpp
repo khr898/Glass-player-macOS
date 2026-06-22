@@ -51,7 +51,7 @@ MpvWidget::MpvWidget(QWidget *parent)
     // Dolby Atmos, DTS-HD, TrueHD, 5.1 & 7.1 multi-channel audio setups
     mpv_set_option_string(m_mpv, "ao", "wasapi");
     mpv_set_option_string(m_mpv, "audio-channels", "auto");
-    mpv_set_option_string(m_mpv, "audio-spdif", "ac3,eac3,truehd,dts-hd");
+    mpv_set_option_string(m_mpv, "audio-spdif", "");
 
     if (mpv_initialize(m_mpv) < 0) {
         qFatal("Could not initialize mpv context");
@@ -180,6 +180,8 @@ void MpvWidget::handleEvent(mpv_event *event)
 {
     switch (event->event_id) {
     case MPV_EVENT_START_FILE:
+        m_hwdecFallbackHandled = false;
+        mpv_set_property_string(m_mpv, "hwdec", m_hwdecMode.toUtf8().constData());
         emit startFile();
         break;
     case MPV_EVENT_FILE_LOADED:
@@ -238,6 +240,10 @@ void MpvWidget::command(const QVariantList &args)
 
 void MpvWidget::setProperty(const char *name, const QVariant &value)
 {
+    if (strcmp(name, "hwdec") == 0) {
+        m_hwdecMode = value.toString();
+    }
+
     if (value.typeId() == QMetaType::Bool) {
         int v = value.toBool() ? 1 : 0;
         mpv_set_property(m_mpv, name, MPV_FORMAT_FLAG, &v);

@@ -207,6 +207,7 @@ private:
     QString formatTime(double seconds);
     void applyShaderPreset(const QString& preset);
     void updateHoverBars();
+    void updateResolutionBadge();
     void applyScrollDelta(int delta, double xPos);
 
     MpvWidget *m_mpvWidget;
@@ -222,6 +223,7 @@ private:
     QWidget *m_brightnessBar;
     QWidget *m_volumeBar;
     QLabel *m_titleLabel;
+    QLabel *m_resolutionBadge;
     QLineEdit *m_urlEdit;
 
     // Bottom Bar Elements

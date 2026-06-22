@@ -303,7 +303,7 @@ void SettingsWindow::buildAudioSection()
     addCombo(container, layout, "Audio Channels", "audioChannels", 
              {"auto", "auto-safe", "stereo", "5.1", "7.1"}, "auto");
              
-    addToggle(container, layout, "Audio passthrough (AC3, EAC3, TrueHD, DTS-HD)", "audioPassthrough", true);
+    addToggle(container, layout, "Audio passthrough (AC3, EAC3, TrueHD, DTS-HD)", "audioPassthrough", false);
     
     addCombo(container, layout, "Preferred Audio Language", "audioLang", 
              {"eng,en,jpn,jp", "jpn,jp,eng,en", "eng,en", "jpn,jp", "kor,ko,eng,en", "chi,zh,eng,en"}, "eng,en,jpn,jp");
