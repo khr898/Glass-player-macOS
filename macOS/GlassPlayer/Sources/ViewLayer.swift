@@ -64,7 +64,7 @@ class ViewLayer: CAMetalLayer {
 
     private let mtlDevice: MTLDevice
     private let commandQueue: MTLCommandQueue
-    private let pipelineState: MTLRenderPipelineState
+    private var pipelineState: MTLRenderPipelineState?
 
     // ═══════════════════════════════════════════════════════════════════
     // MARK: - mpv Interop: Offscreen CGL Context
@@ -83,12 +83,22 @@ class ViewLayer: CAMetalLayer {
     // needed on Apple Silicon's Unified Memory Architecture.
     // ═══════════════════════════════════════════════════════════════════
 
-    private var ioSurface: IOSurface?
-    private var metalVideoTexture: MTLTexture?
-    private var glFBO: GLuint = 0
-    private var glTexture: GLuint = 0
+    private struct RenderBuffer {
+        let ioSurface: IOSurface
+        let metalVideoTexture: MTLTexture
+        let glFBO: GLuint
+        let glTexture: GLuint
+    }
+    private var renderBuffers: [RenderBuffer] = []
+    private var bufferIndex = 0
     private var surfaceWidth: Int = 0
     private var surfaceHeight: Int = 0
+
+    // Pre-allocated rendering parameter structures (eliminate heap allocations in hot path)
+    private let fboDataPtr: UnsafeMutablePointer<mpv_opengl_fbo>
+    private let flipPtr: UnsafeMutablePointer<CInt>
+    private let depthPtr: UnsafeMutablePointer<GLint>
+    private let renderParamsPtr: UnsafeMutablePointer<mpv_render_param>
 
     // ═══════════════════════════════════════════════════════════════════
     // MARK: - Rendering State
@@ -132,16 +142,11 @@ class ViewLayer: CAMetalLayer {
         }
         commandQueue = queue
 
-        // ── 2. Render Pipeline State (compiled once, reused per frame) ──
-        // This single MTLRenderPipelineState replaces all OpenGL per-frame
-        // state calls: glEnable, glDisable, glBlendFunc, glDepthMask, etc.
-        // The pipeline is compiled from MSL 3.0 shaders.
+        // ── 2. Configure Render Pipeline Descriptor ──
         let library: MTLLibrary
         if let defaultLib = device.makeDefaultLibrary() {
-            // Pre-compiled metallib found in app bundle Resources
             library = defaultLib
         } else {
-            // Runtime compilation from embedded MSL source (no Metal toolchain needed)
             library = try! device.makeLibrary(source: ViewLayer.metalShaderSource, options: nil)
         }
 
@@ -150,14 +155,32 @@ class ViewLayer: CAMetalLayer {
         pipelineDesc.vertexFunction = library.makeFunction(name: "fullscreenVertex")
         pipelineDesc.fragmentFunction = library.makeFunction(name: "textureFragment")
         pipelineDesc.colorAttachments[0].pixelFormat = .bgra8Unorm
-        // No blending – opaque video surface (replaces glDisable(GL_BLEND))
         pipelineDesc.colorAttachments[0].isBlendingEnabled = false
 
-        do {
-            pipelineState = try device.makeRenderPipelineState(descriptor: pipelineDesc)
-        } catch {
-            fatalError("[ViewLayer] MTLRenderPipelineState creation failed: \(error)")
-        }
+        // Allocate pre-compiled C parameters for the render loop (eliminates heap allocation in hot path)
+        fboDataPtr = UnsafeMutablePointer<mpv_opengl_fbo>.allocate(capacity: 1)
+        fboDataPtr.initialize(to: mpv_opengl_fbo(fbo: 0, w: 0, h: 0, internal_format: 0))
+
+        flipPtr = UnsafeMutablePointer<CInt>.allocate(capacity: 1)
+        flipPtr.initialize(to: 0)
+
+        depthPtr = UnsafeMutablePointer<GLint>.allocate(capacity: 1)
+        depthPtr.initialize(to: 8)
+
+        renderParamsPtr = UnsafeMutablePointer<mpv_render_param>.allocate(capacity: 4)
+        renderParamsPtr.initialize(repeating: mpv_render_param(), count: 4)
+
+        renderParamsPtr[0].type = MPV_RENDER_PARAM_OPENGL_FBO
+        renderParamsPtr[0].data = UnsafeMutableRawPointer(fboDataPtr)
+
+        renderParamsPtr[1].type = MPV_RENDER_PARAM_FLIP_Y
+        renderParamsPtr[1].data = UnsafeMutableRawPointer(flipPtr)
+
+        renderParamsPtr[2].type = MPV_RENDER_PARAM_DEPTH
+        renderParamsPtr[2].data = UnsafeMutableRawPointer(depthPtr)
+
+        renderParamsPtr[3].type = MPV_RENDER_PARAM_INVALID
+        renderParamsPtr[3].data = nil
 
         // ── 3. Aligned Render State (lock-free frame flags) ──
         guard let state = GPAlignedRenderStateCreate() else {
@@ -221,6 +244,19 @@ class ViewLayer: CAMetalLayer {
 
         super.init()
 
+        // Compile render pipeline state asynchronously to avoid main thread latency (safe after super.init)
+        device.makeRenderPipelineState(descriptor: pipelineDesc) { [weak self] state, error in
+            guard let self = self else { return }
+            if let state = state {
+                self.displayLock.lock()
+                self.pipelineState = state
+                self.displayLock.unlock()
+                NSLog("[ViewLayer] Asynchronously compiled pipeline state successfully")
+            } else {
+                fatalError("[ViewLayer] MTLRenderPipelineState compilation failed: \(error?.localizedDescription ?? "unknown error")")
+            }
+        }
+
         // ── Configure CAMetalLayer ──
         self.device = mtlDevice
         self.pixelFormat = .bgra8Unorm
@@ -241,6 +277,7 @@ class ViewLayer: CAMetalLayer {
         self.backgroundColor = NSColor.black.cgColor
         // Allow 3 drawables in flight to prevent stalls during resize
         self.maximumDrawableCount = 3
+        self.allowsNextDrawableTimeout = true
     }
 
     required init?(coder: NSCoder) {
@@ -252,6 +289,11 @@ class ViewLayer: CAMetalLayer {
         CGLReleaseContext(cglCtx)
         CGLReleasePixelFormat(cglPix)
         GPAlignedRenderStateDestroy(renderState)
+
+        fboDataPtr.deallocate()
+        flipPtr.deallocate()
+        depthPtr.deallocate()
+        renderParamsPtr.deallocate()
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -267,23 +309,27 @@ class ViewLayer: CAMetalLayer {
     /// Both the OpenGL FBO (for mpv) and Metal texture (for display)
     /// are backed by the same IOSurface memory – zero-copy on UMA.
     /// Phase 1B: UMA Zero-Copy with Accelerate-based bounds clamping.
+    private var doubleBufferCount: Int {
+        return UniversalSharedMetalBufferFactory.shared.isMemoryFloorDevice ? 2 : 3
+    }
+
     private func createIOSurface(width: Int, height: Int) {
         // Clamp to valid range via Accelerate (Phase 1C)
         let width = Int(clampRangeAccelerate(Double(width), lower: 4, upper: 16384))
         let height = Int(clampRangeAccelerate(Double(height), lower: 4, upper: 16384))
 
         // Skip recreation if already at the correct size
-        if width == surfaceWidth && height == surfaceHeight && ioSurface != nil {
+        if width == surfaceWidth && height == surfaceHeight && !renderBuffers.isEmpty {
             return
         }
 
         // Tear down existing resources
         destroyIOSurface()
 
-        // ── Create IOSurface (UMA shared memory) ──
+        surfaceWidth = width
+        surfaceHeight = height
+
         let bytesPerPixel = 4  // BGRA8 (4 channels × 1 byte)
-        // Align bytesPerRow to Metal's minimum texture alignment to prevent
-        // _mtlValidateStrideTextureParameters assertion during resize.
         let alignment = mtlDevice.minimumLinearTextureAlignment(for: .bgra8Unorm)
         let rawBytesPerRow = width * bytesPerPixel
         let bytesPerRow = ((rawBytesPerRow + alignment - 1) / alignment) * alignment
@@ -297,93 +343,93 @@ class ViewLayer: CAMetalLayer {
             .allocSize: bytesPerRow * height,
         ]
 
-        guard let surface = IOSurface(properties: properties) else {
-            NSLog("[ViewLayer] Failed to create IOSurface %d×%d", width, height)
-            return
+        let count = doubleBufferCount
+        for _ in 0..<count {
+            guard let surface = IOSurface(properties: properties) else {
+                NSLog("[ViewLayer] Failed to create IOSurface %d×%d", width, height)
+                continue
+            }
+
+            // OpenGL side: Create texture + FBO from IOSurface
+            CGLLockContext(cglCtx)
+            CGLSetCurrentContext(cglCtx)
+
+            var tex: GLuint = 0
+            glGenTextures(1, &tex)
+            glBindTexture(GLenum(GL_TEXTURE_RECTANGLE), tex)
+
+            CGLTexImageIOSurface2D(cglCtx,
+                                   GLenum(GL_TEXTURE_RECTANGLE),
+                                   GLenum(GL_RGBA8),
+                                   GLsizei(width), GLsizei(height),
+                                   GLenum(GL_BGRA),
+                                   GLenum(GL_UNSIGNED_INT_8_8_8_8_REV),
+                                   surface, 0)
+
+            var fbo: GLuint = 0
+            glGenFramebuffers(1, &fbo)
+            glBindFramebuffer(GLenum(GL_FRAMEBUFFER), fbo)
+            glFramebufferTexture2D(GLenum(GL_FRAMEBUFFER),
+                                   GLenum(GL_COLOR_ATTACHMENT0),
+                                   GLenum(GL_TEXTURE_RECTANGLE),
+                                   tex, 0)
+
+            let status = glCheckFramebufferStatus(GLenum(GL_FRAMEBUFFER))
+            if status != GLenum(GL_FRAMEBUFFER_COMPLETE) {
+                NSLog("[ViewLayer] FBO incomplete: status=%d", status)
+            }
+
+            glBindFramebuffer(GLenum(GL_FRAMEBUFFER), 0)
+            glBindTexture(GLenum(GL_TEXTURE_RECTANGLE), 0)
+            CGLUnlockContext(cglCtx)
+
+            // Metal side: Create texture from same IOSurface (zero-copy)
+            let texDesc = MTLTextureDescriptor.texture2DDescriptor(
+                pixelFormat: .bgra8Unorm,
+                width: width,
+                height: height,
+                mipmapped: false
+            )
+            texDesc.usage = .shaderRead
+
+            guard let metalTex = mtlDevice.makeTexture(
+                descriptor: texDesc,
+                iosurface: surface,
+                plane: 0
+            ) else {
+                NSLog("[ViewLayer] Failed to create Metal texture from IOSurface")
+                continue
+            }
+
+            renderBuffers.append(RenderBuffer(
+                ioSurface: surface,
+                metalVideoTexture: metalTex,
+                glFBO: fbo,
+                glTexture: tex
+            ))
         }
-        ioSurface = surface
-        surfaceWidth = width
-        surfaceHeight = height
 
-        // ── OpenGL side: Create texture + FBO from IOSurface ──
-        // This is the minimal GL setup for mpv's render target.
-        // No OpenGL state machine calls (glEnable, glBlendFunc, etc.)
-        CGLLockContext(cglCtx)
-        CGLSetCurrentContext(cglCtx)
-
-        glGenTextures(1, &glTexture)
-        glBindTexture(GLenum(GL_TEXTURE_RECTANGLE), glTexture)
-
-        // Bind IOSurface to the GL texture – same physical memory on UMA
-        CGLTexImageIOSurface2D(cglCtx,
-                               GLenum(GL_TEXTURE_RECTANGLE),
-                               GLenum(GL_RGBA8),
-                               GLsizei(width), GLsizei(height),
-                               GLenum(GL_BGRA),
-                               GLenum(GL_UNSIGNED_INT_8_8_8_8_REV),
-                               surface, 0)
-
-        // Create FBO with IOSurface-backed texture as color attachment
-        glGenFramebuffers(1, &glFBO)
-        glBindFramebuffer(GLenum(GL_FRAMEBUFFER), glFBO)
-        glFramebufferTexture2D(GLenum(GL_FRAMEBUFFER),
-                               GLenum(GL_COLOR_ATTACHMENT0),
-                               GLenum(GL_TEXTURE_RECTANGLE),
-                               glTexture, 0)
-
-        let status = glCheckFramebufferStatus(GLenum(GL_FRAMEBUFFER))
-        if status != GLenum(GL_FRAMEBUFFER_COMPLETE) {
-            NSLog("[ViewLayer] FBO incomplete: status=%d", status)
-        }
-
-        glBindFramebuffer(GLenum(GL_FRAMEBUFFER), 0)
-        glBindTexture(GLenum(GL_TEXTURE_RECTANGLE), 0)
-        CGLUnlockContext(cglCtx)
-
-        // ── Metal side: Create texture from same IOSurface (zero-copy) ──
-        // Uses MTLResourceStorageModeShared – Apple Silicon UMA means CPU
-        // and GPU access the same physical memory. No staging buffer needed.
-        let texDesc = MTLTextureDescriptor.texture2DDescriptor(
-            pixelFormat: .bgra8Unorm,
-            width: width,
-            height: height,
-            mipmapped: false
-        )
-        texDesc.usage = .shaderRead
-        // storageMode is determined by the IOSurface on UMA hardware
-
-        metalVideoTexture = mtlDevice.makeTexture(
-            descriptor: texDesc,
-            iosurface: surface,
-            plane: 0
-        )
-
-        if metalVideoTexture == nil {
-            NSLog("[ViewLayer] Failed to create Metal texture from IOSurface")
-        }
+        bufferIndex = 0
     }
 
     /// Destroy IOSurface and all associated GPU resources
     private func destroyIOSurface() {
-        // Metal textures released via ARC
-        metalVideoTexture = nil
-
-        // Clean up OpenGL FBO + texture
-        if glFBO != 0 || glTexture != 0 {
+        if !renderBuffers.isEmpty {
             CGLLockContext(cglCtx)
             CGLSetCurrentContext(cglCtx)
-            if glFBO != 0 {
-                glDeleteFramebuffers(1, &glFBO)
-                glFBO = 0
-            }
-            if glTexture != 0 {
-                glDeleteTextures(1, &glTexture)
-                glTexture = 0
+            for buf in renderBuffers {
+                var fbo = buf.glFBO
+                var tex = buf.glTexture
+                if fbo != 0 {
+                    glDeleteFramebuffers(1, &fbo)
+                }
+                if tex != 0 {
+                    glDeleteTextures(1, &tex)
+                }
             }
             CGLUnlockContext(cglCtx)
+            renderBuffers.removeAll()
         }
-
-        ioSurface = nil
         surfaceWidth = 0
         surfaceHeight = 0
     }
@@ -483,7 +529,7 @@ class ViewLayer: CAMetalLayer {
         GPAlignedRenderStateClearFrameFlags(renderState)
 
         // Ensure IOSurface exists at the correct viewport size
-        if surfaceWidth == 0 || surfaceHeight == 0 || ioSurface == nil {
+        if surfaceWidth == 0 || surfaceHeight == 0 || renderBuffers.isEmpty {
             let scale = contentsScale
             let w = max(1, Int(bounds.width * scale))
             let h = max(1, Int(bounds.height * scale))
@@ -491,51 +537,36 @@ class ViewLayer: CAMetalLayer {
             createIOSurface(width: w, height: h)
         }
 
-        guard glFBO != 0, let metalTex = metalVideoTexture else {
+        guard !renderBuffers.isEmpty else {
             // Cannot render – skip this mpv frame to prevent stall
             skipMPVFrame(renderCtx)
             return
         }
 
+        let currentBuffer = renderBuffers[bufferIndex]
+
         // ── Step 1: mpv renders video frame to IOSurface-backed FBO ──
-        renderMPVToIOSurface(renderCtx)
+        renderMPVToIOSurface(renderCtx, fbo: currentBuffer.glFBO)
 
         // ── Step 2: Metal displays the IOSurface content on screen ──
-        displayWithMetal(metalTex)
+        displayWithMetal(currentBuffer.metalVideoTexture)
+
+        // Cycle buffer index
+        bufferIndex = (bufferIndex + 1) % renderBuffers.count
     }
 
     /// Have mpv render the current video frame to the IOSurface-backed OpenGL FBO.
     /// The CGL context is locked for the duration of the render call.
-    private func renderMPVToIOSurface(_ renderCtx: OpaquePointer) {
+    private func renderMPVToIOSurface(_ renderCtx: OpaquePointer, fbo: GLuint) {
         CGLLockContext(cglCtx)
         CGLSetCurrentContext(cglCtx)
 
-        var fboData = mpv_opengl_fbo(
-            fbo: Int32(glFBO),
-            w: Int32(surfaceWidth),
-            h: Int32(surfaceHeight),
-            internal_format: 0
-        )
+        fboDataPtr.pointee.fbo = Int32(fbo)
+        fboDataPtr.pointee.w = Int32(surfaceWidth)
+        fboDataPtr.pointee.h = Int32(surfaceHeight)
 
-        var flip: CInt = 0  // No flip: OpenGL FBO row 0 = bottom; Metal UV (0,0) = top-left → correct orientation
-
-        withUnsafeMutablePointer(to: &fboData) { dataPtr in
-            withUnsafeMutablePointer(to: &flip) { flipPtr in
-                withUnsafeMutablePointer(to: &bufferDepth) { depthPtr in
-                    var params: [mpv_render_param] = [
-                        mpv_render_param(type: MPV_RENDER_PARAM_OPENGL_FBO,
-                                         data: .init(dataPtr)),
-                        mpv_render_param(type: MPV_RENDER_PARAM_FLIP_Y,
-                                         data: .init(flipPtr)),
-                        mpv_render_param(type: MPV_RENDER_PARAM_DEPTH,
-                                         data: .init(depthPtr)),
-                        mpv_render_param()   // sentinel
-                    ]
-                    mpv_render_context_render(renderCtx, &params)
-                    mpv_render_context_report_swap(renderCtx)
-                }
-            }
-        }
+        mpv_render_context_render(renderCtx, renderParamsPtr)
+        mpv_render_context_report_swap(renderCtx)
 
         // Wait for GL commands to complete before Metal reads the IOSurface.
         // glFinish() guarantees the FBO write is done; glFlush() only submits.
@@ -572,7 +603,9 @@ class ViewLayer: CAMetalLayer {
 
         // Bind statically compiled pipeline state
         // (replaces per-frame glEnable/glDisable/glBlendFunc state machine)
-        encoder.setRenderPipelineState(pipelineState)
+        if let pipelineState = pipelineState {
+            encoder.setRenderPipelineState(pipelineState)
+        }
 
         // Bind video frame texture (IOSurface-backed, zero-copy on UMA)
         // Replaces OpenGL texture binding (glBindTexture, glActiveTexture)

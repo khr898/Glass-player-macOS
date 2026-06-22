@@ -1998,6 +1998,17 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
         isFirstPause = true  // reset for new file
         lastTimePosReceived = CACurrentMediaTime()
 
+        // Update current media source and file path to keep states synchronized (e.g. during playlist transition)
+        if let currentPath = mpv.getString("path") {
+            currentMediaSource = currentPath
+            let isURL = currentPath.contains("://") || currentPath.hasPrefix("http")
+            currentMediaIsURL = isURL
+            filePath = isURL ? nil : currentPath
+
+            // Re-setup thumbnail generator for the new track
+            setupThumbnailGenerator()
+        }
+
         // Kickstart and unblock stuck demuxer/decoder
         mpv.seek(to: 0)
         mpv.setPropertyString("pause", "no")
@@ -2175,8 +2186,11 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
         previewTimeLabel = nil
         isGeneratingThumbnail = false
         pendingThumbnailTime = -1
-        thumbnailMPV?.shutdown()
+        let thumbToDestroy = thumbnailMPV
         thumbnailMPV = nil
+        UniversalSiliconQoS.maintenance.async {
+            thumbToDestroy?.shutdown()
+        }
 
         videoView.uninit()
         mpv.shutdown()
@@ -3020,7 +3034,7 @@ private class ThumbnailMPV {
         setOpt("ao", "null")
         setOpt("aid", "no")          // disable audio decoding
         setOpt("sid", "no")          // disable subtitle decoding
-        setOpt("hwdec", "auto-safe")
+        setOpt("hwdec", "videotoolbox")
         setOpt("keep-open", "yes")
         setOpt("idle", "yes")
         setOpt("osc", "no")

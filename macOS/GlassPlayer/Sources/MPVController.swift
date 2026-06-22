@@ -208,8 +208,21 @@ class MPVController {
     /// Grace period after a new file starts — bypass time-pos throttle for first 2 s
     private var fileLoadedAt: CFTimeInterval = 0
 
-    // Parsed track list
-    var tracks: [TrackInfo] = []
+    // Parsed track list (thread-safe protected wrapper)
+    private let tracksLock = NSLock()
+    private var _tracks: [TrackInfo] = []
+    var tracks: [TrackInfo] {
+        get {
+            tracksLock.lock()
+            defer { tracksLock.unlock() }
+            return _tracks
+        }
+        set {
+            tracksLock.lock()
+            _tracks = newValue
+            tracksLock.unlock()
+        }
+    }
     // Current shader preset name (nil = none)
     var currentShaderPreset: String?
     // Whether shaders are available
@@ -570,7 +583,7 @@ class MPVController {
         }
     }
 
-    private func getString(_ name: String) -> String? {
+    func getString(_ name: String) -> String? {
         guard let handle = mpvHandle else { return nil }
         guard let cstr = mpv_get_property_string(handle, name) else { return nil }
         let str = String(cString: cstr)
@@ -749,7 +762,16 @@ class MPVController {
 
     func applyShaderPreset(_ preset: String) -> Bool {
         guard let dir = shaderDir else { return false }
-        guard let shaderNames = kShaderPresets[preset] else { return false }
+        guard var shaderNames = kShaderPresets[preset] else { return false }
+
+        // Enforce optimal dimension cap (1536 height):
+        // If the video height is >= 1536, fall back from heavy VL (Very Large) shaders to L (Large) shaders to prevent GPU starvation without degrading output quality.
+        let (_, dh) = getDisplayDimensions()
+        let height = dh > 0 ? dh : Int64(getPropertyDouble("height"))
+        if height >= 1536 {
+            shaderNames = shaderNames.map { $0.replacingOccurrences(of: "_VL.glsl", with: "_L.glsl") }
+            NSLog("[MPV] Height is %d (>= 1536). Falling back from VL to L shaders to prevent GPU starvation without degrading quality.", height)
+        }
 
         let paths = shaderNames
             .map { "\(dir)/\($0)" }
@@ -880,34 +902,32 @@ class MPVController {
             mpv_wakeup(handle)  // unblock mpv_wait_event
         }
 
-        // 2. Wait for event thread to actually exit (up to 2s)
-        //    so it doesn't touch the mpv handle after we destroy it.
-        if eventThread != nil {
-            _ = eventLoopExited.wait(timeout: .now() + 2.0)
-        }
+        // Keep local references for the background block to avoid referencing `self` if it gets freed
+        let handleToDestroy = mpvHandle
+        let contextToDestroy = mpvRenderContext
+        let threadToJoin = eventThread
+        let exitedSemaphore = eventLoopExited
 
-        // 3. Free render context (may already be nil if ViewLayer.uninitRendering ran)
-        if let ctx = mpvRenderContext {
-            mpv_render_context_set_update_callback(ctx, nil, nil)
-            mpv_render_context_free(ctx)
-            mpvRenderContext = nil
-        }
-
-        // 4. Destroy mpv handle
-        if let handle = mpvHandle {
-            mpv_terminate_destroy(handle)
-            mpvHandle = nil
-        }
-
-        // 5. Clear CGL reference — do NOT release it.
-        //    ViewLayer (Metal 3 pipeline) owns the offscreen CGL context
-        //    used for mpv interop and releases it in its deinit.
+        mpvHandle = nil
+        mpvRenderContext = nil
+        eventThread = nil
         openGLContext = nil
 
-        // 6. Break retain cycle
-        eventThread = nil
-
-        NSLog("[MPV] Shutdown complete")
+        // 2. Offload the heavy waiting and destruction to the maintenance background queue
+        // so the main thread never blocks during window teardown.
+        UniversalSiliconQoS.maintenance.async {
+            if threadToJoin != nil {
+                _ = exitedSemaphore.wait(timeout: .now() + 2.0)
+            }
+            if let ctx = contextToDestroy {
+                mpv_render_context_set_update_callback(ctx, nil, nil)
+                mpv_render_context_free(ctx)
+            }
+            if let handle = handleToDestroy {
+                mpv_terminate_destroy(handle)
+            }
+            NSLog("[MPV] Background shutdown complete")
+        }
     }
 
     // MARK: - Helpers
