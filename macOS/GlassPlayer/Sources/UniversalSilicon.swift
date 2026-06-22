@@ -270,34 +270,6 @@ struct UniversalMetalRuntime {
         return false
     }
 
-    /// Choose the best Anime4K shader preset for the current hardware.
-    /// Memory-floor devices always get "Fast" presets to avoid OOM.
-    static func recommendedAnime4KPreset(physicalMemory: UInt64 = ProcessInfo.processInfo.physicalMemory) -> String {
-        let isMemoryFloorDevice = physicalMemory <= (8 * 1024 * 1024 * 1024)
-        if isMemoryFloorDevice {
-            return "Mode A (Fast)"
-        }
-
-        // Prefer Fast presets in low-power mode to reduce battery lag.
-        if ProcessInfo.processInfo.isLowPowerModeEnabled {
-            return "Mode A (Fast)"
-        }
-
-        let workingSet = MTLCreateSystemDefaultDevice()?.recommendedMaxWorkingSetSize ?? 0
-
-        switch gpuTier() {
-        case .high:
-            if workingSet >= 12 * 1024 * 1024 * 1024 {
-                return "Mode A (HQ)"
-            }
-            return "Mode A (Fast)"
-        case .balanced:
-            return "Mode A (Fast)"
-        case .efficient, .unknown:
-            return "Mode A (Fast)"
-        }
-    }
-
     /// Recommended Metal pixel format for the current display.
     /// XDR displays on M1 Pro+ can benefit from rgba16Float for HDR headroom.
     static func recommendedPixelFormat() -> MTLPixelFormat {
@@ -320,17 +292,15 @@ struct UniversalMetalRuntime {
         let physMem = ProcessInfo.processInfo.physicalMemory
         let memGB = Double(physMem) / (1024 * 1024 * 1024)
         let tier = gpuTier()
-        let preset = recommendedAnime4KPreset()
         let memFloor = UniversalSharedMetalBufferFactory.shared.isMemoryFloorDevice
         let deviceName = Host.current().localizedName ?? "Unknown Mac"
         let gpuName = MTLCreateSystemDefaultDevice()?.name ?? "Unknown GPU"
-        NSLog("[UniversalSilicon] Device: %@ | GPU: %@ | tier: %@ | Memory: %.0f GB (floor=%@) | LowPower=%@ | Shader preset: %@",
+        NSLog("[UniversalSilicon] Device: %@ | GPU: %@ | tier: %@ | Memory: %.0f GB (floor=%@) | LowPower=%@",
               deviceName,
               gpuName,
               tier.rawValue,
               memGB,
               memFloor ? "YES" : "NO",
-              ProcessInfo.processInfo.isLowPowerModeEnabled ? "YES" : "NO",
-              preset)
+              ProcessInfo.processInfo.isLowPowerModeEnabled ? "YES" : "NO")
     }
 }

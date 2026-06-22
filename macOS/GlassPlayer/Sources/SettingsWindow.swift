@@ -790,14 +790,13 @@ class SettingsWindow: NSWindowController, NSTableViewDelegate, NSTableViewDataSo
         views.append(makeSectionHeader("Anime4K Shaders"))
 
         views.append(makeDescriptionLabel(
-            "Anime4K shaders enhance anime visuals using real-time GPU processing. " +
-            "Auto chooses a preset dynamically based on your current GPU and memory headroom."
+            "Anime4K shaders enhance anime visuals using real-time GPU processing."
         ))
 
         views.append(makePopUpRow(
             title: "Default Preset",
             key: "defaultShaderPreset",
-            options: ["Off", "Auto (Recommended)", "Mode A (HQ)", "Mode B (HQ)", "Mode C (HQ)",
+            options: ["Off", "Mode A (HQ)", "Mode B (HQ)", "Mode C (HQ)",
                       "Mode A+A (HQ)", "Mode B+B (HQ)", "Mode C+A (HQ)",
                       "Mode A (Fast)", "Mode B (Fast)", "Mode C (Fast)",
                       "Mode A+A (Fast)", "Mode B+B (Fast)", "Mode C+A (Fast)"],

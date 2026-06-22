@@ -445,7 +445,10 @@ MainWindow::MainWindow(QWidget *parent)
         m_settings.setValue("dscaleFilter", "mitchell");
         m_settings.setValue("toneMapping", "spline");
         m_settings.setValue("hdrComputePeak", true);
-        m_settings.setValue("windowResize", "Never resize");
+    }
+
+    if (m_settings.value("defaultShaderPreset").toString() == "Auto (Recommended)") {
+        m_settings.setValue("defaultShaderPreset", "Off");
     }
 
     // Apply saved settings
@@ -1290,17 +1293,7 @@ void MainWindow::applyShaderPreset(const QString& preset)
         {"ModeCAFast", "Mode C+A (Fast)"}
     };
 
-    const QString normalizedPreset = aliases.value(preset, preset);
-    QString resolvedPreset = normalizedPreset;
-#if defined(_M_ARM64) || defined(__aarch64__)
-    if (normalizedPreset == "Auto (Recommended)") {
-        resolvedPreset = "Mode A (Fast)";
-    }
-#else
-    if (normalizedPreset == "Auto (Recommended)") {
-        resolvedPreset = "Mode A (HQ)";
-    }
-#endif
+    const QString resolvedPreset = aliases.value(preset, preset);
 
     if (resolvedPreset.isEmpty() || resolvedPreset == "Off") {
         m_mpvWidget->command(QVariantList() << "change-list" << "glsl-shaders" << "clr" << "");
@@ -1585,11 +1578,6 @@ void MainWindow::onShaderClicked()
     menu.setStyleSheet(kMenuStyle);
 
     QString currentPreset = m_settings.value("defaultShaderPreset", "Off").toString();
-#if defined(_M_ARM64) || defined(__aarch64__)
-    QString recommendedPreset = "Mode A (Fast)";
-#else
-    QString recommendedPreset = "Mode A (HQ)";
-#endif
 
     QAction *offAction = menu.addAction("Off", this, [this]() {
         applySettingToMpv("defaultShaderPreset", "Off");

@@ -941,7 +941,6 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
 
     @objc private func showShaderMenu(_ sender: NSButton) {
         let menu = NSMenu()
-        let recommendedPreset = UniversalMetalRuntime.recommendedAnime4KPreset()
 
         // "Off" option
         let offItem = NSMenuItem(title: "Off", action: #selector(clearShadersAction), keyEquivalent: "")
@@ -949,18 +948,10 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
         if mpv.currentShaderPreset == nil { offItem.state = .on }
         menu.addItem(offItem)
 
-        let autoItem = NSMenuItem(title: "Auto (Recommended)", action: #selector(applyAutoShaderAction), keyEquivalent: "")
-        autoItem.target = self
-        autoItem.toolTip = "Resolved now as: \(recommendedPreset)"
-        menu.addItem(autoItem)
-
         menu.addItem(.separator())
 
         // HQ presets
-        let hqHeaderTitle = recommendedPreset.contains("(HQ)")
-            ? "── HQ (Recommended on this Mac) ──"
-            : "── HQ (Pro/Max GPU) ──"
-        let hqHeader = NSMenuItem(title: hqHeaderTitle, action: nil, keyEquivalent: "")
+        let hqHeader = NSMenuItem(title: "── Anime4K (HQ) ──", action: nil, keyEquivalent: "")
         hqHeader.isEnabled = false
         menu.addItem(hqHeader)
 
@@ -976,10 +967,7 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
         menu.addItem(.separator())
 
         // Fast presets
-        let fastHeaderTitle = recommendedPreset.contains("(Fast)")
-            ? "── Fast (Recommended on this Mac) ──"
-            : "── Fast (Lower GPU load) ──"
-        let fastHeader = NSMenuItem(title: fastHeaderTitle, action: nil, keyEquivalent: "")
+        let fastHeader = NSMenuItem(title: "── Anime4K (Fast) ──", action: nil, keyEquivalent: "")
         fastHeader.isEnabled = false
         menu.addItem(fastHeader)
 
@@ -1040,12 +1028,6 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
             _ = mpv.applyShaderPreset(preset)
             updateShaderButton()
         }
-    }
-
-    @objc private func applyAutoShaderAction() {
-        let resolved = UniversalMetalRuntime.recommendedAnime4KPreset()
-        _ = mpv.applyShaderPreset(resolved)
-        updateShaderButton()
     }
 
     @objc private func clearShadersAction() {
@@ -1962,12 +1944,13 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
 
         let shouldAutoApply = UserDefaults.standard.bool(forKey: "autoApplyShaders")
         if shouldAutoApply && mpv.shadersAvailable {
-            let configuredPreset = UserDefaults.standard.string(forKey: "defaultShaderPreset") ?? "Off"
+            var configuredPreset = UserDefaults.standard.string(forKey: "defaultShaderPreset") ?? "Off"
+            if configuredPreset == "Auto (Recommended)" {
+                configuredPreset = "Off"
+                UserDefaults.standard.set("Off", forKey: "defaultShaderPreset")
+            }
             if configuredPreset == "Off" {
                 mpv.clearShaders()
-            } else if configuredPreset == "Auto (Recommended)" {
-                let resolved = UniversalMetalRuntime.recommendedAnime4KPreset()
-                _ = mpv.applyShaderPreset(resolved)
             } else {
                 _ = mpv.applyShaderPreset(configuredPreset)
             }
@@ -2662,7 +2645,7 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
     }
 
     private func cycleShaderPreset() {
-        let presets = ["Off", "Auto (Recommended)", "Mode A (HQ)", "Mode B (HQ)", "Mode C (HQ)",
+        let presets = ["Off", "Mode A (HQ)", "Mode B (HQ)", "Mode C (HQ)",
                        "Mode A+A (HQ)", "Mode B+B (HQ)", "Mode C+A (HQ)", "Mode A (Fast)",
                        "Mode B (Fast)", "Mode C (Fast)", "Mode A+A (Fast)", "Mode B+B (Fast)",
                        "Mode C+A (Fast)"]
@@ -2673,9 +2656,6 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
         
         if nextPreset == "Off" {
             mpv.clearShaders()
-        } else if nextPreset == "Auto (Recommended)" {
-            let resolved = UniversalMetalRuntime.recommendedAnime4KPreset()
-            _ = mpv.applyShaderPreset(resolved)
         } else {
             _ = mpv.applyShaderPreset(nextPreset)
         }
