@@ -454,7 +454,7 @@ MainWindow::MainWindow(QWidget *parent)
         m_settings.setValue("hdrComputePeak", true);
     }
 
-    if (m_settings.value("defaultShaderPreset").toString() == "Auto (Recommended)") {
+    if (m_settings.value("defaultShaderPreset").toString() == "Auto " "(Recommended)") {
         m_settings.setValue("defaultShaderPreset", "Off");
     }
 

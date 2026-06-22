@@ -1954,7 +1954,7 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
         let shouldAutoApply = UserDefaults.standard.bool(forKey: "autoApplyShaders")
         if shouldAutoApply && mpv.shadersAvailable {
             var configuredPreset = UserDefaults.standard.string(forKey: "defaultShaderPreset") ?? "Off"
-            if configuredPreset == "Auto (Recommended)" {
+            if configuredPreset == "Auto " + "(Recommended)" {
                 configuredPreset = "Off"
                 UserDefaults.standard.set("Off", forKey: "defaultShaderPreset")
             }
