@@ -1,0 +1,54 @@
+﻿<Window
+    x:Class="GlassPlayer.WelcomeWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:GlassPlayer"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    Title="Glass Player">
+
+    <Grid x:ConnectionId='2' x:Name="RootGrid" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Custom Title Bar / Close Button -->
+        <Grid Height="32">
+            <Button x:ConnectionId='5' x:Name="CloseBtn" Content="⨉" FontSize="14" FontWeight="Bold" Width="32" Height="32" Background="Transparent" BorderThickness="0" HorizontalAlignment="Right"                       />
+        </Grid>
+
+        <!-- Main Content -->
+        <StackPanel Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="20">
+            <!-- App Icon Centerpiece -->
+            <Border Width="72" Height="72" CornerRadius="12" Background="{ThemeResource LayerFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" HorizontalAlignment="Center" Padding="8">
+                <Image Source="ms-appx:///Assets/icons/app.svg" Width="52" Height="52"/>
+            </Border>
+
+            <!-- Modern Bold Title -->
+            <TextBlock Text="Glass Player" FontSize="22" FontWeight="SemiBold" HorizontalAlignment="Center" Style="{ThemeResource TitleTextBlockStyle}"/>
+
+            <!-- Subtitle -->
+            <TextBlock Text="Drop a video file here, or choose an option below" FontSize="13" Foreground="{ThemeResource TextFillColorSecondaryBrush}" HorizontalAlignment="Center" Style="{ThemeResource BodyTextBlockStyle}"/>
+
+            <!-- Premium Actions -->
+            <StackPanel Orientation="Horizontal" Spacing="24" HorizontalAlignment="Center">
+                <Button x:ConnectionId='3' x:Name="OpenFileBtn" Width="180" Height="100" CornerRadius="8"                          >
+                    <StackPanel Spacing="8" VerticalAlignment="Center" HorizontalAlignment="Center">
+                        <Image Source="ms-appx:///Assets/icons/open_file.svg" Width="28" Height="28"/>
+                        <TextBlock Text="Open File" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
+
+                <Button x:ConnectionId='4' x:Name="RemoteBtn" Width="180" Height="100" CornerRadius="8"                        >
+                    <StackPanel Spacing="8" VerticalAlignment="Center" HorizontalAlignment="Center">
+                        <Image Source="ms-appx:///Assets/icons/remote.svg" Width="28" Height="28"/>
+                        <TextBlock Text="Remote Browser" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
+            </StackPanel>
+        </StackPanel>
+    </Grid>
+</Window>
+

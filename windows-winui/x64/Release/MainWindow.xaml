@@ -1,0 +1,118 @@
+﻿<Window
+    x:Class="GlassPlayer.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:GlassPlayer"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    Title="Glass Player">
+
+    <Grid x:ConnectionId='2' x:Name="Root" Background="Black">
+        <!-- SwapChainPanel for video rendering -->
+        <SwapChainPanel x:ConnectionId='3' x:Name="VideoPanel"                                                                                     />
+
+        <!-- Top Bar HUD -->
+        <Border x:ConnectionId='4' x:Name="TopBar" VerticalAlignment="Top" Height="44" Padding="12,0,12,0" Background="{ThemeResource LayerFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="0,0,0,1">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock x:ConnectionId='36' x:Name="TitleLabel" Text="Glass Player" VerticalAlignment="Center" Style="{ThemeResource BodyStrongTextBlockStyle}" Foreground="{ThemeResource TextFillColorPrimaryBrush}"/>
+                    <Border x:ConnectionId='37' x:Name="ResolutionBadge" Margin="8,0,0,0" Padding="6,2,6,2" CornerRadius="4" Background="{ThemeResource SubtleFillColorSecondaryBrush}" Visibility="Collapsed" VerticalAlignment="Center">
+                        <TextBlock x:ConnectionId='38' x:Name="ResolutionText" Text="1080p" Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                    </Border>
+                </StackPanel>
+                
+                <TextBox x:ConnectionId='31' x:Name="UrlEdit" Grid.Column="1" Width="300" Height="28" Margin="0,0,12,0" PlaceholderText="Enter stream URL..." VerticalAlignment="Center" Visibility="Collapsed"                           />
+
+                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                    <Button x:ConnectionId='32' x:Name="UrlBtn" Width="32" Height="32" Padding="6" Background="Transparent" BorderThickness="0"                      ToolTipService.ToolTip="Open URL">
+                        <Image Source="ms-appx:///Assets/icons/url.svg"/>
+                    </Button>
+                    <Button x:ConnectionId='33' x:Name="OpenBtn" Width="32" Height="32" Padding="6" Background="Transparent" BorderThickness="0"                       ToolTipService.ToolTip="Open File">
+                        <Image Source="ms-appx:///Assets/icons/open_file.svg"/>
+                    </Button>
+                    <Button x:ConnectionId='34' x:Name="RemoteBtn" Width="32" Height="32" Padding="6" Background="Transparent" BorderThickness="0"                         ToolTipService.ToolTip="Remote Cloud Browser">
+                        <Image Source="ms-appx:///Assets/icons/remote.svg"/>
+                    </Button>
+                    <Button x:ConnectionId='35' x:Name="SettingsBtn" Width="32" Height="32" Padding="6" Background="Transparent" BorderThickness="0"                           ToolTipService.ToolTip="Settings">
+                        <Image Source="ms-appx:///Assets/icons/settings.svg"/>
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Bottom Bar HUD -->
+        <Border x:ConnectionId='5' x:Name="BottomBar" VerticalAlignment="Bottom" Height="90" Margin="16" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1"                                     >
+            <Canvas x:ConnectionId='11' x:Name="BottomCanvas">
+                <!-- Seek slider and time labels -->
+                <TextBlock x:ConnectionId='12' x:Name="CurrentTimeLabel" Text="00:00" Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                <Slider x:ConnectionId='13' x:Name="SeekSlider" Minimum="0" Maximum="1000000" Value="0" Width="100" Height="20" ThumbToolTipValueConverter="{x:Null}"                                                                                     />
+                <TextBlock x:ConnectionId='14' x:Name="RemainingTimeLabel" Text="00:00" Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+
+                <!-- Control Buttons -->
+                <Button x:ConnectionId='15' x:Name="SubtitleBtn" Width="30" Height="30" Padding="4" Background="Transparent" BorderThickness="0"                           ToolTipService.ToolTip="Subtitle Tracks">
+                    <Image Source="ms-appx:///Assets/icons/subtitle.svg"/>
+                </Button>
+                <Button x:ConnectionId='16' x:Name="AudioBtn" Width="30" Height="30" Padding="4" Background="Transparent" BorderThickness="0"                        ToolTipService.ToolTip="Audio Tracks">
+                    <Image Source="ms-appx:///Assets/icons/audio.svg"/>
+                </Button>
+                <Button x:ConnectionId='17' x:Name="ShaderBtn" Width="30" Height="30" Padding="4" Background="Transparent" BorderThickness="0"                         ToolTipService.ToolTip="Shaders">
+                    <Image Source="ms-appx:///Assets/icons/shader.svg"/>
+                </Button>
+
+                <!-- Center Playback Control Group -->
+                <Button x:ConnectionId='18' x:Name="PrevBtn" Width="30" Height="30" Padding="4" Background="Transparent" BorderThickness="0"                       ToolTipService.ToolTip="Previous file">
+                    <Image Source="ms-appx:///Assets/icons/prev.svg"/>
+                </Button>
+                <Button x:ConnectionId='19' x:Name="RewindBtn" Width="30" Height="30" Padding="4" Background="Transparent" BorderThickness="0"                         ToolTipService.ToolTip="Seek backward 5 seconds">
+                    <Image Source="ms-appx:///Assets/icons/rewind.svg"/>
+                </Button>
+                <Button x:ConnectionId='20' x:Name="PlayPauseBtn" Width="40" Height="40" Padding="8" CornerRadius="20"                            ToolTipService.ToolTip="Play/Pause">
+                    <Image x:ConnectionId='30' x:Name="PlayPauseIcon" Source="ms-appx:///Assets/icons/play.svg"/>
+                </Button>
+                <Button x:ConnectionId='21' x:Name="ForwardBtn" Width="30" Height="30" Padding="4" Background="Transparent" BorderThickness="0"                          ToolTipService.ToolTip="Seek forward 5 seconds">
+                    <Image Source="ms-appx:///Assets/icons/forward.svg"/>
+                </Button>
+                <Button x:ConnectionId='22' x:Name="NextBtn" Width="30" Height="30" Padding="4" Background="Transparent" BorderThickness="0"                       ToolTipService.ToolTip="Next file">
+                    <Image Source="ms-appx:///Assets/icons/next.svg"/>
+                </Button>
+
+                <!-- Right Side Control Group -->
+                <Button x:ConnectionId='23' x:Name="VolumeBtn" Width="30" Height="30" Padding="4" Background="Transparent" BorderThickness="0"                       ToolTipService.ToolTip="Mute/Unmute">
+                    <Image x:ConnectionId='29' x:Name="VolumeIcon" Source="ms-appx:///Assets/icons/volume_high.svg"/>
+                </Button>
+                <Slider x:ConnectionId='24' x:Name="VolumeSlider" Minimum="0" Maximum="200" Value="100" Width="70" Height="20"                                           ToolTipService.ToolTip="Volume"/>
+                <Button x:ConnectionId='25' x:Name="SpeedBtn" Width="32" Height="30" Content="1.0x" Padding="2" FontSize="11" FontWeight="Bold"                        ToolTipService.ToolTip="Playback Speed"/>
+                <Button x:ConnectionId='26' x:Name="AspectBtn" Width="30" Height="30" Padding="4" Background="Transparent" BorderThickness="0"                         ToolTipService.ToolTip="Aspect Ratio">
+                    <Image Source="ms-appx:///Assets/icons/aspect.svg"/>
+                </Button>
+                <Button x:ConnectionId='27' x:Name="FullscreenBtn" Width="30" Height="30" Padding="4" Background="Transparent" BorderThickness="0"                             ToolTipService.ToolTip="Fullscreen">
+                    <Image x:ConnectionId='28' x:Name="FullscreenIcon" Source="ms-appx:///Assets/icons/fullscreen.svg"/>
+                </Button>
+            </Canvas>
+        </Border>
+
+        <!-- Left Side Brightness HUD -->
+        <Border x:ConnectionId='6' x:Name="BrightnessBar" HorizontalAlignment="Left" VerticalAlignment="Center" Width="40" Height="200" Margin="16,0,0,0" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" Visibility="Collapsed">
+            <StackPanel Padding="6" Spacing="8">
+                <Image Source="ms-appx:///Assets/icons/sun.svg" Width="20" Height="20" HorizontalAlignment="Center"/>
+                <Slider x:ConnectionId='10' x:Name="BrightnessSlider" Orientation="Vertical" Minimum="0" Maximum="100" Value="50" Height="140" HorizontalAlignment="Center"                                              />
+            </StackPanel>
+        </Border>
+
+        <!-- Right Side Volume HUD -->
+        <Border x:ConnectionId='7' x:Name="VolumeBar" HorizontalAlignment="Right" VerticalAlignment="Center" Width="40" Height="200" Margin="0,0,16,0" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" Visibility="Collapsed">
+            <StackPanel Padding="6" Spacing="8">
+                <Image x:ConnectionId='8' x:Name="VolumeBarIcon" Source="ms-appx:///Assets/icons/volume_high.svg" Width="20" Height="20" HorizontalAlignment="Center"/>
+                <Slider x:ConnectionId='9' x:Name="VolumeHoverSlider" Orientation="Vertical" Minimum="0" Maximum="200" Value="100" Height="140" HorizontalAlignment="Center"                                               />
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>
+
