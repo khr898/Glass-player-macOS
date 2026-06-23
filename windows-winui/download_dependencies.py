@@ -36,7 +36,7 @@ def setup_mpv(arch):
     else:  # arm64
         search_pattern = "mpv-dev-aarch64"
         exclude_pattern = None
-        dest_dir = "arm64"
+        dest_dir = "ARM64"
         fallback_url = "https://sourceforge.net/projects/mpv-player-windows/files/libmpv/mpv-dev-aarch64-20260531-git-13a3e3a.7z/download"
 
     print(f"Fetching libmpv Windows {arch} feed...")
@@ -82,7 +82,7 @@ def setup_mpv(arch):
 
 def setup_angle(arch):
     tag = "2026-06-06"
-    dest_dir = "x64" if arch == "x64" else "arm64"
+    dest_dir = "x64" if arch == "x64" else "ARM64"
     filename = f"angle-{arch}-{tag}.zip"
     url = f"https://github.com/mmozeiko/build-angle/releases/download/{tag}/{filename}"
 

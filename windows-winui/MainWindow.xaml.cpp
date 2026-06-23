@@ -20,6 +20,7 @@
 #include <winrt/Windows.Foundation.Collections.h>
 #include <winrt/Windows.Graphics.Effects.h>
 #include <winrt/Microsoft.UI.Xaml.Input.h>
+#include <winrt/Microsoft.UI.Xaml.Media.Imaging.h>
 
 #include <cmath>
 #include <string>

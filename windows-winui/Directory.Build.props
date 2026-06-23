@@ -1,9 +1,8 @@
 <Project>
-  <Import Project="$(MSBuildProjectDirectory)\obj\$(MSBuildProjectName).vcxproj.nuget.g.props" Condition="Exists('$(MSBuildProjectDirectory)\obj\$(MSBuildProjectName).vcxproj.nuget.g.props')" />
-
   <PropertyGroup>
     <RestoreProjectStyle>PackageReference</RestoreProjectStyle>
-    <ResolveNuGetPackages>false</ResolveNuGetPackages>
+    <NuGetTargetMoniker>native,Version=v0.0</NuGetTargetMoniker>
+    <RuntimeIdentifiers>win;win-x86;win-x64;win-arm;win-arm64</RuntimeIdentifiers>
     <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
     <WindowsPackageType>None</WindowsPackageType>
     <AppxPackage>false</AppxPackage>
@@ -17,7 +16,7 @@
     <DisablePriGen>true</DisablePriGen>
     <ProjectPriGenEnabled>false</ProjectPriGenEnabled>
     <AppxGenerateProjectPri>false</AppxGenerateProjectPri>
-    <CppWinRTPath>$(NuGetPackageRoot)microsoft.windows.cppwinrt\2.0.240405.15\bin\</CppWinRTPath>
+    <CppWinRTPath>$(UserProfile)\.nuget\packages\microsoft.windows.cppwinrt\2.0.240405.15\bin\</CppWinRTPath>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.6.240923002" />

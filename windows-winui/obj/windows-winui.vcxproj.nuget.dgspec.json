@@ -61,6 +61,9 @@
         "win": {
           "#import": []
         },
+        "win-arm": {
+          "#import": []
+        },
         "win-arm64": {
           "#import": []
         },

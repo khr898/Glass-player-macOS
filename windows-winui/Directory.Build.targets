@@ -1,6 +1,4 @@
 <Project>
-  <Import Project="$(MSBuildProjectDirectory)\obj\$(MSBuildProjectName).vcxproj.nuget.g.targets" Condition="Exists('$(MSBuildProjectDirectory)\obj\$(MSBuildProjectName).vcxproj.nuget.g.targets')" />
-
   <!-- Override CopyLocalFilesOutputGroup to bypass RemovePayloadDuplicates task which requires missing AppxPackaging tools -->
   <Target Name="CopyLocalFilesOutputGroup"
           DependsOnTargets="$(CopyLocalFilesOutputGroupDependsOn)"
@@ -21,6 +19,7 @@
 
   <!-- Override _GetPackageArchitecture to bypass GetPackageArchitecture task which requires missing AppxPackaging tools -->
   <Target Name="_GetPackageArchitecture" />
+
   <!-- Force XAML compiler to run before ClCompile in native C++ projects -->
   <Target Name="RunXamlCompilerBeforeClCompile" BeforeTargets="ClCompile" DependsOnTargets="MarkupCompilePass1;MarkupCompilePass2" />
 </Project>

@@ -61,7 +61,7 @@
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
-  <ImportGroup Label="ExtensionSettings" />
+  <Import Project="$(MSBuildProjectDirectory)\obj\$(MSBuildProjectName).vcxproj.nuget.g.props" Condition="Exists('$(MSBuildProjectDirectory)\obj\$(MSBuildProjectName).vcxproj.nuget.g.props')" />
   <ImportGroup Label="Shared" />
   <ImportGroup Label="PropertySheets">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
@@ -78,8 +78,8 @@
       <LanguageStandard>stdcpp20</LanguageStandard>
       <LanguageStandard_C>stdc17</LanguageStandard_C>
       <ConformanceMode>true</ConformanceMode>
-      <PreprocessorDefinitions>DISABLE_XAML_GENERATED_MAIN;UNICODE;_UNICODE;WIN32_LEAN_AND_MEAN;NOMINMAX;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalOptions>/FS %(AdditionalOptions)</AdditionalOptions>
+      <PreprocessorDefinitions>DISABLE_XAML_GENERATED_MAIN;UNICODE;_UNICODE;WIN32_LEAN_AND_MEAN;NOMINMAX;_VSDESIGNER_DONT_LOAD_AS_DLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalOptions>/FS /FIunknwn.h %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -158,6 +158,10 @@
     </ClCompile>
     <ClCompile Include="RenderHost.cpp" />
     <ClCompile Include="WinOSIntegration.cpp" />
+    <ClCompile Include="$(GeneratedFilesDir)module.g.cpp" />
+    <ClCompile Include="$(GeneratedFilesDir)XamlMetaDataProvider.cpp" />
+    <ClCompile Include="$(IntDir)XamlTypeInfo.g.cpp" />
+    <ClCompile Include="$(IntDir)XamlTypeInfo.Impl.g.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="App.xaml.h">
@@ -179,5 +183,6 @@
     <ClInclude Include="WinOSIntegration.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <Import Project="$(MSBuildProjectDirectory)\obj\$(MSBuildProjectName).vcxproj.nuget.g.targets" Condition="Exists('$(MSBuildProjectDirectory)\obj\$(MSBuildProjectName).vcxproj.nuget.g.targets')" />
   <ImportGroup Label="ExtensionTargets" />
 </Project>

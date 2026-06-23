@@ -48,6 +48,13 @@ Makefile
 cmake_install.cmake
 install/
 windows/build/
+
+# WinUI 3 Windows port build artifacts
+windows-winui/obj/
+windows-winui/Win32/
+windows-winui/x64/
+windows-winui/ARM64/
+windows-winui/build/
 windows/build_x64/
 windows/build_arm64/
 windows/dist/
