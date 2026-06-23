@@ -51,6 +51,8 @@ windows/build/
 windows/build_x64/
 windows/build_arm64/
 windows/dist/
+windows-winui/x64
+windows-winui/build
 
 # Qt Creator & Qt Build artifacts
 *.autosave
