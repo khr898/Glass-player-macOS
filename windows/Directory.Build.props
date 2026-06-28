@@ -6,6 +6,8 @@
     <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
     <WindowsPackageType>None</WindowsPackageType>
     <AppxPackage>false</AppxPackage>
+    <WindowsAppSdkSelfContained>true</WindowsAppSdkSelfContained>
+    <WindowsSelfContainedDeployment>true</WindowsSelfContainedDeployment>
     <EnableMsixTooling>false</EnableMsixTooling>
     <AppxGeneratePriEnabled>false</AppxGeneratePriEnabled>
     <AppxGeneratePriHeaderEnabled>false</AppxGeneratePriHeaderEnabled>

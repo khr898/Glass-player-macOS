@@ -10,6 +10,7 @@
 #include <winrt/Windows.Storage.Pickers.h>
 #include <winrt/Windows.Storage.h>
 #include <winrt/Windows.Foundation.h>
+#include <winrt/Windows.ApplicationModel.DataTransfer.h>
 
 using namespace winrt;
 using namespace winrt::Microsoft::UI::Xaml;
@@ -31,19 +32,27 @@ namespace winrt::GlassPlayer::implementation
             windowNative->get_WindowHandle(&m_hwnd);
         }
 
-        // Apply custom size (520x390)
+        // WinUI 3: extend XAML into title bar area (no system title bar strip)
+        ExtendsContentIntoTitleBar(true);
+
         auto appWindow = winrt::Microsoft::UI::Windowing::AppWindow::GetFromWindowId(
             winrt::Microsoft::UI::GetWindowIdFromWindow(m_hwnd));
-        
-        // Remove frame/caption to make it look borderless like the Qt version
-        LONG style = GetWindowLong(m_hwnd, GWL_STYLE);
-        style &= ~(WS_CAPTION | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_SYSMENU);
-        SetWindowLong(m_hwnd, GWL_STYLE, style);
 
-        // Center on screen
+        // Fixed-size dialog
+        if (auto presenter = appWindow.Presenter().try_as<winrt::Microsoft::UI::Windowing::OverlappedPresenter>()) {
+            presenter.IsResizable(false);
+            presenter.IsMaximizable(false);
+            presenter.IsMinimizable(false);
+        }
+
+        // Set size and center on screen
         appWindow.Resize({ 520, 390 });
-        
-        // Apply frosted glass
+        auto displayArea = winrt::Microsoft::UI::Windowing::DisplayArea::GetFromWindowId(
+            appWindow.Id(), winrt::Microsoft::UI::Windowing::DisplayAreaFallback::Nearest);
+        auto wa = displayArea.WorkArea();
+        appWindow.Move({ wa.X + (wa.Width - 520) / 2, wa.Y + (wa.Height - 390) / 2 });
+
+        // Apply frosted glass (Mica/Acrylic backdrop)
         WinOSIntegration::instance().applyFrostedGlass(m_hwnd);
     }
 
@@ -86,6 +95,33 @@ namespace winrt::GlassPlayer::implementation
         m_remoteClicked = true;
         m_accepted = true;
         Close();
+    }
+
+
+    void WelcomeWindow::OnDragOver(IInspectable const&, DragEventArgs const& e)
+    {
+        using namespace winrt::Windows::ApplicationModel::DataTransfer;
+        if (e.DataView().Contains(StandardDataFormats::StorageItems())) {
+            e.AcceptedOperation(DataPackageOperation::Copy);
+            e.DragUIOverride().Caption(L"Open file");
+        }
+    }
+
+    void WelcomeWindow::OnDrop(IInspectable const&, DragEventArgs const& e)
+    {
+        auto op = e.DataView().GetStorageItemsAsync();
+        op.Completed([this](auto&& asyncOp, auto&&) {
+            auto items = asyncOp.GetResults();
+            if (items.Size() > 0) {
+                if (auto file = items.GetAt(0).try_as<winrt::Windows::Storage::StorageFile>()) {
+                    m_selectedFile = file.Path().c_str();
+                    m_accepted = true;
+                    DispatcherQueue().TryEnqueue([this]() {
+                        Close();
+                    });
+                }
+            }
+        });
     }
 }
 

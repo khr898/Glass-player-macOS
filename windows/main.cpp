@@ -20,66 +20,81 @@ using namespace winrt::Microsoft::Windows::AppLifecycle;
 
 int __stdcall wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
 {
-    // 1. Initialize COM Apartment
-    winrt::init_apartment(winrt::apartment_type::single_threaded);
-
-    // 2. Single-Instance Check and Activation Redirection
-    auto args = AppInstance::GetCurrent().GetActivatedEventArgs();
-    auto keyInstance = AppInstance::FindOrRegisterForKey(L"GlassPlayerUniqueInstanceKey");
-
-    if (!keyInstance.IsCurrent())
+    try
     {
-        // Redirect arguments to the existing running instance
-        wil::unique_event redirectEvent;
-        redirectEvent.create(wil::EventOptions::ManualReset);
+        // 1. Initialize COM Apartment
+        winrt::init_apartment(winrt::apartment_type::single_threaded);
 
-        std::thread([&]() {
-            keyInstance.RedirectActivationToAsync(args).get();
-            redirectEvent.SetEvent();
-        }).detach();
+        // 2. Single-Instance Check and Activation Redirection
+        auto args = AppInstance::GetCurrent().GetActivatedEventArgs();
+        auto keyInstance = AppInstance::FindOrRegisterForKey(L"GlassPlayerUniqueInstanceKey");
 
-        // Non-blocking wait to process UI messages while redirecting
-        HANDLE events[] = { redirectEvent.get() };
-        DWORD waitResult;
-        do {
-            waitResult = MsgWaitForMultipleObjects(1, events, FALSE, INFINITE, QS_ALLINPUT);
-            if (waitResult == WAIT_OBJECT_0 + 1) {
-                MSG msg;
-                while (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE)) {
-                    TranslateMessage(&msg);
-                    DispatchMessage(&msg);
+        if (!keyInstance.IsCurrent())
+        {
+            // Redirect arguments to the existing running instance
+            wil::unique_event redirectEvent;
+            redirectEvent.create(wil::EventOptions::ManualReset);
+
+            std::thread([&]() {
+                keyInstance.RedirectActivationToAsync(args).get();
+                redirectEvent.SetEvent();
+            }).detach();
+
+            // Non-blocking wait to process UI messages while redirecting
+            HANDLE events[] = { redirectEvent.get() };
+            DWORD waitResult;
+            do {
+                waitResult = MsgWaitForMultipleObjects(1, events, FALSE, INFINITE, QS_ALLINPUT);
+                if (waitResult == WAIT_OBJECT_0 + 1) {
+                    MSG msg;
+                    while (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE)) {
+                        TranslateMessage(&msg);
+                        DispatchMessage(&msg);
+                    }
+                }
+            } while (waitResult != WAIT_OBJECT_0);
+
+            return 0;
+        }
+
+        // 3. Register activation handler on primary instance
+        keyInstance.Activated([](auto&&, AppActivationArguments const& args) {
+            auto window = winrt::Microsoft::UI::Xaml::Application::Current().Resources().Lookup(box_value(L"MainWindow")).as<winrt::GlassPlayer::MainWindow>();
+            if (window) {
+                auto kind = args.Kind();
+                if (kind == ExtendedActivationKind::Launch) {
+                    auto launchArgs = args.Data().as<winrt::Windows::ApplicationModel::Activation::LaunchActivatedEventArgs>();
+                    if (launchArgs) {
+                        std::wstring file = launchArgs.Arguments().c_str();
+                        auto impl = winrt::get_self<winrt::GlassPlayer::implementation::MainWindow>(window);
+                        window.DispatcherQueue().TryEnqueue([impl, file]() {
+                            impl->openFile(file);
+                        });
+                    }
                 }
             }
-        } while (waitResult != WAIT_OBJECT_0);
+        });
 
-        // Clean up and exit second instance
-        return 0;
+        // 4. Run the XAML application
+        ::winrt::Microsoft::UI::Xaml::Application::Start([](auto&&) {
+            ::winrt::make<winrt::GlassPlayer::implementation::App>();
+        });
+    }
+    catch (winrt::hresult_error const& ex)
+    {
+        MessageBoxW(nullptr, ex.message().c_str(), L"Glass Player – Fatal Error", MB_OK | MB_ICONERROR);
+        return -1;
+    }
+    catch (std::exception const& ex)
+    {
+        MessageBoxA(nullptr, ex.what(), "Glass Player – Fatal Error", MB_OK | MB_ICONERROR);
+        return -1;
+    }
+    catch (...)
+    {
+        MessageBoxW(nullptr, L"An unexpected error occurred.", L"Glass Player – Fatal Error", MB_OK | MB_ICONERROR);
+        return -1;
     }
 
-    // 3. Register activation handler on primary instance
-    keyInstance.Activated([](auto&&, AppActivationArguments const& args) {
-        // Redirection event fired. Retrieve the active window and forward the file path.
-        auto window = winrt::Microsoft::UI::Xaml::Application::Current().Resources().Lookup(box_value(L"MainWindow")).as<winrt::GlassPlayer::MainWindow>();
-        if (window) {
-            auto kind = args.Kind();
-            if (kind == ExtendedActivationKind::Launch) {
-                auto launchArgs = args.Data().as<winrt::Windows::ApplicationModel::Activation::LaunchActivatedEventArgs>();
-                if (launchArgs) {
-                    std::wstring file = launchArgs.Arguments().c_str();
-                    auto impl = winrt::get_self<winrt::GlassPlayer::implementation::MainWindow>(window);
-                    window.DispatcherQueue().TryEnqueue([impl, file]() {
-                        impl->openFile(file);
-                    });
-                }
-            }
-        }
-    });
-
-    // 5. Run the XAML application
-    ::winrt::Microsoft::UI::Xaml::Application::Start([](auto&&) {
-        ::winrt::make<winrt::GlassPlayer::implementation::App>();
-    });
-
-    // 6. Clean up and exit
     return 0;
 }

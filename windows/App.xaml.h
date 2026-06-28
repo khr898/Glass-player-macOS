@@ -5,7 +5,7 @@
 
 namespace winrt::GlassPlayer::implementation
 {
-    struct App : AppT<App>
+    struct App : AppT<App, winrt::GlassPlayer::App>
     {
         using composable = winrt::GlassPlayer::App;
 

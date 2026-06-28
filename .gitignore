@@ -91,3 +91,17 @@ vendor/mpv-dev/arm64/
 # App logs & caches
 *.log
 
+# Debug / analysis dump files (developer artifacts)
+dumpbin_*.txt
+*_exports*.txt
+pri_dump*.xml
+pri_dump*.txt
+
+# User runtime data
+configs/watch_later/
+
+# Local scripts / generated temp files
+windows/generate_pri.py
+
+# Local Claude Code tooling
+.claude/

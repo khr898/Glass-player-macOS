@@ -31,11 +31,9 @@ jobs:
           if [[ "${{ github.ref_type }}" == "tag" ]]; then
             TAG_NAME="${{ github.ref_name }}"
           else
-            # Fetch tags to ensure all are available locally
             git fetch --tags --force
             TAG_NAME=$(git describe --tags --abbrev=0 2>/dev/null || echo "v2.2.07042026")
           fi
-          # Strip leading 'v' to get version number in X.X.date format
           VERSION="${TAG_NAME#v}"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag_name=$TAG_NAME" >> "$GITHUB_OUTPUT"
@@ -54,16 +52,16 @@ jobs:
             runner: windows-latest
             target: windows
             arch: x64
-            qt_arch: win64_msvc2019_64
+            arch_lower: x64
+            msvc_arch: amd64
             artifact_name: GlassPlayer-Windows-x64
-            mpv_dll: vendor/mpv-dev/x64/libmpv-2.dll
           - name: Windows ARM64
             runner: windows-latest
             target: windows
             arch: ARM64
-            qt_arch: win64_msvc2019_arm64
+            arch_lower: arm64
+            msvc_arch: amd64_arm64
             artifact_name: GlassPlayer-Windows-arm64
-            mpv_dll: vendor/mpv-dev/arm64/libmpv-2.dll
           - name: macOS arm64
             runner: macos-26
             target: macos
@@ -74,131 +72,53 @@ jobs:
         uses: actions/checkout@v4
 
       # ─── Windows Build Strategy ──────────────────────────────────────────
-      - name: Set up MSVC Command Prompt
+      - name: Set up MSVC (${{ matrix.arch }})
         if: matrix.target == 'windows'
         uses: ilammy/msvc-dev-cmd@v1
         with:
-          arch: ${{ matrix.arch }}
+          arch: ${{ matrix.msvc_arch }}
 
-      - name: Install Host Qt 6.5.3 (Windows x64 Host for ARM64 Cross-compiling)
-        if: matrix.target == 'windows' && matrix.arch == 'ARM64'
-        uses: jurplel/install-qt-action@v3
-        with:
-          version: '6.5.3'
-          host: 'windows'
-          target: 'desktop'
-          arch: 'win64_msvc2019_64'
-          dir: '${{ github.workspace }}/../Qt_host'
+      - name: Set up MSBuild
+        if: matrix.target == 'windows'
+        uses: microsoft/setup-msbuild@v2
 
-      - name: Save Host Qt Path
-        if: matrix.target == 'windows' && matrix.arch == 'ARM64'
-        shell: bash
+      - name: Set up NuGet
+        if: matrix.target == 'windows'
+        uses: NuGet/setup-nuget@v2
+
+      - name: Restore NuGet packages (Windows)
+        if: matrix.target == 'windows'
+        run: nuget restore windows/GlassPlayer.vcxproj -PackagesDirectory $env:USERPROFILE/.nuget/packages
+
+      - name: Download libmpv + ANGLE (Windows ${{ matrix.arch }})
+        if: matrix.target == 'windows'
+        run: python windows/download_dependencies.py --arch ${{ matrix.arch_lower }}
+
+      - name: Build Release (Windows ${{ matrix.arch }})
+        if: matrix.target == 'windows'
+        run: >
+          msbuild windows/GlassPlayer.vcxproj
+          /p:Configuration=Release
+          /p:Platform=${{ matrix.arch }}
+          /p:AppVersion=${{ needs.get-version.outputs.version }}
+          /m /v:m
+
+      - name: Stage dist (Windows ${{ matrix.arch }})
+        if: matrix.target == 'windows'
+        shell: pwsh
         run: |
-          host_path=""
-          if [ -n "$Qt6_DIR" ]; then
-            host_path="$Qt6_DIR"
-          elif [ -n "$QT_ROOT_DIR" ]; then
-            host_path="$QT_ROOT_DIR"
-          else
-            host_path="${{ github.workspace }}/../Qt_host/Qt/6.5.3/msvc2019_64"
-          fi
-          # Convert backslashes to forward slashes
-          host_path="${host_path//\\//}"
-          echo "QT_HOST_PATH=$host_path" >> $GITHUB_ENV
+          $arch = "${{ matrix.arch }}"
+          New-Item -ItemType Directory -Force -Path windows/dist | Out-Null
 
+          # MSBuild output (exe + self-contained WinAppSDK runtime)
+          Copy-Item -Path "build/$arch/Release/*" -Destination windows/dist/ -Recurse -Force
 
-      - name: Install Qt 6.5.3 (Windows)
-        if: matrix.target == 'windows'
-        uses: jurplel/install-qt-action@v3
-        with:
-          version: '6.5.3'
-          host: 'windows'
-          target: 'desktop'
-          arch: ${{ matrix.qt_arch }}
+          # Vendor DLLs: libmpv and ANGLE
+          Copy-Item -Path "vendor/mpv-dev/$arch/libmpv-2.dll"   -Destination windows/dist/ -Force
+          Copy-Item -Path "vendor/angle/$arch/bin/libEGL.dll"    -Destination windows/dist/ -Force
+          Copy-Item -Path "vendor/angle/$arch/bin/libGLESv2.dll" -Destination windows/dist/ -Force
 
-      - name: Download libmpv Binaries (Windows)
-        if: matrix.target == 'windows'
-        run: python windows/download_mpv.py --arch ${{ matrix.arch }}
-
-
-      - name: Configure CMake with Custom Version (Windows)
-        if: matrix.target == 'windows'
-        shell: bash
-        run: |
-          cmake_args=(
-            "-S" "windows"
-            "-B" "build-win-${{ matrix.arch }}"
-            "-G" "Visual Studio 17 2022"
-            "-A" "${{ matrix.arch }}"
-            "-DCPACK_PACKAGE_VERSION=${{ needs.get-version.outputs.version }}"
-          )
-          if [ "${{ matrix.arch }}" = "ARM64" ]; then
-            cmake_args+=("-DQT_HOST_PATH=${QT_HOST_PATH}")
-          fi
-          cmake "${cmake_args[@]}"
-
-      - name: Compile Release Build (Windows)
-        if: matrix.target == 'windows'
-        run: cmake --build build-win-${{ matrix.arch }} --config Release
-
-      - name: Install and Stage Files (Windows)
-        if: matrix.target == 'windows'
-        shell: bash
-        run: |
-          # 1. Install via CMake
-          cmake --install build-win-${{ matrix.arch }} --prefix windows/dist
-
-          # 2. Resolve Target Qt Directory
-          target_qt_dir=""
-          for candidate in "$Qt6_DIR" "$QT_ROOT_DIR" "${{ github.workspace }}/../Qt/6.5.3/msvc2019_64" "${{ github.workspace }}/../Qt/6.5.3/msvc2019_arm64"; do
-            if [ -n "$candidate" ] && [ -d "$candidate" ]; then
-              target_qt_dir="$candidate"
-              break
-            fi
-          done
-          target_qt_dir="${target_qt_dir//\\//}"
-          TARGET_QT_BIN="$target_qt_dir/bin"
-
-          # 3. Run windeployqt
-          if [ "${{ matrix.arch }}" = "ARM64" ]; then
-            echo "Staging Qt6 ARM64 DLLs manually..."
-            cp "$TARGET_QT_BIN"/Qt6Core.dll \
-               "$TARGET_QT_BIN"/Qt6Gui.dll \
-               "$TARGET_QT_BIN"/Qt6Widgets.dll \
-               "$TARGET_QT_BIN"/Qt6OpenGLWidgets.dll \
-               "$TARGET_QT_BIN"/Qt6OpenGL.dll \
-               "$TARGET_QT_BIN"/Qt6Network.dll \
-               "$TARGET_QT_BIN"/Qt6Svg.dll \
-               "$TARGET_QT_BIN"/Qt6SvgWidgets.dll \
-               windows/dist/bin/
-
-            echo "Staging Qt6 ARM64 Plugins manually..."
-            mkdir -p windows/dist/bin/platforms \
-                     windows/dist/bin/imageformats \
-                     windows/dist/bin/styles \
-                     windows/dist/bin/tls
-
-            cp "$target_qt_dir"/plugins/platforms/qwindows.dll windows/dist/bin/platforms/
-            cp "$target_qt_dir"/plugins/imageformats/qsvg.dll windows/dist/bin/imageformats/
-            cp "$target_qt_dir"/plugins/styles/qwindowsvistastyle.dll windows/dist/bin/styles/
-            cp "$target_qt_dir"/plugins/tls/*.dll windows/dist/bin/tls/ 2>/dev/null || true
-
-            # 4. Copy ARM64 Visual C++ Runtime libraries
-            REDIST_DIR="${VCToolsRedistDir//\\//}"
-            echo "Copying ARM64 VC runtimes from $REDIST_DIR..."
-            cp "$REDIST_DIR"/arm64/Microsoft.VC*.CRT/*.dll windows/dist/bin/
-          else
-            # Native x64 build
-            echo "Running native windeployqt from $TARGET_QT_BIN..."
-            MSYS_NO_PATHCONV=1 "$TARGET_QT_BIN/windeployqt.exe" \
-              --no-translations \
-              --no-opengl-sw \
-              windows/dist/bin/GlassPlayer.exe
-          fi
-
-
-
-      - name: Compile Inno Setup Installer (Windows)
+      - name: Compile Inno Setup Installer (Windows ${{ matrix.arch }})
         if: matrix.target == 'windows'
         shell: pwsh
         run: |
@@ -251,7 +171,7 @@ jobs:
         with:
           path: artifacts
 
-      - name: Display Downloader Files
+      - name: Display Downloaded Files
         run: find artifacts -type f
 
       - name: Publish to GitHub Release
