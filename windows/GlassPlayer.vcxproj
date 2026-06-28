@@ -91,6 +91,7 @@
       <SubSystem>Windows</SubSystem>
       <AdditionalDependencies>d3d11.lib;dxgi.lib;dxva2.lib;wbemuuid.lib;dwmapi.lib;Shlwapi.lib;Pathcch.lib;libmpv.dll.a;libEGL.dll.lib;libGLESv2.dll.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>$(MSBuildThisFileDirectory)..\vendor\mpv-dev\$(Platform);$(MSBuildThisFileDirectory)..\vendor\angle\$(Platform)\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <GenerateMapFile>true</GenerateMapFile>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)'=='Debug'">

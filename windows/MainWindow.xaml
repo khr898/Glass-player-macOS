@@ -32,16 +32,32 @@
 
                 <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
                     <Button x:Name="UrlBtn" Width="32" Height="32" Padding="6" Background="Transparent" BorderThickness="0" Click="OnUrlClicked" ToolTipService.ToolTip="Open URL">
-                        <Image Source="ms-appx:///Assets/icons/url.svg"/>
+                        <Image>
+                            <Image.Source>
+                                <SvgImageSource UriSource="ms-appx:///Assets/icons/url.svg"/>
+                            </Image.Source>
+                        </Image>
                     </Button>
                     <Button x:Name="OpenBtn" Width="32" Height="32" Padding="6" Background="Transparent" BorderThickness="0" Click="OnOpenClicked" ToolTipService.ToolTip="Open File">
-                        <Image Source="ms-appx:///Assets/icons/open_file.svg"/>
+                        <Image>
+                            <Image.Source>
+                                <SvgImageSource UriSource="ms-appx:///Assets/icons/open_file.svg"/>
+                            </Image.Source>
+                        </Image>
                     </Button>
                     <Button x:Name="RemoteBtn" Width="32" Height="32" Padding="6" Background="Transparent" BorderThickness="0" Click="OnRemoteClicked" ToolTipService.ToolTip="Remote Cloud Browser">
-                        <Image Source="ms-appx:///Assets/icons/remote.svg"/>
+                        <Image>
+                            <Image.Source>
+                                <SvgImageSource UriSource="ms-appx:///Assets/icons/remote.svg"/>
+                            </Image.Source>
+                        </Image>
                     </Button>
                     <Button x:Name="SettingsBtn" Width="32" Height="32" Padding="6" Background="Transparent" BorderThickness="0" Click="OnSettingsClicked" ToolTipService.ToolTip="Settings">
-                        <Image Source="ms-appx:///Assets/icons/settings.svg"/>
+                        <Image>
+                            <Image.Source>
+                                <SvgImageSource UriSource="ms-appx:///Assets/icons/settings.svg"/>
+                            </Image.Source>
+                        </Image>
                     </Button>
                 </StackPanel>
             </Grid>
@@ -57,43 +73,87 @@
 
                 <!-- Control Buttons -->
                 <Button x:Name="SubtitleBtn" Width="30" Height="30" Padding="4" Background="Transparent" BorderThickness="0" Click="OnSubtitleClicked" ToolTipService.ToolTip="Subtitle Tracks">
-                    <Image Source="ms-appx:///Assets/icons/subtitle.svg"/>
+                    <Image>
+                        <Image.Source>
+                            <SvgImageSource UriSource="ms-appx:///Assets/icons/subtitle.svg"/>
+                        </Image.Source>
+                    </Image>
                 </Button>
                 <Button x:Name="AudioBtn" Width="30" Height="30" Padding="4" Background="Transparent" BorderThickness="0" Click="OnAudioClicked" ToolTipService.ToolTip="Audio Tracks">
-                    <Image Source="ms-appx:///Assets/icons/audio.svg"/>
+                    <Image>
+                        <Image.Source>
+                            <SvgImageSource UriSource="ms-appx:///Assets/icons/audio.svg"/>
+                        </Image.Source>
+                    </Image>
                 </Button>
                 <Button x:Name="ShaderBtn" Width="30" Height="30" Padding="4" Background="Transparent" BorderThickness="0" Click="OnShaderClicked" ToolTipService.ToolTip="Shaders">
-                    <Image Source="ms-appx:///Assets/icons/shader.svg"/>
+                    <Image>
+                        <Image.Source>
+                            <SvgImageSource UriSource="ms-appx:///Assets/icons/shader.svg"/>
+                        </Image.Source>
+                    </Image>
                 </Button>
 
                 <!-- Center Playback Control Group -->
                 <Button x:Name="PrevBtn" Width="30" Height="30" Padding="4" Background="Transparent" BorderThickness="0" Click="OnPrevClicked" ToolTipService.ToolTip="Previous file">
-                    <Image Source="ms-appx:///Assets/icons/prev.svg"/>
+                    <Image>
+                        <Image.Source>
+                            <SvgImageSource UriSource="ms-appx:///Assets/icons/prev.svg"/>
+                        </Image.Source>
+                    </Image>
                 </Button>
                 <Button x:Name="RewindBtn" Width="30" Height="30" Padding="4" Background="Transparent" BorderThickness="0" Click="OnRewindClicked" ToolTipService.ToolTip="Seek backward 5 seconds">
-                    <Image Source="ms-appx:///Assets/icons/rewind.svg"/>
+                    <Image>
+                        <Image.Source>
+                            <SvgImageSource UriSource="ms-appx:///Assets/icons/rewind.svg"/>
+                        </Image.Source>
+                    </Image>
                 </Button>
                 <Button x:Name="PlayPauseBtn" Width="40" Height="40" Padding="8" CornerRadius="20" Click="OnPlayPauseClicked" ToolTipService.ToolTip="Play/Pause">
-                    <Image x:Name="PlayPauseIcon" Source="ms-appx:///Assets/icons/play.svg"/>
+                    <Image x:Name="PlayPauseIcon">
+                        <Image.Source>
+                            <SvgImageSource UriSource="ms-appx:///Assets/icons/play.svg"/>
+                        </Image.Source>
+                    </Image>
                 </Button>
                 <Button x:Name="ForwardBtn" Width="30" Height="30" Padding="4" Background="Transparent" BorderThickness="0" Click="OnForwardClicked" ToolTipService.ToolTip="Seek forward 5 seconds">
-                    <Image Source="ms-appx:///Assets/icons/forward.svg"/>
+                    <Image>
+                        <Image.Source>
+                            <SvgImageSource UriSource="ms-appx:///Assets/icons/forward.svg"/>
+                        </Image.Source>
+                    </Image>
                 </Button>
                 <Button x:Name="NextBtn" Width="30" Height="30" Padding="4" Background="Transparent" BorderThickness="0" Click="OnNextClicked" ToolTipService.ToolTip="Next file">
-                    <Image Source="ms-appx:///Assets/icons/next.svg"/>
+                    <Image>
+                        <Image.Source>
+                            <SvgImageSource UriSource="ms-appx:///Assets/icons/next.svg"/>
+                        </Image.Source>
+                    </Image>
                 </Button>
 
                 <!-- Right Side Control Group -->
                 <Button x:Name="VolumeBtn" Width="30" Height="30" Padding="4" Background="Transparent" BorderThickness="0" Click="OnMuteClicked" ToolTipService.ToolTip="Mute/Unmute">
-                    <Image x:Name="VolumeIcon" Source="ms-appx:///Assets/icons/volume_high.svg"/>
+                    <Image x:Name="VolumeIcon">
+                        <Image.Source>
+                            <SvgImageSource UriSource="ms-appx:///Assets/icons/volume_high.svg"/>
+                        </Image.Source>
+                    </Image>
                 </Button>
                 <Slider x:Name="VolumeSlider" Minimum="0" Maximum="200" Value="100" Width="70" Height="20" ValueChanged="OnVolumeSliderValueChanged" ToolTipService.ToolTip="Volume"/>
                 <Button x:Name="SpeedBtn" Width="32" Height="30" Content="1.0x" Padding="2" FontSize="11" FontWeight="Bold" Click="OnSpeedClicked" ToolTipService.ToolTip="Playback Speed"/>
                 <Button x:Name="AspectBtn" Width="30" Height="30" Padding="4" Background="Transparent" BorderThickness="0" Click="OnAspectClicked" ToolTipService.ToolTip="Aspect Ratio">
-                    <Image Source="ms-appx:///Assets/icons/aspect.svg"/>
+                    <Image>
+                        <Image.Source>
+                            <SvgImageSource UriSource="ms-appx:///Assets/icons/aspect.svg"/>
+                        </Image.Source>
+                    </Image>
                 </Button>
                 <Button x:Name="FullscreenBtn" Width="30" Height="30" Padding="4" Background="Transparent" BorderThickness="0" Click="OnFullscreenClicked" ToolTipService.ToolTip="Fullscreen">
-                    <Image x:Name="FullscreenIcon" Source="ms-appx:///Assets/icons/fullscreen.svg"/>
+                    <Image x:Name="FullscreenIcon">
+                        <Image.Source>
+                            <SvgImageSource UriSource="ms-appx:///Assets/icons/fullscreen.svg"/>
+                        </Image.Source>
+                    </Image>
                 </Button>
             </Canvas>
         </Border>
@@ -101,7 +161,11 @@
         <!-- Left Side Brightness HUD -->
         <Border x:Name="BrightnessBar" HorizontalAlignment="Left" VerticalAlignment="Center" Width="40" Height="200" Margin="16,0,0,0" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" Visibility="Collapsed">
             <StackPanel Padding="6" Spacing="8">
-                <Image Source="ms-appx:///Assets/icons/sun.svg" Width="20" Height="20" HorizontalAlignment="Center"/>
+                <Image Width="20" Height="20" HorizontalAlignment="Center">
+                    <Image.Source>
+                        <SvgImageSource UriSource="ms-appx:///Assets/icons/sun.svg"/>
+                    </Image.Source>
+                </Image>
                 <Slider x:Name="BrightnessSlider" Orientation="Vertical" Minimum="0" Maximum="100" Value="50" Height="140" HorizontalAlignment="Center" ValueChanged="OnBrightnessSliderValueChanged"/>
             </StackPanel>
         </Border>
@@ -109,7 +173,11 @@
         <!-- Right Side Volume HUD -->
         <Border x:Name="VolumeBar" HorizontalAlignment="Right" VerticalAlignment="Center" Width="40" Height="200" Margin="0,0,16,0" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" Visibility="Collapsed">
             <StackPanel Padding="6" Spacing="8">
-                <Image x:Name="VolumeBarIcon" Source="ms-appx:///Assets/icons/volume_high.svg" Width="20" Height="20" HorizontalAlignment="Center"/>
+                <Image x:Name="VolumeBarIcon" Width="20" Height="20" HorizontalAlignment="Center">
+                    <Image.Source>
+                        <SvgImageSource UriSource="ms-appx:///Assets/icons/volume_high.svg"/>
+                    </Image.Source>
+                </Image>
                 <Slider x:Name="VolumeHoverSlider" Orientation="Vertical" Minimum="0" Maximum="200" Value="100" Height="140" HorizontalAlignment="Center" ValueChanged="OnVolumeHoverSliderValueChanged"/>
             </StackPanel>
         </Border>

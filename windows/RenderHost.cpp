@@ -402,7 +402,11 @@ std::string RenderHost::getPropertyString(const std::string& name) const
 std::string RenderHost::detectPreferredHwdec() const
 {
 #if defined(_WIN32)
+#if defined(_M_ARM64) || defined(__aarch64__)
+    return "d3d11va-copy";
+#else
     return "d3d11va";
+#endif
 #else
     return "auto-safe";
 #endif

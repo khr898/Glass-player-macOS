@@ -22,8 +22,12 @@
         <!-- Main Content -->
         <StackPanel Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="20">
             <!-- App Icon Centerpiece -->
-            <Border Width="72" Height="72" CornerRadius="12" Background="{ThemeResource LayerFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" HorizontalAlignment="Center" Padding="8">
-                <Image Source="ms-appx:///Assets/icons/app.svg" Width="52" Height="52"/>
+            <Border Width="72" Height="72" CornerRadius="12" Background="{ThemeResource LayerFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" HorizontalAlignment="Center" Padding="0">
+                <Image Width="72" Height="72" Stretch="UniformToFill">
+                    <Image.Source>
+                        <SvgImageSource UriSource="ms-appx:///Assets/icons/app.svg"/>
+                    </Image.Source>
+                </Image>
             </Border>
 
             <!-- Modern Bold Title -->
@@ -36,14 +40,22 @@
             <StackPanel Orientation="Horizontal" Spacing="24" HorizontalAlignment="Center">
                 <Button x:Name="OpenFileBtn" Width="180" Height="100" CornerRadius="8" Click="OnOpenFileClicked">
                     <StackPanel Spacing="8" VerticalAlignment="Center" HorizontalAlignment="Center">
-                        <Image Source="ms-appx:///Assets/icons/open_file.svg" Width="28" Height="28"/>
+                        <Image Width="28" Height="28">
+                            <Image.Source>
+                                <SvgImageSource UriSource="ms-appx:///Assets/icons/open_file.svg"/>
+                            </Image.Source>
+                        </Image>
                         <TextBlock Text="Open File" FontWeight="SemiBold" HorizontalAlignment="Center"/>
                     </StackPanel>
                 </Button>
 
                 <Button x:Name="RemoteBtn" Width="180" Height="100" CornerRadius="8" Click="OnRemoteClicked">
                     <StackPanel Spacing="8" VerticalAlignment="Center" HorizontalAlignment="Center">
-                        <Image Source="ms-appx:///Assets/icons/remote.svg" Width="28" Height="28"/>
+                        <Image Width="28" Height="28">
+                            <Image.Source>
+                                <SvgImageSource UriSource="ms-appx:///Assets/icons/remote.svg"/>
+                            </Image.Source>
+                        </Image>
                         <TextBlock Text="Remote Browser" FontWeight="SemiBold" HorizontalAlignment="Center"/>
                     </StackPanel>
                 </Button>

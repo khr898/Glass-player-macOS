@@ -37,10 +37,19 @@ namespace winrt::GlassPlayer::implementation
         // Apply custom size (520x600)
         auto appWindow = winrt::Microsoft::UI::Windowing::AppWindow::GetFromWindowId(
             winrt::Microsoft::UI::GetWindowIdFromWindow(m_hwnd));
-        appWindow.Resize({ 520, 600 });
+        double dpi = GetDpiForWindow(m_hwnd);
+        float scale = static_cast<float>(dpi) / 96.0f;
+        appWindow.Resize({ static_cast<int32_t>(520 * scale), static_cast<int32_t>(600 * scale) });
 
         // Apply frosted glass
         WinOSIntegration::instance().applyFrostedGlass(m_hwnd);
+
+        // Set window icon
+        HICON hIcon = LoadIconW(GetModuleHandleW(nullptr), L"IDI_APP_ICON");
+        if (hIcon) {
+            SendMessageW(m_hwnd, WM_SETICON, ICON_BIG, reinterpret_cast<LPARAM>(hIcon));
+            SendMessageW(m_hwnd, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(hIcon));
+        }
 
         m_httpClient = winrt::Windows::Web::Http::HttpClient();
     }

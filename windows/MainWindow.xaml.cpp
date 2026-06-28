@@ -122,7 +122,9 @@ namespace winrt::GlassPlayer::implementation
 
         auto appWindow = winrt::Microsoft::UI::Windowing::AppWindow::GetFromWindowId(
             winrt::Microsoft::UI::GetWindowIdFromWindow(m_hwnd));
-        appWindow.Resize({ 1280, 720 });
+        double dpi = GetDpiForWindow(m_hwnd);
+        float scale = static_cast<float>(dpi) / 96.0f;
+        appWindow.Resize({ static_cast<int32_t>(1280 * scale), static_cast<int32_t>(720 * scale) });
 
         Root().PointerMoved([this](auto&& sender, PointerRoutedEventArgs const& args) {
             OnPointerMoved(sender, args);
@@ -130,6 +132,13 @@ namespace winrt::GlassPlayer::implementation
         Root().KeyDown([this](auto&& sender, KeyRoutedEventArgs const& args) {
             OnKeyDown(sender, args);
         });
+
+        // Set window icon
+        HICON hIcon = LoadIconW(GetModuleHandleW(nullptr), L"IDI_APP_ICON");
+        if (hIcon) {
+            SendMessageW(m_hwnd, WM_SETICON, ICON_BIG, reinterpret_cast<LPARAM>(hIcon));
+            SendMessageW(m_hwnd, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(hIcon));
+        }
     }
 
     void MainWindow::InitializePlayer()
@@ -231,6 +240,11 @@ namespace winrt::GlassPlayer::implementation
 
     void MainWindow::LayoutBottomBar()
     {
+        if (!BottomCanvas() || !CurrentTimeLabel() || !RemainingTimeLabel() || !SeekSlider() ||
+            !PlayPauseBtn() || !PrevBtn() || !RewindBtn() || !NextBtn() || !ForwardBtn() ||
+            !SubtitleBtn() || !AudioBtn() || !ShaderBtn() || !FullscreenBtn() || !AspectBtn() ||
+            !SpeedBtn() || !VolumeSlider() || !VolumeBtn()) return;
+
         double bw = BottomCanvas().ActualWidth();
         if (bw <= 0) return;
 
@@ -413,6 +427,7 @@ namespace winrt::GlassPlayer::implementation
 
     void MainWindow::OnSeekSliderValueChanged(IInspectable const&, winrt::Microsoft::UI::Xaml::Controls::Primitives::RangeBaseValueChangedEventArgs const& args)
     {
+        if (!SeekSlider() || !CurrentTimeLabel() || !RemainingTimeLabel()) return;
         if (m_isSeeking) {
             CurrentTimeLabel().Text(formatTime(args.NewValue()));
             RemainingTimeLabel().Text(formatTime(m_duration - args.NewValue()));
@@ -427,18 +442,24 @@ namespace winrt::GlassPlayer::implementation
 
     void MainWindow::OnVolumeSliderValueChanged(IInspectable const&, winrt::Microsoft::UI::Xaml::Controls::Primitives::RangeBaseValueChangedEventArgs const& args)
     {
+        if (!VolumeSlider() || !VolumeHoverSlider()) return;
         m_volume = static_cast<int>(args.NewValue());
         m_renderHost->setVolume(m_volume);
         updateVolumeIcon(m_volume, m_isMuted);
-        VolumeHoverSlider().Value(m_volume);
+        if (VolumeHoverSlider().Value() != m_volume) {
+            VolumeHoverSlider().Value(m_volume);
+        }
     }
 
     void MainWindow::OnVolumeHoverSliderValueChanged(IInspectable const&, winrt::Microsoft::UI::Xaml::Controls::Primitives::RangeBaseValueChangedEventArgs const& args)
     {
+        if (!VolumeSlider() || !VolumeHoverSlider()) return;
         m_volume = static_cast<int>(args.NewValue());
         m_renderHost->setVolume(m_volume);
         updateVolumeIcon(m_volume, m_isMuted);
-        VolumeSlider().Value(m_volume);
+        if (VolumeSlider().Value() != m_volume) {
+            VolumeSlider().Value(m_volume);
+        }
     }
 
     void MainWindow::OnBrightnessSliderValueChanged(IInspectable const&, winrt::Microsoft::UI::Xaml::Controls::Primitives::RangeBaseValueChangedEventArgs const& args)

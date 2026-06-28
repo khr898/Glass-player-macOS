@@ -31,10 +31,19 @@ namespace winrt::GlassPlayer::implementation
         // Apply custom size (600x450)
         auto appWindow = winrt::Microsoft::UI::Windowing::AppWindow::GetFromWindowId(
             winrt::Microsoft::UI::GetWindowIdFromWindow(m_hwnd));
-        appWindow.Resize({ 600, 450 });
+        double dpi = GetDpiForWindow(m_hwnd);
+        float scale = static_cast<float>(dpi) / 96.0f;
+        appWindow.Resize({ static_cast<int32_t>(600 * scale), static_cast<int32_t>(450 * scale) });
 
         // Apply frosted glass
         WinOSIntegration::instance().applyFrostedGlass(m_hwnd);
+
+        // Set window icon
+        HICON hIcon = LoadIconW(GetModuleHandleW(nullptr), L"IDI_APP_ICON");
+        if (hIcon) {
+            SendMessageW(m_hwnd, WM_SETICON, ICON_BIG, reinterpret_cast<LPARAM>(hIcon));
+            SendMessageW(m_hwnd, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(hIcon));
+        }
 
         // Select first item by default
         SidebarList().SelectedIndex(0);
@@ -83,6 +92,9 @@ namespace winrt::GlassPlayer::implementation
 
     void SettingsWindow::SaveSettings()
     {
+        if (!FullscreenCheck() || !AutoResumeCheck() || !PlayDropCheck() || !UpdatesCheck() ||
+            !HwdecCombo() || !VsyncCheck() || !InterpolationCheck()) return;
+
         auto settings = winrt::Windows::Storage::ApplicationData::Current().LocalSettings().Values();
 
         // General
@@ -98,12 +110,16 @@ namespace winrt::GlassPlayer::implementation
         }
         settings.Insert(L"Vsync", box_value(VsyncCheck().IsChecked().GetBoolean()));
         settings.Insert(L"Interpolation", box_value(InterpolationCheck().IsChecked().GetBoolean()));
-    }
+     }
+ 
+     void SettingsWindow::OnSidebarSelectionChanged(IInspectable const&, SelectionChangedEventArgs const&)
+     {
+        if (!SidebarList() || !GeneralPage() || !VideoPage() || !AudioPage() || 
+            !SubtitlesPage() || !NetworkPage() || !ScalingPage() || !ColorPage() || 
+            !Anime4KPage() || !ShortcutsPage()) return;
 
-    void SettingsWindow::OnSidebarSelectionChanged(IInspectable const&, SelectionChangedEventArgs const&)
-    {
         int index = SidebarList().SelectedIndex();
-
+ 
         // Toggle page Visibility based on selected index
         GeneralPage().Visibility(index == 0 ? Visibility::Visible : Visibility::Collapsed);
         VideoPage().Visibility(index == 1 ? Visibility::Visible : Visibility::Collapsed);
@@ -114,7 +130,7 @@ namespace winrt::GlassPlayer::implementation
         ColorPage().Visibility(index == 6 ? Visibility::Visible : Visibility::Collapsed);
         Anime4KPage().Visibility(index == 7 ? Visibility::Visible : Visibility::Collapsed);
         ShortcutsPage().Visibility(index == 8 ? Visibility::Visible : Visibility::Collapsed);
-    }
+     }
 
     void SettingsWindow::OnSettingCheckClicked(IInspectable const&, RoutedEventArgs const&)
     {

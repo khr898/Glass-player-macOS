@@ -46,14 +46,26 @@ namespace winrt::GlassPlayer::implementation
         }
 
         // Set size and center on screen
-        appWindow.Resize({ 520, 390 });
+        double dpi = GetDpiForWindow(m_hwnd);
+        float scale = static_cast<float>(dpi) / 96.0f;
+        int32_t width = static_cast<int32_t>(520 * scale);
+        int32_t height = static_cast<int32_t>(390 * scale);
+        appWindow.Resize({ width, height });
+
         auto displayArea = winrt::Microsoft::UI::Windowing::DisplayArea::GetFromWindowId(
             appWindow.Id(), winrt::Microsoft::UI::Windowing::DisplayAreaFallback::Nearest);
         auto wa = displayArea.WorkArea();
-        appWindow.Move({ wa.X + (wa.Width - 520) / 2, wa.Y + (wa.Height - 390) / 2 });
+        appWindow.Move({ wa.X + (wa.Width - width) / 2, wa.Y + (wa.Height - height) / 2 });
 
         // Apply frosted glass (Mica/Acrylic backdrop)
         WinOSIntegration::instance().applyFrostedGlass(m_hwnd);
+
+        // Set window icon
+        HICON hIcon = LoadIconW(GetModuleHandleW(nullptr), L"IDI_APP_ICON");
+        if (hIcon) {
+            SendMessageW(m_hwnd, WM_SETICON, ICON_BIG, reinterpret_cast<LPARAM>(hIcon));
+            SendMessageW(m_hwnd, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(hIcon));
+        }
     }
 
     void WelcomeWindow::OnCloseClicked(IInspectable const&, RoutedEventArgs const&)
