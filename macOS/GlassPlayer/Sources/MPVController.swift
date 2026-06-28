@@ -760,17 +760,21 @@ class MPVController {
 
     // MARK: - Anime4K Shader Presets
 
-    func applyShaderPreset(_ preset: String) -> Bool {
+    func applyShaderPreset(_ preset: String, displayMax: Int64) -> Bool {
         guard let dir = shaderDir else { return false }
         guard var shaderNames = kShaderPresets[preset] else { return false }
 
-        // Enforce optimal dimension cap (1536 height):
-        // If the video height is >= 1536, fall back from heavy VL (Very Large) shaders to L (Large) shaders to prevent GPU starvation without degrading output quality.
-        let (_, dh) = getDisplayDimensions()
-        let height = dh > 0 ? dh : Int64(getPropertyDouble("height"))
-        if height >= 1536 {
+        let info = getVideoInfo()
+        let sourceMax = max(info.width, info.height)
+        let upscale = sourceMax > 0 && displayMax > 0 && Double(sourceMax) < Double(displayMax) * 0.97
+        if !upscale {
+            shaderNames = shaderNames.filter { !$0.contains("Upscale") }
+        }
+
+        // GPU-tier swap: fall back from VL to L for high-res sources to prevent GPU starvation
+        if info.height >= 1536 {
             shaderNames = shaderNames.map { $0.replacingOccurrences(of: "_VL.glsl", with: "_L.glsl") }
-            NSLog("[MPV] Height is %d (>= 1536). Falling back from VL to L shaders to prevent GPU starvation without degrading quality.", height)
+            NSLog("[MPV] Height %d >= 1536, falling back VL→L.", info.height)
         }
 
         let paths = shaderNames
@@ -782,7 +786,7 @@ class MPVController {
         let joined = paths.joined(separator: ":")
         mpv_command_string(mpvHandle, "change-list glsl-shaders set \"\(joined)\"")
         currentShaderPreset = preset
-        NSLog("[MPV] Applied shader preset: %@ (%d shaders)", preset, paths.count)
+        NSLog("[MPV] Applied shader preset: %@ (%d shaders, upscale=%d)", preset, paths.count, upscale ? 1 : 0)
         return true
     }
 

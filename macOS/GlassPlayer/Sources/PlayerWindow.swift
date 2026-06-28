@@ -1052,7 +1052,7 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
 
     @objc private func applyShaderAction(_ sender: NSMenuItem) {
         if let preset = sender.representedObject as? String {
-            _ = mpv.applyShaderPreset(preset)
+            _ = mpv.applyShaderPreset(preset, displayMax: screenMaxDimension())
             updateShaderButton()
             updateFormatBadges()
         }
@@ -1359,17 +1359,16 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
         // ── Resolution badge ──
         if let res = badges.resolution {
             let info = mpv.getVideoInfo()
-            let scale = videoView.videoLayer.contentsScale
-            let viewportW = Int(videoView.videoLayer.bounds.width * scale)
-            let viewportH = Int(videoView.videoLayer.bounds.height * scale)
-            
-            let isUpscaling = info.width > 0 && info.height > 0 && viewportW > 0 && viewportH > 0 && (viewportW > info.width || viewportH > info.height)
-            
-            if isUpscaling && mpv.currentShaderPreset != nil {
-                let upscaledName = mpv.formatResolution(w: Int64(viewportW), h: Int64(viewportH))
-                let upscaledText = "\(res) ➔ \(upscaledName)"
-                // Soft blue tint to highlight active upscaling
-                badgeStack.addArrangedSubview(makeFormatBadge(upscaledText,
+            let sourceMax = max(info.width, info.height)
+            let displayMax = screenMaxDimension()
+            let upscaling = mpv.currentShaderPreset != nil
+                         && sourceMax > 0 && displayMax > 0
+                         && Double(sourceMax) < Double(displayMax) * 0.97
+            if upscaling {
+                let f = min(4.0, Double(displayMax) / Double(sourceMax))
+                let upscaledName = mpv.formatResolution(w: Int64(Double(info.width) * f),
+                                                        h: Int64(Double(info.height) * f))
+                badgeStack.addArrangedSubview(makeFormatBadge("\(res) ➔ \(upscaledName)",
                     bg: NSColor(red: 0.1, green: 0.5, blue: 1.0, alpha: 0.25)))
             } else {
                 badgeStack.addArrangedSubview(makeFormatBadge(res,
@@ -2025,7 +2024,7 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
             if configuredPreset == "Off" {
                 mpv.clearShaders()
             } else {
-                _ = mpv.applyShaderPreset(configuredPreset)
+                _ = mpv.applyShaderPreset(configuredPreset, displayMax: screenMaxDimension())
             }
             updateShaderButton()
         }
@@ -2760,7 +2759,7 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
         if nextPreset == "Off" {
             mpv.clearShaders()
         } else {
-            _ = mpv.applyShaderPreset(nextPreset)
+            _ = mpv.applyShaderPreset(nextPreset, displayMax: screenMaxDimension())
         }
         updateShaderButton()
         updateFormatBadges()
@@ -2778,6 +2777,13 @@ class PlayerWindow: NSWindowController, NSWindowDelegate, MPVControllerDelegate,
     // ═══════════════════════════════════════════════════════════════════
     // MARK: - Helpers
     // ═══════════════════════════════════════════════════════════════════
+
+    private func screenMaxDimension() -> Int64 {
+        let screen = window?.screen ?? NSScreen.main
+        let scale  = screen?.backingScaleFactor ?? 2.0
+        let sz     = screen?.frame.size ?? .zero
+        return Int64(max(sz.width, sz.height) * scale)
+    }
 
     private func configureIconButton(_ button: NSButton, symbolName: String, size: CGFloat) {
         button.bezelStyle = .inline

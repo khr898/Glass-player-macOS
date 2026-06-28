@@ -22,9 +22,6 @@
 #define DWMWA_COLOR_NONE 0xFFFFFFFE
 #endif
 
-// DWM enum values as raw integers to avoid SDK conflict redefinitions:
-// DWMSBT_TRANSLUCENTAUTHORING = 3 (Acrylic backdrop)
-
 struct ACCENT_POLICY {
     DWORD AccentState;
     DWORD AccentFlags;
@@ -112,8 +109,6 @@ WinOSIntegration::~WinOSIntegration() {
     CoUninitialize();
 }
 
-// ─── Monitor (DDC/CI) ─────────────────────────────────────────────────────────
-
 void WinOSIntegration::refreshMonitors() {
     if (m_isWine) return;
     releaseMonitors();
@@ -134,8 +129,6 @@ void WinOSIntegration::releaseMonitors() {
     }
 }
 
-// ─── Volume (Core Audio) ───────────────────────────────────────────────────────
-
 IAudioEndpointVolume* WinOSIntegration::getCachedVolumeControl() {
     if (m_pVolume) return m_pVolume;
     IMMDeviceEnumerator* pEnumerator = nullptr;
@@ -146,7 +139,7 @@ IAudioEndpointVolume* WinOSIntegration::getCachedVolumeControl() {
         pEnumerator->GetDefaultAudioEndpoint(eRender, eMultimedia, &pDevice);
         if (pDevice) {
             pDevice->Activate(__uuidof(IAudioEndpointVolume), CLSCTX_INPROC_SERVER,
-                              nullptr, (void**)&m_pVolume);
+                               nullptr, (void**)&m_pVolume);
             pDevice->Release();
         }
         pEnumerator->Release();
@@ -179,9 +172,6 @@ void WinOSIntegration::setMuted(bool mute) {
         pVolume->SetMute(mute, nullptr);
 }
 
-// ─── Brightness ───────────────────────────────────────────────────────────────
-// Strategy: try DDC/CI (external monitors) first; fall back to WMI (laptop panels).
-
 float WinOSIntegration::getSystemBrightness() {
     if (m_isWine) {
         return m_cachedBrightness;
@@ -194,7 +184,6 @@ float WinOSIntegration::getSystemBrightness() {
     float brightness = 0.5f;
     {
         std::lock_guard<std::mutex> hwLock(m_hwMutex);
-        // Try DDC/CI first
         if (!m_monitors.empty()) {
             DWORD minB, curB, maxB;
             if (GetMonitorBrightness(m_monitors[0].hPhysicalMonitor, &minB, &curB, &maxB) &&
@@ -229,8 +218,6 @@ void WinOSIntegration::setSystemBrightness(float level) {
     }
     m_cv.notify_one();
 }
-
-// ─── WMI helpers (WmiMonitorBrightness) ───────────────────────────────────────
 
 bool WinOSIntegration::initWmi() {
     if (m_isWine) return false;
@@ -293,7 +280,6 @@ void WinOSIntegration::setBrightnessWmi(float level) {
     IWbemClassObject* pClassObject = NULL;
     ULONG uReturn = 0;
     if (pEnumerator->Next(WBEM_INFINITE, 1, &pClassObject, &uReturn) == S_OK) {
-        // Get the WbemObjectPath for ExecMethod
         VARIANT vtPath;
         VariantInit(&vtPath);
         pClassObject->Get(L"__PATH", 0, &vtPath, 0, 0);
@@ -335,45 +321,36 @@ void WinOSIntegration::applyFrostedGlass(HWND hwnd)
 {
     if (!hwnd) return;
 
-    // Use dark mode title bar for DWM matching
     BOOL darkMode = TRUE;
     DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &darkMode, sizeof(darkMode));
 
-    // Suppress the native border on Windows 11 to avoid double borders/outlines on frameless windows
     DWORD borderNone = DWMWA_COLOR_NONE;
     DwmSetWindowAttribute(hwnd, DWMWA_BORDER_COLOR, &borderNone, sizeof(borderNone));
 
-    // Try Windows 11 System Backdrop API first (Acrylic/Mica)
-    // Acrylic type value is 3 (DWMSBT_TRANSLUCENTAUTHORING)
     int backdrop = 3; 
     HRESULT hr = DwmSetWindowAttribute(hwnd, DWMWA_SYSTEMBACKDROP_TYPE, &backdrop, sizeof(backdrop));
-    
     if (SUCCEEDED(hr)) {
-        return; // Windows 11 22H2+ successfully applied Acrylic
+        return;
     }
 
-    // Try Windows 11 21H2 Mica fallback
     BOOL mica = TRUE;
     hr = DwmSetWindowAttribute(hwnd, DWMWA_MICA_EFFECT, &mica, sizeof(mica));
     if (SUCCEEDED(hr)) {
         return;
     }
 
-    // Try Windows 10 Acrylic fallback via SetWindowCompositionAttribute
     HMODULE hUser = GetModuleHandleW(L"user32.dll");
     if (hUser) {
         pfnSetWindowCompositionAttribute setWindowCompositionAttribute = 
             (pfnSetWindowCompositionAttribute)GetProcAddress(hUser, "SetWindowCompositionAttribute");
         if (setWindowCompositionAttribute) {
             ACCENT_POLICY policy = {0};
-            // ACCENT_ENABLE_ACRYLICBLURBEHIND is 4
             policy.AccentState = 4;
-            // Semi-transparent tint color in ABGR format
-            policy.GradientColor = 0xC81E1E1E; // 0xC8 alpha (about 200/255), dark grey tint
-            policy.AccentFlags = 2; // draw border/shadow
+            policy.GradientColor = 0xC81E1E1E;
+            policy.AccentFlags = 2;
 
             WINDOWCOMPOSITIONATTRIBDATA data = {0};
-            data.Attribute = 19; // WCA_ACCENT_POLICY
+            data.Attribute = 19;
             data.pvData = &policy;
             data.cbData = sizeof(policy);
 
